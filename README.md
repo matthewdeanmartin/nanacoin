@@ -11,6 +11,10 @@ wallets, no distributed anything. It is one small server that applies
 double-entry transactions and answers questions about them — closer to a shared
 spreadsheet with an honest referee than to Bitcoin.
 
+**[Try the demo](https://matthewdeanmartin.github.io/nanacoin/)** — the real
+client with a seeded household and an in-memory ledger, running entirely in
+your browser. No board, no sign-up, no server.
+
 ## Who it is for
 
 Families and housemates who want a play currency with real rules: pocket money
@@ -26,7 +30,30 @@ to each other, lists things for sale, haggles over offers, and trades coins for
 
 ## How it works
 
-Two boards, one household currency:
+There are two ways to deploy it, and neither board is required to try it — the
+ledger runs on a laptop first, which is where most people should start.
+
+### One board
+
+The Rust firmware embeds the built Angular site as read-only flash assets and
+serves it alongside the API, from the same origin. One board, one address,
+nothing else to host.
+
+```text
+              ESP32-S3-N16R8
+              16MB flash, 8MB PSRAM
+              Rust
+
+              https://nanacoin-rs.local/        the site
+              https://nanacoin-rs.local/api/v1  the ledger and the money
+                          |
+                      the browser
+```
+
+### Two boards
+
+Or split them: a second, smaller board serves the site, and the board holding
+the money does nothing but hold the money.
 
 ```text
    ESP32-S2 Mini                    ESP32-S3-N16R8
@@ -39,9 +66,13 @@ Two boards, one household currency:
             `------->  the browser  <--------'
 ```
 
-The split is deliberate: the board holding the money does nothing but hold the
-money. It serves JSON and no HTML. Neither board is required — you can run the
-whole thing on a laptop first, and most people should.
+This is the older arrangement and still the more conservative one: keeping HTML
+off the ledger board makes its memory budget easier to reason about. It is also
+the only option for the TinyGo firmware, which cannot host the site — TinyGo's
+ESP32-S3 target uses internal SRAM only and cannot reach the board's 8MB PSRAM,
+so there is nowhere to put the bundle. That changes when
+[upstream PSRAM support](https://github.com/tinygo-org/tinygo/pull/5554) lands;
+see [`nanacoin_go/PSRAM_EPIC.md`](nanacoin_go/PSRAM_EPIC.md).
 
 ## Projects
 
@@ -87,8 +118,17 @@ Open <http://localhost:4200>. A fresh install has no household: the client
 walks you through creating one and choosing Nana's username and PIN. From
 there, add members and start issuing money.
 
-To put it on a board instead, see [`docs/rust/workflow.md`](docs/rust/workflow.md).
-`make firmware` builds the image; flashing is a separate, deliberate step.
+To put it on a board instead:
+
+```bash
+cd nanacoin_rs
+make firmware                 # builds the Angular site into the image too
+```
+
+Flashing is a separate, deliberate step — see
+[`docs/rust/workflow.md`](docs/rust/workflow.md). The result serves both the
+site and the API at `https://nanacoin-rs.local/`, so the board is the whole
+deployment.
 
 ## Hardware known to work
 
@@ -97,8 +137,8 @@ not aspirational.
 
 | Board | Chip | Role | Notes |
 |---|---|---|---|
-| ESP32-S3-N16R8 | ESP32-S3 | Ledger and API | 16MB flash, 8MB octal PSRAM, dual core. Serves HTTPS on four concurrent TLS sockets. |
-| DiGiYes ESP32-S2 Mini V1.0.0 | ESP32-S2FN4R2 | Static site host | 4MB flash, 2MB PSRAM, native USB only. |
+| ESP32-S3-N16R8 | ESP32-S3 | Ledger, API **and site** | 16MB flash, 8MB octal PSRAM, dual core. Serves HTTPS on four concurrent TLS sockets. This board alone is enough. |
+| DiGiYes ESP32-S2 Mini V1.0.0 | ESP32-S2FN4R2 | Site host, two-board setup | 4MB flash, 2MB PSRAM, native USB only. Optional. |
 
 The S3 firmware has run a mixed read/write load for an hour without a reboot,
 holding a flat heap and a constant largest-free-block. The load lab in

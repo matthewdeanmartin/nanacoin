@@ -14,7 +14,12 @@ from urllib.parse import urlsplit
 from playwright.sync_api import sync_playwright, expect
 
 ROOT = Path(__file__).resolve().parents[1]
-PREFIX = '/microcontroller/nanacoin/'
+# Must match the base href the site was built with, so this harness serves it
+# the way Pages will. Taken from the environment the workflow already sets,
+# rather than repeated here where it would drift.
+PREFIX = os.environ.get('BASE_HREF', '/nanacoin/')
+if not (PREFIX.startswith('/') and PREFIX.endswith('/')):
+    raise SystemExit(f'BASE_HREF must start and end with "/": {PREFIX!r}')
 
 class Static(SimpleHTTPRequestHandler):
     def do_GET(self):

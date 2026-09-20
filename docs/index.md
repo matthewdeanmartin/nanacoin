@@ -38,7 +38,15 @@ and the Angular client documented there is still the one in use.
 
 ## The shape of it
 
-The board that holds the money serves JSON and nothing else. A second board —
-or any static host — serves the Angular client, which talks to the API from the
-browser. Keeping the ledger free of HTML is what makes its memory budget
-predictable.
+There are two ways to deploy it.
+
+**One board.** The Rust firmware embeds the built Angular site as read-only
+flash assets and serves it from the same origin as the API, so a single S3 is
+the entire deployment.
+
+**Two boards.** Or keep HTML off the ledger board entirely and let a second
+board — or any static host — serve the client, which talks to the API from the
+browser. That separation is what makes the ledger board's memory budget easy to
+reason about, and it is the only option for the TinyGo firmware: its ESP32-S3
+target uses internal SRAM and cannot reach the 8MB PSRAM, so there is nowhere
+to put the bundle.
