@@ -1,9 +1,21 @@
 import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute, Router } from '@angular/router';
 import { IS_DEMO } from '../demo/demo';
 import { Session } from '../api/session';
 import { NanacoinService } from '../api/nanacoin.service';
 import QRCode from 'qrcode';
+
+/**
+ * A scannable URL whose secret stays in the hash-router portion, so the web
+ * server, access logs and referrer headers never receive it. The redeem page
+ * removes the token from browser history as soon as Angular has read it.
+ */
+export function redemptionUrl(token: string, pageUrl = location.href): string {
+ const url = new URL(pageUrl);
+ url.hash = `/redeem?token=${encodeURIComponent(token)}`;
+ return url.href;
+}
 
 @Component({
  selector: 'app-nickles', imports: [FormsModule],
@@ -22,7 +34,7 @@ import QRCode from 'qrcode';
  <section class="panel printable-voucher"><h2>DEMO nana-nickle · {{ v.amount }} NC</h2><p>Serial {{ v.serial }} · One redemption only · Same tab only</p>
  <p>This code is the money. Anyone who copies it can redeem it first.</p><code class="voucher-secret">{{ v.token }}</code>
  @if (qrCode()) {
-   <figure class="voucher-qr"><img [src]="qrCode()" width="256" height="256" alt="QR code containing this Nana-nickle voucher code"><figcaption>Scan to copy the voucher code into a QR reader.</figcaption></figure>
+   <figure class="voucher-qr"><img [src]="qrCode()" width="256" height="256" alt="QR code linking to the Nana-nickle redemption page"><figcaption>Scan to open NanaCoin’s redemption page with this voucher ready.</figcaption></figure>
  }
  <p>DEMO ONLY — no cash value — destroyed by reload. Redeem in NanaCoin → Nana-nickles in the issuing browser tab.</p></section>
  <button class="btn" (click)="print()">Print this voucher</button> <button class="btn" (click)="hide()">Hide secret</button>
@@ -36,10 +48,22 @@ import QRCode from 'qrcode';
 export class NicklesPage {
  readonly demo = IS_DEMO; readonly session = inject(Session);
  private readonly api = inject(NanacoinService);
+ private readonly route = inject(ActivatedRoute);
+ private readonly router = inject(Router);
  readonly voucher = signal<{ token: string; amount: number; serial: string } | null>(null);
  readonly qrCode = signal('');
  readonly busy = signal(false); readonly message = signal('');
  amount = 5; fresh = false; token = '';
+ constructor() {
+   const scannedToken = this.route.snapshot.queryParamMap.get('token')?.trim();
+   if (scannedToken) {
+     this.token = scannedToken;
+     this.message.set('Voucher loaded from the QR code. Sign in, then redeem it once.');
+     // replaceUrl prevents the bearer secret lingering in the browser's Back
+     // history after the scanner has handed the URL to NanaCoin.
+     void this.router.navigate(['/redeem'], { replaceUrl: true });
+   }
+ }
  async create(): Promise<void> {
    if (!IS_DEMO || this.busy()) return;
    if (!Number.isSafeInteger(this.amount) || this.amount <= 0) { this.message.set('Enter a positive whole number.'); return; }
@@ -49,7 +73,7 @@ export class NicklesPage {
      this.voucher.set(voucher);
      await this.session.refresh();
      try {
-       this.qrCode.set(await QRCode.toDataURL(voucher.token, { errorCorrectionLevel: 'M', margin: 2, width: 256 }));
+       this.qrCode.set(await QRCode.toDataURL(redemptionUrl(voucher.token), { errorCorrectionLevel: 'M', margin: 2, width: 256 }));
        this.message.set('Voucher and QR code created. Save the secret before leaving this page.');
      } catch {
        this.qrCode.set('');

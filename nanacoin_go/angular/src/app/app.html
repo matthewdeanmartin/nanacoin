@@ -22,7 +22,7 @@
 
 <app-site-menu />
 @if (publicPage()) {
-  <main id="main-content" class="screen" tabindex="-1"><router-outlet /></main>
+  <main id="main-content" class="screen" [class.screen--about]="aboutPage()" tabindex="-1"><router-outlet /></main>
 } @else {
 @switch (phase()) {
   @case ('loading') {

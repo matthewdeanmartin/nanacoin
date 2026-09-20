@@ -41,6 +41,7 @@ type Phase = 'loading' | 'connect' | 'setup' | 'login' | 'app' | 'logs';
 })
 export class App {
   protected readonly publicPage = signal(false);
+  protected readonly aboutPage = signal(false);
   private readonly router = inject(Router);
   protected readonly session = inject(Session);
   protected readonly apiBase = inject(ApiBase);
@@ -86,6 +87,7 @@ export class App {
     this.router.events.pipe(takeUntilDestroyed()).subscribe(event => {
       if (event instanceof NavigationEnd) {
         const path = event.urlAfterRedirects.split('?')[0];
+        this.aboutPage.set(path === '/about');
         this.publicPage.set(['/about', '/recipes', '/ledger'].includes(path)
           || (IS_DEMO && path === '/diagnostics'));
         requestAnimationFrame(() => document.getElementById('main-content')?.focus());

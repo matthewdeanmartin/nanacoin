@@ -17,6 +17,9 @@ describe('responsive site navigation', () => {
    expect(fixture.nativeElement.querySelectorAll('nav')).toHaveLength(1);
    expect(fixture.nativeElement.textContent).not.toContain('Household');
    expect(fixture.nativeElement.textContent).toContain('About');
+   const buySell = [...fixture.nativeElement.querySelectorAll('details')].find((group: Element) => group.textContent?.includes('Buy/Sell'));
+   expect(buySell?.textContent).toContain('Market');
+   expect(buySell?.textContent).toContain('Offers');
  });
  it('toggles expanded state and dismisses on Escape or outside click', () => {
    const fixture = setup(true);

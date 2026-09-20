@@ -988,6 +988,13 @@ a.tab {
   font-display: swap;
 }
 
+/* The energy comparisons need enough horizontal room for their labels and
+ * logarithmic plots. Keep ordinary task screens compact, but let About use a
+ * reading column that is twenty percent wider. */
+.screen--about {
+  max-width: 52.8rem;
+}
+
 .skip-link {
   position: fixed;
   z-index: 1000;

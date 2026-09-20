@@ -12,6 +12,7 @@ export const routes: Routes = [
   { path: 'recipes', loadComponent: () => import('./pages/recipes').then(m => m.RecipesPage), title: 'Lemon bars — NanaCoin' },
   { path: 'ledger', loadComponent: () => import('./pages/public-ledger').then(m => m.PublicLedger), title: 'The notebook — NanaCoin' },
   { path: 'nickles', loadComponent: () => import('./pages/nickles').then(m => m.NicklesPage), title: 'Nana-nickles — NanaCoin' },
+  { path: 'redeem', loadComponent: () => import('./pages/nickles').then(m => m.NicklesPage), title: 'Redeem a Nana-nickle — NanaCoin' },
   {
     path: 'market',
     loadComponent: () => import('./pages/market').then((m) => m.MarketPage),

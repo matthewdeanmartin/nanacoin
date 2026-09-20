@@ -59,6 +59,8 @@ def main():
                 group = None
                 if label == 'Economy' or (label == 'The Notebook' and nav.get_by_text('Accounting', exact=True).count()):
                     group = 'Accounting'
+                elif label in ('Market', 'Offers', 'Exchange', 'Nana-nickles'):
+                    group = 'Buy/Sell'
                 elif label in ('Browser Log', 'Browser Health', 'Board Health', 'Server Log'):
                     group = 'System Info'
                 if group:
@@ -76,6 +78,9 @@ def main():
             expect(page.get_by_role('dialog', name='Keyboard shortcuts')).not_to_be_visible()
             expect(page.get_by_role('link', name='SMBC: Nanacoin')).to_have_attribute('href', 'https://www.smbc-comics.com/comic/nanacoin')
             assert page.get_by_role('navigation', name='Main navigation').evaluate('e => getComputedStyle(e).flexDirection') == 'row'
+            about_width = page.locator('#main-content').bounding_box()['width']
+            assert 840 <= about_width <= 850, about_width
+            assert page.locator('.energy-chart').first.evaluate('e => e.scrollWidth <= e.clientWidth')
             navigate('The Notebook')
             page.get_by_role('link', name='Have a lemon bar').click()
             expect(page.get_by_role('heading', name='Vegan lemon bars (egg-free and dairy-free)')).to_be_visible()
@@ -109,9 +114,13 @@ def main():
             expect(page.get_by_role('navigation', name='Main navigation')).not_to_be_visible()
             expect(page.get_by_role('heading', name='Browser health')).to_be_visible()
             page.get_by_role('button', name='Refresh readings').click()
+            page.set_viewport_size({'width': 1024, 'height': 768})
             page.get_by_role('link', name='NanaCoin app', exact=True).click()
             page.get_by_role('button', name='Dad an ordinary member').click()
             expect(page.locator('app-market')).to_be_visible()
+            account_left = page.get_by_role('link', name='My Account', exact=True).bounding_box()['x']
+            content_left = page.locator('#main-content').bounding_box()['x']
+            assert abs(account_left - content_left) <= 1, (account_left, content_left)
             page.keyboard.press('n')
             expect(page.locator('app-market input[name="title"]')).to_be_focused()
             page.keyboard.type('gh?')
@@ -126,13 +135,15 @@ def main():
             expect(page.get_by_role('heading', name='Nana-nickles')).to_be_visible()
             page.get_by_role('button', name='Create voucher').click()
             expect(page.locator('.voucher-secret')).to_be_visible()
-            expect(page.get_by_role('img', name='QR code containing this Nana-nickle voucher code')).to_be_visible()
+            expect(page.get_by_role('img', name='QR code linking to the Nana-nickle redemption page')).to_be_visible()
             token = page.locator('.voucher-secret').inner_text()
             page.emulate_media(media='print')
             expect(page.locator('.printable-voucher')).to_be_visible()
             assert page.get_by_role('button', name='Create voucher', include_hidden=True).evaluate('e => getComputedStyle(e).visibility') == 'hidden'
             page.emulate_media(media='screen')
-            page.get_by_label('Voucher code', exact=True).fill(token)
+            page.evaluate("token => location.hash = '#/redeem?token=' + encodeURIComponent(token)", token)
+            expect(page).to_have_url(re.compile(r'#\/redeem$'))
+            expect(page.get_by_label('Voucher code', exact=True)).to_have_value(token)
             page.get_by_role('button', name='Redeem once').click()
             expect(page.get_by_role('status').filter(has_text='Redeemed.')).to_be_visible()
             page.get_by_label('Voucher code', exact=True).fill(token)

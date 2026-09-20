@@ -16,24 +16,29 @@ import { IS_DEMO } from '../demo/demo';
    <nav id="site-navigation" aria-label="Main navigation" [class.is-open]="open()">
      @if (session.signedIn()) {
        <a routerLink="/history" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">My Account</a>
+       @if (session.isNana()) {
+         <a routerLink="/nana" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Household</a>
+       }
        <a routerLink="/send" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Send</a>
-       <a routerLink="/market" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Market</a>
-       <a routerLink="/offers" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Offers</a>
-       <a routerLink="/forex" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Exchange</a>
-       <details class="menu-group">
+       <details class="menu-group" routerLinkActive="current">
+         <summary>Buy/Sell</summary>
+         <div class="menu-group__items">
+           <a routerLink="/market" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Market</a>
+           <a routerLink="/offers" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Offers</a>
+           <a routerLink="/forex" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Exchange</a>
+           @if (demo) {
+             <a routerLink="/nickles" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Nana-nickles</a>
+           }
+         </div>
+       </details>
+       <details class="menu-group" routerLinkActive="current">
          <summary>Accounting</summary>
          <div class="menu-group__items">
            <a routerLink="/economy" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Economy</a>
            <a routerLink="/ledger" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">The Notebook</a>
          </div>
        </details>
-       @if (demo) {
-         <a routerLink="/nickles" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Nana-nickles</a>
-       }
-       @if (session.isNana()) {
-         <a routerLink="/nana" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Household</a>
-       }
-       <details class="menu-group">
+       <details class="menu-group" routerLinkActive="current">
          <summary>System Info</summary>
          <div class="menu-group__items">
            <a routerLink="/clientlog" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Browser Log</a>

@@ -1,12 +1,14 @@
 :host { display:block; position:relative; z-index:30; }
-.menu-bar { display:flex; align-items:center; gap:2rem; padding:.8rem clamp(1rem,3vw,3rem); background:#fffdf7; border-bottom:2px solid #a26935; }
+.menu-bar { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,44rem) minmax(0,1fr); align-items:center; padding:.8rem 0; background:#fffdf7; border-bottom:2px solid #a26935; }
 .brand { color:#422d1c; text-decoration:none; font-family:Georgia,serif; font-size:1.55rem; font-weight:700; white-space:nowrap; line-height:1.15; }
+.brand { justify-self:end; margin-right:2rem; }
 .brand span { display:block; margin-top:.2rem; font: .65rem system-ui,sans-serif; text-transform:uppercase; letter-spacing:.12em; color:#78593e; }
-nav { display:flex; flex:1; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:.1rem 1.05rem; }
+nav { display:flex; min-width:0; align-items:center; justify-content:flex-start; flex-wrap:wrap; gap:.1rem 1.05rem; padding:0 1rem; }
 nav a { display:block; color:#513b29; padding:.65rem 0 .45rem; border-bottom:2px solid transparent; text-decoration:none; font-size:.87rem; white-space:nowrap; }
 nav a:hover, nav a.current { color:#924716; border-bottom-color:#924716; }
 .about-link { margin-left:auto; }
 .menu-group { position:relative; color:#513b29; font-size:.87rem; }
+.menu-group.current > summary { color:#924716; }
 .menu-group summary { min-height:44px; display:flex; align-items:center; cursor:pointer; white-space:nowrap; list-style:none; }
 .menu-group summary::-webkit-details-marker { display:none; }
 .menu-group summary::after { content:'▾'; margin-left:.35rem; font-size:.7em; }
@@ -15,8 +17,10 @@ nav a:hover, nav a.current { color:#924716; border-bottom-color:#924716; }
 .menu-group__items a { min-height:44px; display:flex; align-items:center; border-bottom:1px solid #e5d9c9; }
 a:focus-visible, button:focus-visible { outline:3px solid #467791; outline-offset:4px; }
 .menu-toggle { display:none; }
-@media (max-width: 760px) {
+@media (max-width: 980px) {
   .menu-bar { justify-content:space-between; min-height:68px; gap:1rem; padding:.7rem 1rem; }
+  .menu-bar { display:flex; }
+  .brand { justify-self:auto; margin-right:0; }
   .menu-toggle { display:flex; align-items:center; gap:.6rem; min-height:44px; padding:.55rem .7rem; border:1px solid #a98b70; border-radius:3px; background:transparent; color:#422d1c; font:inherit; cursor:pointer; }
   .hamburger { display:flex; flex-direction:column; gap:4px; width:19px; }
   .hamburger i { display:block; height:2px; background:currentColor; }
