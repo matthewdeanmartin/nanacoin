@@ -161,6 +161,7 @@ impl State {
                 listing: None,
                 usd: true,
                 quote: None,
+                economic: EconomicDetails::default(),
             }),
             Command::PostQuote {
                 side,
@@ -224,6 +225,7 @@ impl State {
                     listing: None,
                     usd: false,
                     quote: Some(q.id),
+                    economic: EconomicDetails::default(),
                 };
                 let cash = Transaction {
                     id: q.cash_tx.unwrap(),

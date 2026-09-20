@@ -1,13 +1,15 @@
 // The marketplace: what is for sale, and the form for offering something.
 
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject, resource, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
-import { Listing, ListingSide } from '../api/models';
+import { EconomicKind, EconomicUnit, Listing, ListingSide, Thing } from '../api/models';
 import { ApiError, NanacoinService, newIdempotencyKey } from '../api/nanacoin.service';
 import { Session } from '../api/session';
 import { Dialogs } from '../ui/dialog';
 import { Toasts } from '../ui/toasts';
+import { CATEGORIES, Category, ITEMS } from '../catalog/catalog';
+import { catalogEconomics, formatQuantity, validQuantity } from '../catalog/economics';
 
 @Component({
   selector: 'app-market',
@@ -23,6 +25,27 @@ export class MarketPage {
   protected title = '';
   protected description = '';
   protected price: number | null = null;
+  protected economicKind: EconomicKind | '' = '';
+  protected quantity = '1';
+  protected unit: EconomicUnit = 'EACH';
+  protected standard = false;
+  protected selectedThing = '';
+  protected readonly catalog = ITEMS;
+  protected readonly categories = CATEGORIES;
+  protected catalogChoice = '';
+  protected readonly units: readonly EconomicUnit[] = [
+    'EACH', 'BATCH', 'TASK', 'MINUTE', 'HOUR', 'GRAM', 'KILOGRAM',
+    'MILLILITER', 'LITER', 'LOAD', 'OTHER',
+  ];
+  protected readonly thingData = resource({
+    loader: async () => {
+      try { return (await this.api.things()).things; }
+      catch (e) {
+        if (e instanceof ApiError && e.status === 404) return [];
+        throw e;
+      }
+    },
+  });
 
   /** Which way round a new listing is. Selling is the familiar default. */
   protected side: ListingSide = 'SELL';
@@ -103,6 +126,18 @@ export class MarketPage {
       this.toasts.error('Enter a whole number of coins.');
       return;
     }
+    if (!this.economicKind) {
+      this.toasts.error('Choose what kind of exchange this is.');
+      return;
+    }
+    if (!validQuantity(this.quantity)) {
+      this.toasts.error('Quantity must be a positive decimal with at most three places.');
+      return;
+    }
+    if (this.side === 'SELL' && this.economicKind === 'LABOR' && this.session.isNana()) {
+      this.toasts.error('Nana is the household organization and cannot sell labor.');
+      return;
+    }
     this.posting.set(true);
     try {
       await this.api.createListing({
@@ -112,10 +147,21 @@ export class MarketPage {
         // Only sent when it is a want-ad, so an older server - which has
         // never heard of side - keeps receiving exactly what it used to.
         ...(this.side === 'BUY' ? { side: this.side } : {}),
+        economic_kind: this.economicKind,
+        ...(this.selectedThing ? { thing: this.selectedThing } : {}),
+        quantity: this.quantity,
+        unit: this.unit,
+        standard: this.standard,
       });
       this.title = '';
       this.description = '';
       this.price = null;
+      this.economicKind = '';
+      this.quantity = '1';
+      this.unit = 'EACH';
+      this.standard = false;
+      this.selectedThing = '';
+      this.catalogChoice = '';
       this.toasts.ok(this.side === 'BUY' ? 'Want-ad posted.' : 'Listed.');
       await this.session.refresh();
     } catch (e) {
@@ -123,6 +169,66 @@ export class MarketPage {
     } finally {
       this.posting.set(false);
     }
+  }
+
+  protected titleChanged(value: string): void {
+    this.title = value;
+    const known = this.things().find((t) => t.name.localeCompare(value, undefined, { sensitivity: 'accent' }) === 0);
+    if (known) {
+      this.selectedThing = known.id;
+      this.economicKind = known.economic_kind;
+      this.unit = known.unit;
+      this.standard = known.standard;
+      return;
+    }
+    const item = ITEMS.find((i) => i.name.localeCompare(value, undefined, { sensitivity: 'accent' }) === 0);
+    this.selectedThing = '';
+    if (item) {
+      const attributes = catalogEconomics(item);
+      this.economicKind = attributes.kind;
+      this.unit = attributes.unit;
+      this.standard = true;
+    } else {
+      this.standard = false;
+    }
+  }
+
+  protected chooseCatalog(code: string): void {
+    this.catalogChoice = code;
+    const item = ITEMS.find((candidate) => candidate.code === Number(code));
+    if (item) this.titleChanged(item.name);
+  }
+
+  protected itemsIn(category: Category) {
+    return ITEMS.filter((item) => item.cat === category.id);
+  }
+
+  protected things(): Thing[] {
+    return this.thingData.value() ?? [];
+  }
+
+  protected attributesLocked(): boolean {
+    return Boolean(this.selectedThing) || ITEMS.some(
+      (i) => i.name.localeCompare(this.title, undefined, { sensitivity: 'accent' }) === 0,
+    );
+  }
+
+  protected quantityLabel(l: Listing): string {
+    return `${formatQuantity(l.quantity_milli)} ${(l.unit ?? 'EACH').toLocaleLowerCase()}`;
+  }
+
+  protected offerAgain(l: Listing): void {
+    this.title = l.title;
+    this.description = l.description;
+    this.price = l.price;
+    this.side = l.side ?? 'SELL';
+    this.economicKind = l.economic_kind ?? 'OTHER';
+    this.quantity = formatQuantity(l.quantity_milli);
+    this.unit = l.unit ?? 'EACH';
+    this.standard = l.standard ?? false;
+    this.selectedThing = l.thing ?? '';
+    this.catalogChoice = '';
+    document.querySelector('#post-listing')?.scrollIntoView({ behavior: 'smooth' });
   }
 
   /**

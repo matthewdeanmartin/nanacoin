@@ -73,9 +73,10 @@ export function gdpSeries(txns: Transaction[], bucket: Bucket): Series {
 
   for (const txn of txns) {
     let value = 0;
-    if (txn.kind === 'TRANSFER' || txn.kind === 'PURCHASE') {
+    const included = !txn.quantity_milli || txn.economic_kind === 'LABOR' || txn.economic_kind === 'GOOD';
+    if (included && (txn.kind === 'TRANSFER' || txn.kind === 'PURCHASE')) {
       value = positiveSum(txn);
-    } else if (txn.kind === 'REVERSAL') {
+    } else if (included && txn.kind === 'REVERSAL') {
       // A reversal of a transfer undoes activity; a reversal of an issuance
       // was never activity in the first place. The postings say which: an
       // undone transfer still moves money between two household accounts.
@@ -88,6 +89,86 @@ export function gdpSeries(txns: Transaction[], bucket: Bucket): Series {
   }
 
   return { name: 'GDP', points: sorted(totals) };
+}
+
+export interface EmploymentSnapshot {
+  employed: number;
+  laborPool: number;
+  rate: number;
+  laborPayments: number;
+  averagePayment: number;
+}
+
+/** People in the labor pool who received at least one labor payment this week. */
+export function employmentSnapshot(
+  txns: Transaction[],
+  eligibleAccounts: readonly string[],
+  now = Math.floor(Date.now() / 1000),
+): EmploymentSnapshot {
+  const start = bucketStart(now, 'week');
+  const eligible = new Set(eligibleAccounts);
+  const earners = new Set<string>();
+  let laborPayments = 0;
+  let count = 0;
+  for (const txn of txns) {
+    if (txn.created_at < start || txn.economic_kind !== 'LABOR' || txn.reversed_by || txn.kind === 'REVERSAL') continue;
+    const payee = txn.postings.find((p) => p.amount > 0 && eligible.has(p.account));
+    if (!payee) continue;
+    earners.add(payee.account);
+    laborPayments += payee.amount;
+    count++;
+  }
+  const laborPool = eligible.size;
+  return {
+    employed: earners.size,
+    laborPool,
+    rate: laborPool ? earners.size / laborPool : 0,
+    laborPayments,
+    averagePayment: count ? laborPayments / count : 0,
+  };
+}
+
+export function giftsThisWeek(
+  txns: Transaction[],
+  now = Math.floor(Date.now() / 1000),
+): number {
+  const start = bucketStart(now, 'week');
+  return txns
+    .filter((t) => t.created_at >= start && t.economic_kind === 'GIFT' && !t.reversed_by && t.kind !== 'REVERSAL')
+    .reduce((sum, t) => sum + positiveSum(t), 0);
+}
+
+export interface RepeatPriceChange {
+  thing: string;
+  unit: string;
+  previous: number;
+  latest: number;
+  percent: number;
+}
+
+/** Last two observed unit prices for every repeatedly sold standard good. */
+export function repeatPriceChanges(txns: Transaction[]): RepeatPriceChange[] {
+  const observations = new Map<string, { name: string; unit: string; at: number; price: number }[]>();
+  for (const txn of txns) {
+    if (txn.economic_kind !== 'GOOD' || !txn.thing || !txn.quantity_milli || txn.reversed_by || txn.kind === 'REVERSAL') continue;
+    const price = positiveSum(txn) * 1000 / txn.quantity_milli;
+    const list = observations.get(txn.thing) ?? [];
+    list.push({ name: txn.thing_name ?? txn.description, unit: txn.unit ?? 'EACH', at: txn.created_at, price });
+    observations.set(txn.thing, list);
+  }
+  return [...observations.values()].flatMap((values) => {
+    if (values.length < 2) return [];
+    values.sort((a, b) => a.at - b.at);
+    const previous = values.at(-2)!;
+    const latest = values.at(-1)!;
+    return [{
+      thing: latest.name,
+      unit: latest.unit,
+      previous: previous.price,
+      latest: latest.price,
+      percent: previous.price ? (latest.price - previous.price) / previous.price : 0,
+    }];
+  }).sort((a, b) => a.thing.localeCompare(b.thing));
 }
 
 /**

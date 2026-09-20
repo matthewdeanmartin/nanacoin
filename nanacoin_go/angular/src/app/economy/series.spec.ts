@@ -8,8 +8,11 @@ import {
   SYSTEM_ISSUANCE,
   balanceSeries,
   bucketStart,
+  employmentSnapshot,
   gdpSeries,
+  giftsThisWeek,
   moneySupplySeries,
+  repeatPriceChanges,
 } from './series';
 
 const DAY = 86_400;
@@ -91,6 +94,33 @@ describe('gdpSeries', () => {
     expect(s.points[0].value).toBe(3);
     expect(s.points[1].value).toBe(3);
     expect(s.points[0].at).toBeLessThan(s.points[1].at);
+  });
+
+  it('excludes classified gifts and other transfers', () => {
+    const gift = { ...transfer(0, 12), economic_kind: 'GIFT' as const, quantity_milli: 1000 };
+    expect(gdpSeries([gift], 'day').points).toEqual([]);
+  });
+});
+
+describe('classified economy', () => {
+  const now = Math.floor(new Date(2026, 8, 17, 12).getTime() / 1000);
+
+  it('counts paid workers, excluding accounts outside the labor pool', () => {
+    const labor = { ...transfer(now, 30, 'payer', 'worker'), economic_kind: 'LABOR' as const, quantity_milli: 1000 };
+    expect(employmentSnapshot([labor], ['worker', 'idle'], now)).toEqual({
+      employed: 1, laborPool: 2, rate: 0.5, laborPayments: 30, averagePayment: 30,
+    });
+  });
+
+  it('tracks gifts separately', () => {
+    const gift = { ...transfer(now, 9), economic_kind: 'GIFT' as const, quantity_milli: 1000 };
+    expect(giftsThisWeek([gift], now)).toBe(9);
+  });
+
+  it('compares unit prices for repeat sales of the same good', () => {
+    const first = { ...transfer(now - 10, 50), economic_kind: 'GOOD' as const, thing: 'thing-7', thing_name: 'Cookies', quantity_milli: 1000, unit: 'BATCH' as const };
+    const second = { ...transfer(now, 120), id: 'txn-2', economic_kind: 'GOOD' as const, thing: 'thing-7', thing_name: 'Cookies', quantity_milli: 2000, unit: 'BATCH' as const };
+    expect(repeatPriceChanges([first, second])).toEqual([{ thing: 'Cookies', unit: 'BATCH', previous: 50, latest: 60, percent: 0.2 }]);
   });
 });
 

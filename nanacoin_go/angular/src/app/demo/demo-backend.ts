@@ -13,6 +13,7 @@
 import { HttpErrorResponse, HttpEvent, HttpHandlerFn, HttpRequest, HttpResponse } from '@angular/common/http';
 import { Observable, delay, of, throwError } from 'rxjs';
 
+import { EconomicKind, EconomicUnit } from '../api/models';
 import { DemoError, DemoLedger } from './ledger';
 import { seed } from './seed';
 
@@ -36,6 +37,11 @@ let seeded = false;
  * 120ms is enough to see them work and short enough not to be noticed.
  */
 const LATENCY_MS = 120;
+
+function quantityMilli(value: unknown): number {
+  const [whole, fraction = ''] = String(value).split('.');
+  return Number(whole) * 1000 + Number(fraction.padEnd(3, '0'));
+}
 
 export function demoBackend(
   req: HttpRequest<unknown>,
@@ -183,7 +189,18 @@ function handle(req: HttpRequest<unknown>): unknown {
   }
 
   if (path === '/transfers' && method === 'POST') {
-    return demoLedger.transfer(me, body['to'], Number(body['amount']), body['memo'] ?? '');
+    return demoLedger.transfer(
+      me,
+      body['to'],
+      Number(body['amount']),
+      body['memo'] ?? '',
+      body['economic_kind'] ? {
+        economic_kind: body['economic_kind'] as EconomicKind,
+        thing: body['thing'] as string | undefined,
+        quantity_milli: quantityMilli(body['quantity']),
+        unit: body['unit'] as EconomicUnit,
+      } : undefined,
+    );
   }
 
   if (path === '/admin/issue' && method === 'POST') {
@@ -228,6 +245,11 @@ function handle(req: HttpRequest<unknown>): unknown {
       kind: body['kind'],
       currency: body['currency'],
       minor_units: body['minor_units'] ? Number(body['minor_units']) : undefined,
+      economic_kind: body['economic_kind'] as EconomicKind | undefined,
+      thing: body['thing'] as string | undefined,
+      quantity_milli: body['quantity'] ? quantityMilli(body['quantity']) : undefined,
+      unit: body['unit'] as EconomicUnit | undefined,
+      standard: Boolean(body['standard']),
     });
   }
 

@@ -23,6 +23,9 @@
           <strong>{{ l.price }} {{ l.price === 1 ? 'coin' : 'coins' }}</strong>
           · {{ l.seller_name }}
         </p>
+        @if (l.quantity_milli) {
+          <p class="card__note">{{ l.economic_kind }} · {{ quantityLabel(l) }}{{ l.standard ? ' · standard item' : '' }}</p>
+        }
 
         @if (mine(l)) {
           <button class="btn btn--quiet" title="Remove your listing from the active market" (click)="cancel(l)">Cancel listing</button>
@@ -66,7 +69,7 @@
   </div>
 }
 
-<details class="disclosure">
+<details class="disclosure" id="post-listing" open>
   <summary>Post a listing</summary>
   <form (ngSubmit)="post()">
     <!--
@@ -83,8 +86,49 @@
     </label>
     <label>
       {{ side === 'BUY' ? 'What do you want done?' : 'What are you offering?' }}
-      <input name="title" [(ngModel)]="title" required maxlength="80"
+      <input name="title" [ngModel]="title" (ngModelChange)="titleChanged($event)" required maxlength="80" list="economic-things"
              [placeholder]="side === 'BUY' ? 'Peanut butter cookies' : 'One hour of Switch time'" />
+      <datalist id="economic-things">
+        @for (thing of things(); track thing.id) { <option [value]="thing.name"></option> }
+        @for (item of catalog; track item.code) { <option [value]="item.name"></option> }
+      </datalist>
+    </label>
+    <label>
+      Start with a standard household item (optional)
+      <select name="catalogChoice" [ngModel]="catalogChoice" (ngModelChange)="chooseCatalog($event)">
+        <option value="">Choose from 250 standard items</option>
+        @for (category of categories; track category.id) {
+          <optgroup [label]="category.name">
+            @for (item of itemsIn(category); track item.code) {
+              <option [value]="item.code">{{ item.name }}</option>
+            }
+          </optgroup>
+        }
+      </select>
+    </label>
+    <label>
+      What kind of exchange is this?
+      <select name="economicKind" [(ngModel)]="economicKind" required [disabled]="attributesLocked()">
+        <option value="" disabled>Choose one</option>
+        <option value="LABOR">Labor</option>
+        <option value="GOOD">Good</option>
+        <option value="GIFT">Gift</option>
+        <option value="OTHER">Other</option>
+      </select>
+    </label>
+    <label>
+      Quantity
+      <input name="quantity" [(ngModel)]="quantity" inputmode="decimal" required placeholder="1 or 1.5" />
+    </label>
+    <label>
+      Unit
+      <select name="unit" [(ngModel)]="unit" [disabled]="attributesLocked()">
+        @for (choice of units; track choice) { <option [value]="choice">{{ choice.toLocaleLowerCase() }}</option> }
+      </select>
+    </label>
+    <label class="checkbox">
+      <input name="standard" type="checkbox" [(ngModel)]="standard" [disabled]="attributesLocked()" />
+      Save this as a standard item for the household
     </label>
     <label>
       Details
@@ -118,6 +162,7 @@
               Cancelled
             }
           </p>
+          <button class="btn btn--quiet" type="button" (click)="offerAgain(l)">Offer again at a new price</button>
         </article>
       }
     </div>

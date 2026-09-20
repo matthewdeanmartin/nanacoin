@@ -2,12 +2,13 @@ import { Component, computed, inject, resource, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 
-import { User } from '../api/models';
+import { EconomicKind, EconomicUnit, User } from '../api/models';
 import { Mastodon } from '../api/mastodon';
 import { NanacoinService, newIdempotencyKey } from '../api/nanacoin.service';
 import { Session } from '../api/session';
 import { Toasts } from '../ui/toasts';
 import { toggleCaps } from './message-caps';
+import { validQuantity } from '../catalog/economics';
 
 interface RecentSend {
   id: string;
@@ -68,6 +69,33 @@ interface RecentSend {
           <input name="memo" [ngModel]="memo" (ngModelChange)="memo = allCaps ? $event.toLocaleUpperCase() : $event" maxlength="140"
                  placeholder="Taking out the trash" />
         </label>
+        @if (amount !== null) {
+          <label>
+            What kind of exchange is this?
+            <select name="economicKind" [(ngModel)]="economicKind" required>
+              <option value="" disabled>Choose one</option>
+              <option value="LABOR">Labor</option>
+              <option value="GOOD">Good</option>
+              <option value="GIFT">Gift</option>
+              <option value="OTHER">Other</option>
+            </select>
+          </label>
+          <label>
+            Quantity
+            <input name="quantity" [(ngModel)]="quantity" inputmode="decimal" required />
+          </label>
+          <label>
+            Unit
+            <select name="unit" [(ngModel)]="unit">
+              <option value="EACH">each</option><option value="BATCH">batch</option>
+              <option value="TASK">task</option><option value="MINUTE">minute</option>
+              <option value="HOUR">hour</option><option value="GRAM">gram</option>
+              <option value="KILOGRAM">kilogram</option><option value="MILLILITER">milliliter</option>
+              <option value="LITER">liter</option><option value="LOAD">load</option>
+              <option value="OTHER">other</option>
+            </select>
+          </label>
+        }
         <label class="checkbox">
           <input name="allCaps" type="checkbox" [ngModel]="allCaps" (ngModelChange)="setAllCaps($event)" />
           ALL CAPS
@@ -137,6 +165,9 @@ export class SendPage {
   protected amount: number | null = null;
   protected memo = '';
   protected sendDm = false;
+  protected economicKind: EconomicKind | '' = '';
+  protected quantity = '1';
+  protected unit: EconomicUnit = 'EACH';
   protected allCaps = false;
   private memoBeforeCaps = '';
   protected mastodonServer = 'mastodon.social';
@@ -218,6 +249,14 @@ export class SendPage {
       this.toasts.error('Enter a whole number of coins, or leave the amount empty for a message.');
       return;
     }
+    if (amount !== null && !this.economicKind) {
+      this.toasts.error('Choose what kind of exchange this payment is for.');
+      return;
+    }
+    if (amount !== null && !validQuantity(this.quantity)) {
+      this.toasts.error('Quantity must be a positive decimal with at most three places.');
+      return;
+    }
     const recipient = this.recipient();
     const wantsDm = amount === null || this.sendDm;
     if (wantsDm && !this.memo.trim()) { this.toasts.error('Write a message first.'); return; }
@@ -233,9 +272,16 @@ export class SendPage {
     let paymentSent = false;
     try {
       if (amount !== null) {
-        await this.api.transfer(this.to, amount, this.memo.trim(), key);
+        await this.api.transfer(this.to, amount, this.memo.trim(), key, {
+          economic_kind: this.economicKind as EconomicKind,
+          quantity: this.quantity,
+          unit: this.unit,
+        });
         paymentSent = true;
         this.amount = null;
+        this.economicKind = '';
+        this.quantity = '1';
+        this.unit = 'EACH';
         await this.session.refresh();
         this.history.reload();
       }

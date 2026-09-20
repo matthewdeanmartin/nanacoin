@@ -9,6 +9,12 @@ export type AccountId = string;
 export type UserId = string;
 export type TransactionId = string;
 export type ListingId = string;
+export type ThingId = string;
+
+export type EconomicKind = 'LABOR' | 'GOOD' | 'GIFT' | 'OTHER';
+export type EconomicUnit =
+  | 'EACH' | 'BATCH' | 'TASK' | 'MINUTE' | 'HOUR'
+  | 'GRAM' | 'KILOGRAM' | 'MILLILITER' | 'LITER' | 'LOAD' | 'OTHER';
 
 export type Role = 'nana' | 'user';
 export type UserStatus = 'ACTIVE' | 'DISABLED';
@@ -62,6 +68,12 @@ export interface Transaction {
   reverses?: TransactionId;
   /** Set on a transaction that has been reversed. */
   reversed_by?: TransactionId;
+  economic_kind?: EconomicKind;
+  thing?: ThingId;
+  thing_name?: string;
+  /** Exact thousandths of unit; zero/absent means an old unclassified entry. */
+  quantity_milli?: number;
+  unit?: EconomicUnit;
   postings: Posting[];
 }
 
@@ -84,6 +96,11 @@ export interface Listing {
   currency?: string;
   /** For a currency listing: minor units, e.g. 500 for $5.00. */
   minor_units?: number;
+  economic_kind?: EconomicKind;
+  thing?: ThingId;
+  quantity_milli?: number;
+  unit?: EconomicUnit;
+  standard?: boolean;
 
   /**
    * Which way round the listing is.
@@ -96,6 +113,15 @@ export interface Listing {
    * correctly rather than showing every listing as a want-ad.
    */
   side?: ListingSide;
+}
+
+export interface Thing {
+  id: ThingId;
+  name: string;
+  economic_kind: EconomicKind;
+  unit: EconomicUnit;
+  standard: boolean;
+  updated_at: number;
 }
 
 export type ListingSide = 'SELL' | 'BUY';

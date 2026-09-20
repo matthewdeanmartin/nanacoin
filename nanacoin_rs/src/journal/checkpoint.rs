@@ -5,8 +5,14 @@ use crate::domain::*;
 use serde::de::DeserializeOwned;
 
 pub const ROW_BYTES: usize = 2048;
-pub const MAX_ROWS: usize =
-    1 + MEMBERS + LISTINGS + HISTORY + crate::offers::OFFERS + crate::forex::QUOTES + MAX_RECORDS;
+pub const MAX_ROWS: usize = 1
+    + MEMBERS
+    + LISTINGS
+    + HISTORY
+    + crate::offers::OFFERS
+    + crate::forex::QUOTES
+    + THINGS
+    + MAX_RECORDS;
 
 pub(super) fn save_empty<J: Journal>(j: &mut J) -> Result<(), Error> {
     let header = Header {
@@ -24,6 +30,7 @@ pub(super) fn save_empty<J: Journal>(j: &mut J) -> Result<(), Error> {
         history: 0,
         offers: 0,
         quotes: 0,
+        things: 0,
         keys: 0,
     };
     j.begin_checkpoint()?;
@@ -47,6 +54,8 @@ struct Header {
     history: usize,
     offers: usize,
     quotes: usize,
+    #[serde(default)]
+    things: usize,
     keys: usize,
 }
 #[derive(Serialize)]
@@ -130,6 +139,7 @@ pub(super) fn save<J: Journal>(
         history: s.history.len(),
         offers: s.offers.len(),
         quotes: s.quotes.len(),
+        things: s.things.len(),
         keys: keys.len(),
     };
     j.begin_checkpoint()?;
@@ -161,6 +171,9 @@ pub(super) fn save<J: Journal>(
     for x in &s.quotes {
         write(j, &mut index, 5, x)?;
     }
+    for x in &s.things {
+        write(j, &mut index, 7, x)?;
+    }
     for x in keys {
         write(j, &mut index, 6, x)?;
     }
@@ -182,8 +195,9 @@ pub(super) fn restore<J: Journal>(
         || h.history > HISTORY
         || h.offers > crate::offers::OFFERS
         || h.quotes > crate::forex::QUOTES
+        || h.things > THINGS
         || h.keys > MAX_RECORDS
-        || 1 + h.members + h.listings + h.history + h.offers + h.quotes + h.keys
+        || 1 + h.members + h.listings + h.history + h.offers + h.quotes + h.things + h.keys
             != j.checkpoint_rows()
         || h.sequence > MAX_SEQUENCE
     {
@@ -227,6 +241,11 @@ pub(super) fn restore<J: Journal>(
     for _ in 0..h.quotes {
         s.quotes
             .push(read(j, &mut index, 5)?)
+            .map_err(|_| Error::CorruptJournal)?;
+    }
+    for _ in 0..h.things {
+        s.things
+            .push(read(j, &mut index, 7)?)
             .map_err(|_| Error::CorruptJournal)?;
     }
     for _ in 0..h.keys {

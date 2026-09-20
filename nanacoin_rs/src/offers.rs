@@ -138,6 +138,10 @@ impl State {
                     Side::Sell => (o.offerer, o.owner),
                     Side::Buy => (o.owner, o.offerer),
                 };
+                if l.economic.kind == EconomicKind::Labor && self.member(payee)?.role == Role::Nana
+                {
+                    return Err(Error::Forbidden);
+                }
                 self.validate_posting(payer, payee, o.amount, false)?;
                 now.checked_add(self.offer_settles_after)
                     .filter(|v| *v <= MAX_SEQUENCE)
@@ -236,6 +240,7 @@ impl State {
                     listing: Some(l.id),
                     usd: false,
                     quote: None,
+                    economic: l.economic,
                 };
                 let listing_id = l.id;
                 let o = self.offers.iter_mut().find(|o| o.id == *offer).unwrap();
@@ -273,6 +278,12 @@ impl State {
                     listing: Some(o.listing),
                     usd: false,
                     quote: None,
+                    economic: self
+                        .history
+                        .iter()
+                        .find(|t| t.id == s.transaction)
+                        .map(|t| t.economic)
+                        .unwrap_or_default(),
                 };
                 let listing_id = o.listing;
                 if let Some(original) = self.history.iter_mut().find(|t| t.id == s.transaction) {

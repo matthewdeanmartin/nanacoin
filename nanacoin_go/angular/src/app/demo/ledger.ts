@@ -22,6 +22,8 @@
 
 import {
   AccountHistory,
+  EconomicKind,
+  EconomicUnit,
   Listing,
   ListingSide,
   ListingStatus,
@@ -280,7 +282,16 @@ export class DemoLedger {
     actor: string,
     description: string,
     postings: Posting[],
-    opts: { allowOverdraft?: boolean; reference?: string; reverses?: string } = {},
+    opts: {
+      allowOverdraft?: boolean;
+      reference?: string;
+      reverses?: string;
+      economic_kind?: EconomicKind;
+      thing?: string;
+      thing_name?: string;
+      quantity_milli?: number;
+      unit?: EconomicUnit;
+    } = {},
   ): Transaction {
     const sum = postings.reduce((a, p) => a + p.amount, 0);
     if (sum !== 0) {
@@ -304,23 +315,37 @@ export class DemoLedger {
       description,
       reference: opts.reference,
       reverses: opts.reverses,
+      economic_kind: opts.economic_kind,
+      thing: opts.thing,
+      thing_name: opts.thing_name,
+      quantity_milli: opts.quantity_milli,
+      unit: opts.unit,
       postings,
     };
     this.transactions.push(txn);
     return txn;
   }
 
-  transfer(actor: DemoUser, to: string, amount: number, memo: string): Transaction {
+  transfer(
+    actor: DemoUser,
+    to: string,
+    amount: number,
+    memo: string,
+    economic?: { economic_kind: EconomicKind; thing?: string; quantity_milli: number; unit: EconomicUnit },
+  ): Transaction {
     this.requireActive(actor);
     this.requireAmount(amount);
     if (to === actor.account) {
       throw new DemoError(400, 'self_deal', 'You cannot pay yourself.');
     }
     this.requireUserAccount(to);
+    if (economic?.economic_kind === 'LABOR' && this.userByAccount(to)?.role === 'nana') {
+      throw new DemoError(403, 'forbidden', 'Nana cannot sell labor.');
+    }
     return this.append('TRANSFER', actor.id, memo, [
       { account: actor.account, name: '', amount: -amount },
       { account: to, name: '', amount },
-    ]);
+    ], economic);
   }
 
   issue(actor: DemoUser, to: string, amount: number, reason: string): Transaction {
@@ -480,7 +505,15 @@ export class DemoLedger {
       actor.id,
       reason,
       original.postings.map((p) => ({ ...p, amount: -p.amount })),
-      { allowOverdraft: true, reverses: id },
+      {
+        allowOverdraft: true,
+        reverses: id,
+        economic_kind: original.economic_kind,
+        thing: original.thing,
+        thing_name: original.thing_name,
+        quantity_milli: original.quantity_milli,
+        unit: original.unit,
+      },
     );
   }
 
@@ -496,12 +529,20 @@ export class DemoLedger {
       kind?: string;
       currency?: string;
       minor_units?: number;
+      economic_kind?: EconomicKind;
+      thing?: string;
+      quantity_milli?: number;
+      unit?: EconomicUnit;
+      standard?: boolean;
     },
   ): Listing {
     this.requireActive(actor);
     this.requireAmount(input.price);
     if (!input.title.trim()) {
       throw new DemoError(400, 'bad_request', 'A listing needs a title.');
+    }
+    if (input.side !== 'BUY' && input.economic_kind === 'LABOR' && actor.role === 'nana') {
+      throw new DemoError(403, 'forbidden', 'Nana cannot sell labor.');
     }
     const l: Listing = {
       id: `listing-${this.nextId++}`,
@@ -517,6 +558,11 @@ export class DemoLedger {
       kind: input.kind,
       currency: input.currency,
       minor_units: input.minor_units,
+      economic_kind: input.economic_kind,
+      thing: input.thing ?? (input.economic_kind ? `thing-demo-${input.title.trim().toLocaleLowerCase()}` : undefined),
+      quantity_milli: input.quantity_milli,
+      unit: input.unit,
+      standard: input.standard,
     };
     this.listings.push(l);
     return l;
@@ -556,6 +602,9 @@ export class DemoLedger {
     if (l.seller === actor.account) {
       throw new DemoError(400, 'self_deal', 'You cannot buy your own listing.');
     }
+    if (l.economic_kind === 'LABOR' && this.userByAccount(l.seller)?.role === 'nana') {
+      throw new DemoError(403, 'forbidden', 'Nana cannot sell labor.');
+    }
 
     const txn = this.append(
       'PURCHASE',
@@ -565,7 +614,14 @@ export class DemoLedger {
         { account: actor.account, name: '', amount: -l.price },
         { account: l.seller, name: '', amount: l.price },
       ],
-      { reference: l.id },
+      {
+        reference: l.id,
+        economic_kind: l.economic_kind,
+        thing: l.thing,
+        thing_name: l.title,
+        quantity_milli: l.quantity_milli,
+        unit: l.unit,
+      },
     );
 
     l.status = 'SOLD';
@@ -645,6 +701,9 @@ export class DemoLedger {
     const wantAd = listing.side === 'BUY';
     const payer = wantAd ? listing.seller : offer.offerer;
     const payee = wantAd ? offer.offerer : listing.seller;
+    if (listing.economic_kind === 'LABOR' && this.userByAccount(payee)?.role === 'nana') {
+      throw new DemoError(403, 'forbidden', 'Nana cannot sell labor.');
+    }
 
     const txn = this.append(
       'PURCHASE',
@@ -654,7 +713,14 @@ export class DemoLedger {
         { account: payer, name: '', amount: -offer.amount },
         { account: payee, name: '', amount: offer.amount },
       ],
-      { reference: listing.id },
+      {
+        reference: listing.id,
+        economic_kind: listing.economic_kind,
+        thing: listing.thing,
+        thing_name: listing.title,
+        quantity_milli: listing.quantity_milli,
+        unit: listing.unit,
+      },
     );
 
     offer.status = 'ACCEPTED';

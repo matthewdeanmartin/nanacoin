@@ -39,6 +39,36 @@ fn number(value: &str, prefix: &str) -> Result<u64, Error> {
         .ok_or(Error::InvalidInput)
 }
 
+fn quantity_milli(value: &str) -> Result<u32, Error> {
+    let (whole, fraction) = value.split_once('.').unwrap_or((value, ""));
+    let fraction_len = fraction.len();
+    if whole.is_empty()
+        || !whole.bytes().all(|b| b.is_ascii_digit())
+        || fraction.len() > 3
+        || !fraction.bytes().all(|b| b.is_ascii_digit())
+    {
+        return Err(Error::InvalidInput);
+    }
+    let whole: u32 = whole.parse().map_err(|_| Error::InvalidInput)?;
+    let fraction: u32 = if fraction.is_empty() {
+        0
+    } else {
+        fraction.parse().map_err(|_| Error::InvalidInput)?
+    };
+    let scale = match fraction_len {
+        0 => 1000,
+        1 => 100,
+        2 => 10,
+        3 => 1,
+        _ => return Err(Error::InvalidInput),
+    };
+    whole
+        .checked_mul(1000)
+        .and_then(|n| n.checked_add(fraction * scale))
+        .filter(|n| (1..=1_000_000_000).contains(n))
+        .ok_or(Error::InvalidInput)
+}
+
 #[derive(Serialize)]
 pub(crate) struct User<'a> {
     id: Id,
@@ -106,6 +136,13 @@ struct TransactionView<'a> {
     reversed_by: Option<Id>,
     #[serde(skip_serializing_if = "Option::is_none")]
     reference: Option<Id>,
+    economic_kind: EconomicKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    thing: Option<Id>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    thing_name: Option<&'a str>,
+    quantity_milli: u32,
+    unit: Unit,
     postings: [Posting<'a>; 2],
 }
 fn transaction<'a>(state: &'a State, tx: &'a Transaction) -> TransactionView<'a> {
@@ -139,6 +176,15 @@ fn transaction<'a>(state: &'a State, tx: &'a Transaction) -> TransactionView<'a>
             .find(|t| t.reverses == Some(tx.id))
             .map(|t| id("tx-", t.id)),
         reference: tx.quote.map(|q| id("quote-", q)),
+        economic_kind: tx.economic.kind,
+        thing: (tx.economic.thing != 0).then(|| id("thing-", tx.economic.thing)),
+        thing_name: state
+            .things
+            .iter()
+            .find(|t| t.id == tx.economic.thing)
+            .map(|t| t.name.as_str()),
+        quantity_milli: tx.economic.quantity_milli,
+        unit: tx.economic.unit,
         postings: [
             Posting {
                 account: currency_account(tx.from, tx.usd),
@@ -174,6 +220,12 @@ struct ListingView<'a> {
     kind: &'a str,
     currency: &'a str,
     minor_units: i64,
+    economic_kind: EconomicKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    thing: Option<Id>,
+    quantity_milli: u32,
+    unit: Unit,
+    standard: bool,
 }
 fn listing<'a>(state: &'a State, l: &'a Listing) -> ListingView<'a> {
     ListingView {
@@ -200,6 +252,36 @@ fn listing<'a>(state: &'a State, l: &'a Listing) -> ListingView<'a> {
         kind: &l.details.kind,
         currency: &l.details.currency,
         minor_units: l.details.minor_units,
+        economic_kind: l.economic.kind,
+        thing: (l.economic.thing != 0).then(|| id("thing-", l.economic.thing)),
+        quantity_milli: l.economic.quantity_milli,
+        unit: l.economic.unit,
+        standard: state
+            .things
+            .iter()
+            .find(|t| t.id == l.economic.thing)
+            .is_some_and(|t| t.standard),
+    }
+}
+
+#[derive(Serialize)]
+struct ThingView<'a> {
+    id: Id,
+    name: &'a str,
+    economic_kind: EconomicKind,
+    unit: Unit,
+    standard: bool,
+    updated_at: u64,
+}
+
+fn thing(value: &Thing) -> ThingView<'_> {
+    ThingView {
+        id: id("thing-", value.id),
+        name: &value.name,
+        economic_kind: value.kind,
+        unit: value.unit,
+        standard: value.standard,
+        updated_at: value.updated_at,
     }
 }
 
@@ -386,6 +468,18 @@ pub(crate) fn route<J: Journal>(
                 output,
             );
         }
+        ("GET", "/api/v1/things") => {
+            #[derive(Serialize)]
+            struct Response<T> {
+                things: T,
+            }
+            return serialize(
+                &Response {
+                    things: Rows(s.state.things.iter().map(thing)),
+                },
+                output,
+            );
+        }
         ("GET", "/api/v1/transactions") => {
             return public_ledger(&s.state, limit, output);
         }
@@ -563,12 +657,41 @@ pub(crate) fn route<J: Journal>(
                 amount: i64,
                 #[serde(default)]
                 memo: Memo,
+                economic_kind: Option<EconomicKind>,
+                thing: Option<Id>,
+                quantity: Option<String<24>>,
+                unit: Option<Unit>,
             }
             let r: Transfer = parse(body)?;
-            Command::Transfer {
-                to: member_id(&r.to, "account-")?,
-                amount: r.amount,
-                memo: r.memo,
+            if r.economic_kind.is_some()
+                || r.thing.is_some()
+                || r.quantity.is_some()
+                || r.unit.is_some()
+            {
+                Command::ClassifiedTransfer {
+                    to: member_id(&r.to, "account-")?,
+                    amount: r.amount,
+                    memo: r.memo,
+                    economic: EconomicDetails {
+                        kind: r.economic_kind.ok_or(Error::InvalidInput)?,
+                        thing: r
+                            .thing
+                            .as_deref()
+                            .map(|v| number(v, "thing-"))
+                            .transpose()?
+                            .unwrap_or(0),
+                        quantity_milli: quantity_milli(
+                            r.quantity.as_deref().ok_or(Error::InvalidInput)?,
+                        )?,
+                        unit: r.unit.ok_or(Error::InvalidInput)?,
+                    },
+                }
+            } else {
+                Command::Transfer {
+                    to: member_id(&r.to, "account-")?,
+                    amount: r.amount,
+                    memo: r.memo,
+                }
             }
         }
         "/api/v1/admin/issue" => {
@@ -615,6 +738,12 @@ pub(crate) fn route<J: Journal>(
                 kind: Option<String<16>>,
                 currency: Option<String<8>>,
                 minor_units: Option<i64>,
+                economic_kind: Option<EconomicKind>,
+                thing: Option<Id>,
+                quantity: Option<String<24>>,
+                unit: Option<Unit>,
+                #[serde(default)]
+                standard: bool,
             }
             let r: Create = parse(body)?;
             // Currency listings describe external settlement; forex quotes move USD wallets.
@@ -623,9 +752,33 @@ pub(crate) fn route<J: Journal>(
                 Some("BUY") => Side::Buy,
                 _ => return Err(Error::InvalidInput),
             };
-            let receipt = s.execute(
-                actor,
-                s.state.member(actor)?.last_request + 1,
+            let command = if r.economic_kind.is_some()
+                || r.thing.is_some()
+                || r.quantity.is_some()
+                || r.unit.is_some()
+                || r.standard
+            {
+                Command::ClassifiedList {
+                    title: r.title,
+                    description: r.description,
+                    price: r.price,
+                    side,
+                    economic: EconomicDetails {
+                        kind: r.economic_kind.ok_or(Error::InvalidInput)?,
+                        thing: r
+                            .thing
+                            .as_deref()
+                            .map(|v| number(v, "thing-"))
+                            .transpose()?
+                            .unwrap_or(0),
+                        quantity_milli: quantity_milli(
+                            r.quantity.as_deref().ok_or(Error::InvalidInput)?,
+                        )?,
+                        unit: r.unit.ok_or(Error::InvalidInput)?,
+                    },
+                    standard: r.standard,
+                }
+            } else {
                 Command::List {
                     title: r.title,
                     description: r.description,
@@ -636,8 +789,9 @@ pub(crate) fn route<J: Journal>(
                         currency: r.currency.unwrap_or_default(),
                         minor_units: r.minor_units.unwrap_or_default(),
                     }),
-                },
-            )?;
+                }
+            };
+            let receipt = s.execute(actor, s.state.member(actor)?.last_request + 1, command)?;
             let l = s
                 .state
                 .listings

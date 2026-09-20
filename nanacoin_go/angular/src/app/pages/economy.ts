@@ -17,6 +17,9 @@ import {
   balanceSeries,
   gdpSeries,
   moneySupplySeries,
+  employmentSnapshot,
+  giftsThisWeek,
+  repeatPriceChanges,
 } from '../economy/series';
 
 /** How many transactions to ask for. The server caps this itself. */
@@ -55,6 +58,30 @@ const LEDGER_LIMIT = 365;
             </select>
           </label>
       </div>
+
+      <div class="cards">
+        <article class="card">
+          <h3>Employment this week</h3>
+          <p class="card__meta"><strong>{{ employment().employed }} of {{ employment().laborPool }}</strong> people · {{ (employment().rate * 100).toFixed(0) }}%</p>
+          <p class="muted small">{{ employment().laborPayments }} coins paid for labor; {{ employment().averagePayment.toFixed(1) }} per labor payment. Nana is not in the labor pool.</p>
+        </article>
+        <article class="card">
+          <h3>Gifts this week</h3>
+          <p class="card__meta"><strong>{{ gifts() }} coins</strong></p>
+          <p class="muted small">Gifts are tracked separately and do not count as production.</p>
+        </article>
+      </div>
+
+      <section class="panel">
+        <h2>Repeat-sale prices</h2>
+        @if (priceChanges().length === 0) {
+          <p class="muted">A good needs two completed sales before its price can be compared.</p>
+        } @else {
+          @for (change of priceChanges(); track change.thing) {
+            <p><strong>{{ change.thing }}</strong>: {{ change.previous.toFixed(2) }} → {{ change.latest.toFixed(2) }} coins per {{ change.unit.toLocaleLowerCase() }} ({{ change.percent >= 0 ? '+' : '' }}{{ (change.percent * 100).toFixed(1) }}%)</p>
+          }
+        }
+      </section>
 
         <app-line-chart
           title="Money supply"
@@ -123,9 +150,15 @@ export class EconomyPage {
 
   protected readonly gdpSubtitle = computed(
     () =>
-      `Value changing hands per ${this.bucket()}. Transfers and purchases only —` +
-      ' issuing coin is not economic activity.',
+      `Labor and goods produced per ${this.bucket()}. Gifts, other transfers, and coin issuance are excluded.`,
   );
+
+  protected readonly employment = computed(() => employmentSnapshot(
+    this.txns(),
+    this.session.household().filter((u) => u.status === 'ACTIVE' && u.role !== 'nana').map((u) => u.account),
+  ));
+  protected readonly gifts = computed(() => giftsThisWeek(this.txns()));
+  protected readonly priceChanges = computed(() => repeatPriceChanges(this.txns()));
 
   /**
    * One line per household member.

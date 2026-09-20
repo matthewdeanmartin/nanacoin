@@ -17,6 +17,8 @@ import {
   AccountId,
   ApiErrorBody,
   Config,
+  EconomicKind,
+  EconomicUnit,
   LedgerPage,
   Listing,
   LogPage,
@@ -32,6 +34,8 @@ import {
   TradeResult,
   PurchaseResult,
   Status,
+  Thing,
+  ThingId,
   TokenResponse,
   Transaction,
   TransactionId,
@@ -397,8 +401,14 @@ export class NanacoinService {
     amount: number,
     memo: string,
     idempotencyKey: string,
+    economic?: {
+      economic_kind: EconomicKind;
+      thing?: ThingId;
+      quantity: string;
+      unit: EconomicUnit;
+    },
   ): Promise<Transaction> {
-    return this.post<Transaction>('/transfers', { to, amount, memo }, idempotencyKey);
+    return this.post<Transaction>('/transfers', { to, amount, memo, ...economic }, idempotencyKey);
   }
 
   issue(
@@ -434,6 +444,10 @@ export class NanacoinService {
     return this.get<{ listings: Listing[] }>(`/listings${q}`);
   }
 
+  things(): Promise<{ things: Thing[] }> {
+    return this.get<{ things: Thing[] }>('/things');
+  }
+
   createListing(input: {
     title: string;
     description: string;
@@ -444,6 +458,11 @@ export class NanacoinService {
     /** 'BUY' posts a want-ad. Omitted means SELL, which is what older
      *  servers assume. */
     side?: ListingSide;
+    economic_kind?: EconomicKind;
+    thing?: ThingId;
+    quantity?: string;
+    unit?: EconomicUnit;
+    standard?: boolean;
   }): Promise<Listing> {
     return this.post<Listing>('/listings', input);
   }

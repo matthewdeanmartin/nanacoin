@@ -107,6 +107,113 @@ fn authorization_and_input_fail_without_writes() {
 }
 
 #[test]
+fn classified_exchange_reuses_things_and_keeps_nana_out_of_labor() {
+    let (mut s, memory) = household();
+    execute(&mut s, 1, issue(100)).unwrap();
+    execute(
+        &mut s,
+        1,
+        Command::Issue {
+            to: MemberId(1),
+            amount: 100,
+            memo: Memo::new(),
+        },
+    )
+    .unwrap();
+    let labor = EconomicDetails {
+        kind: EconomicKind::Labor,
+        thing: 0,
+        quantity_milli: 1_000,
+        unit: Unit::Task,
+    };
+    assert_eq!(
+        execute(
+            &mut s,
+            1,
+            Command::ClassifiedList {
+                title: Title::try_from("Nana labor").unwrap(),
+                description: Memo::new(),
+                price: 10,
+                side: Side::Sell,
+                economic: labor,
+                standard: false,
+            },
+        ),
+        Err(Error::Forbidden)
+    );
+    assert_eq!(
+        execute(
+            &mut s,
+            2,
+            Command::ClassifiedTransfer {
+                to: MemberId(1),
+                amount: 10,
+                memo: Memo::try_from("work").unwrap(),
+                economic: labor,
+            },
+        ),
+        Err(Error::Forbidden)
+    );
+
+    let good = EconomicDetails {
+        kind: EconomicKind::Good,
+        thing: 0,
+        quantity_milli: 1_500,
+        unit: Unit::Batch,
+    };
+    let first = execute(
+        &mut s,
+        2,
+        Command::ClassifiedList {
+            title: Title::try_from("Mexican wedding cookies").unwrap(),
+            description: Memo::new(),
+            price: 50,
+            side: Side::Sell,
+            economic: good,
+            standard: true,
+        },
+    )
+    .unwrap();
+    execute(
+        &mut s,
+        1,
+        Command::Buy {
+            listing: first.sequence,
+        },
+    )
+    .unwrap();
+    execute(
+        &mut s,
+        2,
+        Command::ClassifiedList {
+            title: Title::try_from("MEXICAN WEDDING COOKIES").unwrap(),
+            description: Memo::new(),
+            price: 70,
+            side: Side::Sell,
+            economic: good,
+            standard: false,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(s.state().things.len(), 1);
+    assert!(s.state().things[0].standard);
+    assert_eq!(s.state().listings.last().unwrap().economic.thing, first.sequence);
+    let purchase = s
+        .state()
+        .history
+        .iter()
+        .find(|t| t.listing == Some(first.sequence))
+        .unwrap();
+    assert_eq!(purchase.economic.quantity_milli, 1_500);
+    assert_eq!(purchase.economic.kind, EconomicKind::Good);
+
+    let reopened = Service::open(memory).unwrap();
+    assert_eq!(reopened.state().things.len(), 1);
+    assert_eq!(reopened.state().things[0].name.as_str(), "Mexican wedding cookies");
+}
+
+#[test]
 fn failed_persistence_does_not_publish_and_latches_until_replay() {
     let (mut s, memory) = household();
     *memory.1.borrow_mut() = true;

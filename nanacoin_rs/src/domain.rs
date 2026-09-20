@@ -10,6 +10,7 @@ use subtle::ConstantTimeEq;
 pub const MEMBERS: usize = 16;
 pub const LISTINGS: usize = 48;
 pub const HISTORY: usize = 365;
+pub const THINGS: usize = 64;
 pub const MAX_AMOUNT: i64 = 1_000_000_000;
 pub const MAX_SEQUENCE: u64 = 9_007_199_254_740_991;
 /// Preserve legacy cash-leg IDs (event + 4096), reserving alternating blocks
@@ -108,6 +109,12 @@ pub enum Command {
         amount: i64,
         memo: Memo,
     },
+    ClassifiedTransfer {
+        to: MemberId,
+        amount: i64,
+        memo: Memo,
+        economic: EconomicDetails,
+    },
     List {
         title: Title,
         #[serde(default)]
@@ -116,6 +123,17 @@ pub enum Command {
         side: Side,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         details: Option<ListingDetails>,
+    },
+    ClassifiedList {
+        title: Title,
+        #[serde(default)]
+        description: Memo,
+        price: i64,
+        side: Side,
+        #[serde(default)]
+        economic: EconomicDetails,
+        #[serde(default)]
+        standard: bool,
     },
     IssueUsd {
         to: MemberId,
@@ -199,6 +217,56 @@ pub enum ListingStatus {
     Cancelled,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum EconomicKind {
+    Labor,
+    Good,
+    Gift,
+    #[default]
+    Other,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum Unit {
+    #[default]
+    Each,
+    Batch,
+    Task,
+    Minute,
+    Hour,
+    Gram,
+    Kilogram,
+    Milliliter,
+    Liter,
+    Load,
+    Other,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EconomicDetails {
+    #[serde(default)]
+    pub kind: EconomicKind,
+    #[serde(default)]
+    pub thing: u64,
+    /// Exact thousandths of the selected unit. Zero means legacy/unspecified.
+    #[serde(default)]
+    pub quantity_milli: u32,
+    #[serde(default)]
+    pub unit: Unit,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Thing {
+    pub id: u64,
+    pub name: Title,
+    pub kind: EconomicKind,
+    pub unit: Unit,
+    pub standard: bool,
+    pub updated_at: u64,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Member {
     pub id: MemberId,
@@ -245,6 +313,8 @@ pub struct Listing {
     pub buyer: Option<MemberId>,
     pub sold_tx: Option<u64>,
     pub details: ListingDetails,
+    #[serde(default)]
+    pub economic: EconomicDetails,
     pub created_at: u64,
     pub updated_at: u64,
 }
@@ -264,6 +334,8 @@ pub struct Transaction {
     pub listing: Option<u64>,
     pub usd: bool,
     pub quote: Option<u64>,
+    #[serde(default)]
+    pub economic: EconomicDetails,
 }
 
 #[derive(Debug, Serialize)]
@@ -283,6 +355,7 @@ pub struct State {
     pub quotes: Vec<Quote, QUOTES>,
     pub members: Vec<Member, MEMBERS>,
     pub listings: Vec<Listing, LISTINGS>,
+    pub things: Vec<Thing, THINGS>,
     /// Oldest first. Eviction never discards balances or retry watermarks.
     pub history: VecDeque<Transaction>,
 }
@@ -331,6 +404,7 @@ impl Default for State {
             quotes: Vec::new(),
             members: Vec::new(),
             listings: Vec::new(),
+            things: Vec::new(),
             history: VecDeque::with_capacity(HISTORY),
         }
     }
@@ -350,6 +424,7 @@ impl State {
         self.usd_issuance_balance = 0;
         self.members.clear();
         self.listings.clear();
+        self.things.clear();
         self.offers.clear();
         self.quotes.clear();
         self.history.clear();
@@ -370,6 +445,13 @@ impl State {
         self.members
             .iter()
             .find(|m| m.id == id)
+            .ok_or(Error::NotFound)
+    }
+
+    pub fn thing(&self, id: u64) -> Result<&Thing, Error> {
+        self.things
+            .iter()
+            .find(|t| t.id == id)
             .ok_or(Error::NotFound)
     }
 
@@ -588,6 +670,25 @@ impl State {
                 self.member(*to)?;
                 self.posting(actor, *to, *amount)?;
             }
+            Command::ClassifiedTransfer {
+                to,
+                amount,
+                economic,
+                ..
+            } => {
+                let recipient = self.member(*to)?;
+                self.posting(actor, *to, *amount)?;
+                valid_economic(economic)?;
+                if economic.kind == EconomicKind::Labor && recipient.role == Role::Nana {
+                    return Err(Error::Forbidden);
+                }
+                if economic.thing != 0 {
+                    let thing = self.thing(economic.thing)?;
+                    if thing.kind != economic.kind || thing.unit != economic.unit {
+                        return Err(Error::InvalidInput);
+                    }
+                }
+            }
             Command::List {
                 title,
                 price,
@@ -605,6 +706,55 @@ impl State {
                 }
                 if title.trim().is_empty() || !(1..=MAX_AMOUNT).contains(price) {
                     return Err(Error::InvalidInput);
+                }
+                if self.listings.is_full()
+                    && self
+                        .listings
+                        .iter()
+                        .all(|l| !self.listing_recyclable(l, now))
+                {
+                    return Err(Error::Capacity);
+                }
+            }
+            Command::ClassifiedList {
+                title,
+                price,
+                side,
+                economic,
+                ..
+            } => {
+                if title.trim().is_empty() || !(1..=MAX_AMOUNT).contains(price) {
+                    return Err(Error::InvalidInput);
+                }
+                valid_economic(economic)?;
+                if *side == Side::Sell
+                    && economic.kind == EconomicKind::Labor
+                    && self.member(actor)?.role == Role::Nana
+                {
+                    return Err(Error::Forbidden);
+                }
+                if economic.thing != 0 {
+                    let thing = self.thing(economic.thing)?;
+                    if thing.kind != economic.kind || thing.unit != economic.unit {
+                        return Err(Error::InvalidInput);
+                    }
+                } else if let Some(thing) = self
+                    .things
+                    .iter()
+                    .find(|t| t.name.as_str().eq_ignore_ascii_case(title.as_str()))
+                {
+                    if thing.kind != economic.kind || thing.unit != economic.unit {
+                        return Err(Error::Conflict);
+                    }
+                } else if self.things.is_full()
+                    && !self.things.iter().any(|t| {
+                        !t.standard
+                            && !self.listings.iter().any(|l| {
+                                l.status == ListingStatus::Active && l.economic.thing == t.id
+                            })
+                    })
+                {
+                    return Err(Error::Capacity);
                 }
                 if self.listings.is_full()
                     && self
@@ -652,6 +802,9 @@ impl State {
                     Side::Sell => (actor, l.owner),
                     Side::Buy => (l.owner, actor),
                 };
+                if l.economic.kind == EconomicKind::Labor && self.member(to)?.role == Role::Nana {
+                    return Err(Error::Forbidden);
+                }
                 self.posting(from, to, l.price)?;
             }
             Command::Reverse { transaction, .. } => {
@@ -756,6 +909,7 @@ impl State {
     pub(crate) fn apply(&mut self, event: &Event) {
         let actor = event.actor;
         let mut posting = None;
+        let mut posting_economic = EconomicDetails::default();
         let mut usd = false;
         match &event.command {
             Command::Provision {
@@ -884,6 +1038,15 @@ impl State {
             Command::Transfer { to, amount, memo } => {
                 posting = Some((actor, *to, *amount, memo.clone(), None, None))
             }
+            Command::ClassifiedTransfer {
+                to,
+                amount,
+                memo,
+                economic,
+            } => {
+                posting_economic = *economic;
+                posting = Some((actor, *to, *amount, memo.clone(), None, None));
+            }
             Command::List {
                 title,
                 description,
@@ -911,6 +1074,93 @@ impl State {
                         buyer: None,
                         sold_tx: None,
                         details: details.clone().unwrap_or_default(),
+                        economic: EconomicDetails::default(),
+                        created_at: event.timestamp,
+                        updated_at: event.timestamp,
+                    })
+                    .unwrap();
+            }
+            Command::ClassifiedList {
+                title,
+                description,
+                price,
+                side,
+                economic,
+                standard,
+            } => {
+                if self.listings.is_full() {
+                    let i = self
+                        .listings
+                        .iter()
+                        .position(|l| self.listing_recyclable(l, event.timestamp))
+                        .unwrap();
+                    self.listings.remove(i);
+                }
+                let mut resolved = *economic;
+                let resolved_title = if economic.thing == 0 {
+                    if let Some(thing) = self
+                        .things
+                        .iter_mut()
+                        .find(|t| t.name.as_str().eq_ignore_ascii_case(title.as_str()))
+                    {
+                        resolved.thing = thing.id;
+                        thing.updated_at = event.timestamp;
+                        thing.standard |= *standard;
+                        thing.name.clone()
+                    } else {
+                        if self.things.is_full() {
+                            let i = self
+                                .things
+                                .iter()
+                                .enumerate()
+                                .filter(|(_, t)| {
+                                    !t.standard
+                                        && !self.listings.iter().any(|l| {
+                                            l.status == ListingStatus::Active
+                                                && l.economic.thing == t.id
+                                        })
+                                })
+                                .min_by_key(|(_, t)| (t.updated_at, t.id))
+                                .unwrap()
+                                .0;
+                            self.things.remove(i);
+                        }
+                        resolved.thing = event.sequence;
+                        self.things
+                            .push(Thing {
+                                id: event.sequence,
+                                name: title.clone(),
+                                kind: economic.kind,
+                                unit: economic.unit,
+                                standard: *standard,
+                                updated_at: event.timestamp,
+                            })
+                            .unwrap();
+                        title.clone()
+                    }
+                } else {
+                    let thing = self
+                        .things
+                        .iter_mut()
+                        .find(|t| t.id == economic.thing)
+                        .unwrap();
+                    thing.updated_at = event.timestamp;
+                    thing.standard |= *standard;
+                    thing.name.clone()
+                };
+                self.listings
+                    .push(Listing {
+                        id: event.sequence,
+                        owner: actor,
+                        title: resolved_title,
+                        description: description.clone(),
+                        price: *price,
+                        side: *side,
+                        status: ListingStatus::Active,
+                        buyer: None,
+                        sold_tx: None,
+                        details: ListingDetails::default(),
+                        economic: resolved,
                         created_at: event.timestamp,
                         updated_at: event.timestamp,
                     })
@@ -949,6 +1199,7 @@ impl State {
                 };
                 l.buyer = Some(from);
                 l.sold_tx = Some(event.sequence);
+                posting_economic = l.economic;
                 posting = Some((
                     from,
                     to,
@@ -966,6 +1217,7 @@ impl State {
                     .unwrap();
                 tx.reversed = true;
                 usd = tx.usd;
+                posting_economic = tx.economic;
                 posting = Some((
                     tx.to,
                     tx.from,
@@ -1000,6 +1252,7 @@ impl State {
                 listing,
                 usd,
                 quote: None,
+                economic: posting_economic,
             });
         }
         self.last_timestamp = event.timestamp;
@@ -1120,6 +1373,14 @@ fn valid_mastodon_id(value: &str) -> Result<(), Error> {
             .chars()
             .any(|c| c.is_control() || c.is_whitespace() || c == '/')
     {
+        Err(Error::InvalidInput)
+    } else {
+        Ok(())
+    }
+}
+
+fn valid_economic(value: &EconomicDetails) -> Result<(), Error> {
+    if value.quantity_milli == 0 || value.quantity_milli > 1_000_000_000 {
         Err(Error::InvalidInput)
     } else {
         Ok(())
