@@ -1,0 +1,13 @@
+{
+  "name": "nanacoin-web",
+  "private": true,
+  "version": "0.1.0",
+  "description": "NanaCoin household client. No runtime dependencies - tsc is the only build step.",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}

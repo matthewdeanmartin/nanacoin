@@ -1,0 +1,10 @@
+--- a/espstack.go
++++ b/espstack.go
+@@
+-	dhcpResults, err := rstack.DoDHCPv4(reqaddr, 3*time.Second, 3)
++	// PATCHED FOR NANACOIN: upstream allows 3 attempts at 3s. This board sits
++	// several floors from its access point at about -81 dBm, where the
++	// four-packet DHCP exchange reliably loses a packet, and NetConnect
++	// cannot be retried because espradio.Enable is a one-shot. More attempts
++	// here is the only place the retry can go. See patches/README.md.
++	dhcpResults, err := rstack.DoDHCPv4(reqaddr, 5*time.Second, 20)

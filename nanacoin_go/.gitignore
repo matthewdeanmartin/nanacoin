@@ -1,0 +1,26 @@
+# The patched espradio and lneto clones. Recreated by patches/apply.ps1 -
+# espradio alone is 37MB of WiFi blobs, so the patches live in patches/
+# instead of the patched trees being committed.
+/third_party/
+
+# Journals are household data, not source.
+*.journal
+
+# Build output.
+/nanacoin
+/nanacoin.exe
+*.bin
+
+# Compiled client. Rebuilt by `npm run build` in web/.
+/web/dist/
+/web/node_modules/
+
+# WiFi credentials for deploy.ps1. Never committed: the passphrase is needed
+# at build time (it is linked into the firmware) but belongs on the machine
+# doing the building, not in the history. See deploy.ps1 -SaveCredentials.
+/wifi.local.json
+
+# Cached bearer token from tools/boardprobe.
+/tools/boardprobe/.token
+/tools/boardprobe/runs/
+/tools/boardprobe/__pycache__/

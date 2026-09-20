@@ -1,0 +1,160 @@
+// The marketplace: what is for sale, and the form for offering something.
+
+import { Component, inject, signal } from '@angular/core';
+import { FormsModule } from '@angular/forms';
+
+import { Listing, ListingSide } from '../api/models';
+import { ApiError, NanacoinService, newIdempotencyKey } from '../api/nanacoin.service';
+import { Session } from '../api/session';
+import { Dialogs } from '../ui/dialog';
+import { Toasts } from '../ui/toasts';
+
+@Component({
+  selector: 'app-market',
+  imports: [FormsModule],
+  templateUrl: './market.html',
+})
+export class MarketPage {
+  private readonly api = inject(NanacoinService);
+  private readonly toasts = inject(Toasts);
+  private readonly dialogs = inject(Dialogs);
+  protected readonly session = inject(Session);
+
+  protected title = '';
+  protected description = '';
+  protected price: number | null = null;
+
+  /** Which way round a new listing is. Selling is the familiar default. */
+  protected side: ListingSide = 'SELL';
+
+  protected readonly posting = signal(false);
+
+  /** The listing currently being bought, so only its own button shows a spinner. */
+  protected readonly buying = signal<string | null>(null);
+
+  /** The listing an offer is being made against. */
+  protected readonly offering = signal<string | null>(null);
+
+  protected mine(l: Listing): boolean {
+    return l.seller === this.session.me()?.account;
+  }
+
+  /**
+   * Whether this is a want-ad rather than something for sale.
+   *
+   * Absent side means SELL, so listings from a server that predates two-way
+   * listings read as what they are instead of all becoming want-ads.
+   */
+  protected wanted(l: Listing): boolean {
+    return l.side === 'BUY';
+  }
+
+  /**
+   * Proposes a price, or proposes doing the thing in a want-ad.
+   *
+   * The amount is asked for rather than assumed even on a want-ad, where the
+   * poster named a figure: someone may be willing to do it for less, and the
+   * whole point of an offer is that it is negotiable.
+   */
+  protected async offer(l: Listing): Promise<void> {
+    if (this.offering()) return;
+
+    const answer = await this.dialogs.offer({
+      title: this.wanted(l) ? `Offer to do "${l.title}"` : `Offer on "${l.title}"`,
+      message: this.wanted(l)
+        ? `${l.seller_name} is offering ${l.price} for this. Name your price - they still have to accept.`
+        : `${l.seller_name} is asking ${l.price}. Offer what you like - they still have to accept.`,
+      initial: String(l.price),
+      confirmLabel: 'Send offer',
+    });
+    if (answer === null) return;
+    const { amount, message } = answer;
+
+    this.offering.set(l.id);
+    try {
+      await this.api.makeOffer(l.id, amount, message, newIdempotencyKey());
+      this.toasts.ok('Offer sent. It is not a deal until they accept.');
+    } catch (e) {
+      // The board may not have offers yet, which is expected while the UI
+      // runs ahead of the firmware - say so rather than reporting a raw 404.
+      if (e instanceof ApiError && e.status === 404) {
+        this.toasts.error('This NanaCoin does not support offers yet.');
+      } else {
+        this.toasts.fromError(e);
+      }
+    } finally {
+      this.offering.set(null);
+    }
+  }
+
+  protected affordable(l: Listing): boolean {
+    return this.session.balance() >= l.price;
+  }
+
+  /** For a currency listing: '5.00 USD'. */
+  protected cashAmount(l: Listing): string {
+    return `${((l.minor_units ?? 0) / 100).toFixed(2)} ${l.currency}`;
+  }
+
+  protected async post(): Promise<void> {
+    const price = Number(this.price);
+    if (!Number.isInteger(price) || price <= 0) {
+      // Coins are whole numbers; there is no fractional NanaCoin.
+      this.toasts.error('Enter a whole number of coins.');
+      return;
+    }
+    this.posting.set(true);
+    try {
+      await this.api.createListing({
+        title: this.title.trim(),
+        description: this.description.trim(),
+        price,
+        // Only sent when it is a want-ad, so an older server - which has
+        // never heard of side - keeps receiving exactly what it used to.
+        ...(this.side === 'BUY' ? { side: this.side } : {}),
+      });
+      this.title = '';
+      this.description = '';
+      this.price = null;
+      this.toasts.ok(this.side === 'BUY' ? 'Want-ad posted.' : 'Listed.');
+      await this.session.refresh();
+    } catch (e) {
+      this.toasts.fromError(e);
+    } finally {
+      this.posting.set(false);
+    }
+  }
+
+  /**
+   * Buying is one request. The client never transfers and then marks the
+   * listing sold - those could partially succeed - and the server does not
+   * offer that shape anyway.
+   *
+   * The idempotency key is made here, before the attempt, so that a retry
+   * after a dropped connection is recognisably the same purchase.
+   */
+  protected async buy(l: Listing): Promise<void> {
+    if (this.buying()) return;
+    this.buying.set(l.id);
+    const key = newIdempotencyKey();
+    try {
+      const res = await this.api.purchase(l.id, key);
+      this.toasts.ok(`Bought ${res.listing.title} for ${res.listing.price} coins.`);
+      await this.session.refresh();
+    } catch (e) {
+      this.toasts.fromError(e);
+    } finally {
+      this.buying.set(null);
+    }
+  }
+
+  protected async cancel(l: Listing): Promise<void> {
+    try {
+      await this.api.cancelListing(l.id);
+      this.toasts.ok('Listing cancelled.');
+      await this.session.refresh();
+    } catch (e) {
+      this.toasts.fromError(e);
+    }
+  }
+}

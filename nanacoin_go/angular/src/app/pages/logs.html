@@ -1,0 +1,73 @@
+<h2>Server logs</h2>
+
+<p class="muted small">
+  What NanaCoin at <code>{{ apiBase.label() }}</code> recorded. A request that
+  is missing here never reached the server; one that is here with a status was
+  answered, whatever the browser said.
+</p>
+
+<div class="logs__bar">
+  <button class="btn btn--quiet btn--small" (click)="load()" [disabled]="loading()">
+    {{ loading() ? 'Reading…' : 'Refresh' }}
+  </button>
+  <button class="btn btn--quiet btn--small" (click)="toggleFollow()">
+    {{ following() ? 'Stop following' : 'Follow' }}
+  </button>
+  <label class="checkbox">
+    <input type="checkbox" [checked]="problemsOnly()" (change)="problemsOnly.set(!problemsOnly())" />
+    Problems only
+  </label>
+  <button class="btn btn--quiet btn--small" (click)="copy()">Copy</button>
+  <span class="logs__count">{{ total() }} recorded</span>
+</div>
+
+@if (health()) {
+  <p class="muted small">
+    <strong>Host:</strong> {{ health() }}
+    <br />
+    On the board this is the heap. A <em>delta</em> that keeps climbing while
+    it serves means something is allocating per request that should not be —
+    which is what an out-of-memory looks like before it happens.
+  </p>
+}
+
+@if (failed()) {
+  <p class="warning">
+    {{ failed() }}
+    <br />
+    Not being able to read the logs is itself the answer: nothing is answering
+    at that address.
+  </p>
+}
+
+@if (wrapped()) {
+  <p class="muted small">
+    Showing the most recent {{ events().length }}. Older events have been
+    dropped — the server keeps a fixed number so it cannot run out of memory.
+  </p>
+}
+
+@if (visible().length === 0 && !failed()) {
+  <p class="muted">
+    @if (problemsOnly()) {
+      No warnings or errors recorded.
+    } @else {
+      Nothing recorded yet.
+    }
+  </p>
+} @else {
+  <div class="logs">
+    @for (e of visible(); track e.seq) {
+      <div
+        class="logrow"
+        [class.logrow--warn]="e.level === 'warn'"
+        [class.logrow--error]="e.level === 'error'"
+      >
+        <span class="logrow__seq">{{ e.seq }}</span>
+        <span class="logrow__kind">{{ e.kind }}</span>
+        <span class="logrow__detail">{{ e.detail }}</span>
+        <span class="logrow__when">{{ when(e.at) }}</span>
+      </div>
+    }
+  </div>
+}

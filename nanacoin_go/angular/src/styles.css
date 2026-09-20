@@ -1,0 +1,1022 @@
+/* NanaCoin - household currency.
+ *
+ * One stylesheet, no framework. Shared in spirit with web/style.css, the
+ * vanilla client that came first; this is the Angular site's copy.
+ */
+
+:root {
+  --bg: #fbf7f0;
+  --surface: #fffdfa;
+  --ink: #2a2520;
+  --ink-soft: #6c6257;
+  --line: #e6ded1;
+  --accent: #b8562f;
+  --accent-soft: #f3e2d8;
+  --credit: #2f6b45;
+  --debit: #9a3d2a;
+  --warn-bg: #fdecea;
+  --warn-ink: #8a2418;
+  --radius: 10px;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1b1815;
+    --surface: #241f1b;
+    --ink: #efe7dc;
+    --ink-soft: #a89c8d;
+    --line: #3a332c;
+    --accent: #e08050;
+    --accent-soft: #3a2a21;
+    --credit: #6fbf8e;
+    --debit: #e08b76;
+    --warn-bg: #3d211c;
+    --warn-ink: #f0b0a0;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.5 ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+h1,
+h2,
+h3 {
+  line-height: 1.2;
+  margin: 0 0 0.5rem;
+}
+h1 {
+  font-size: 1.5rem;
+}
+h2 {
+  font-size: 1.2rem;
+  margin-top: 1.5rem;
+}
+h3 {
+  font-size: 1rem;
+  margin-top: 1.5rem;
+  color: var(--ink-soft);
+}
+
+.screen {
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 1rem;
+  padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+}
+
+.lede {
+  color: var(--ink-soft);
+  margin-top: 0;
+}
+
+.empty {
+  color: var(--ink-soft);
+  font-style: italic;
+}
+
+/* --- panels and forms --- */
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  margin-top: 3rem;
+}
+
+form {
+  display: grid;
+  gap: 0.75rem;
+}
+
+label {
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.875rem;
+  color: var(--ink-soft);
+}
+
+label.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+input,
+select {
+  font: inherit;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--ink);
+  /* 16px keeps iOS from zooming the viewport on focus. */
+  font-size: 16px;
+  width: 100%;
+}
+
+input:focus-visible,
+select:focus-visible,
+.btn:focus-visible,
+.tab:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.btn {
+  font: inherit;
+  font-weight: 600;
+  padding: 0.55rem 1rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  justify-self: start;
+}
+
+.btn:hover:not([disabled]) {
+  filter: brightness(1.08);
+}
+
+.btn[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn--quiet {
+  background: transparent;
+  color: var(--ink-soft);
+  border-color: var(--line);
+}
+
+.btn--small {
+  padding: 0.3rem 0.6rem;
+  font-size: 0.8125rem;
+}
+
+.disclosure {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  margin-top: 1rem;
+  background: var(--surface);
+}
+
+summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.disclosure[open] summary {
+  margin-bottom: 0.75rem;
+}
+
+/* --- top bar and tabs --- */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.topbar__who {
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.topbar__balance {
+  margin-left: auto;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.topbar__actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin: 1rem 0;
+  flex-wrap: wrap;
+}
+
+.tab {
+  font: inherit;
+  padding: 0.4rem 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+
+.tab--active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+/* --- market --- */
+
+.cards {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr));
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.card h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 1rem;
+}
+
+.card--sold,
+.card--cancelled {
+  opacity: 0.6;
+}
+
+.card__desc {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+}
+
+.card__note {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+  background: var(--accent-soft);
+  padding: 0.5rem;
+  border-radius: 6px;
+}
+
+.card__meta {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+}
+
+.card__status {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.card .btn {
+  margin-top: auto;
+  align-self: stretch;
+  text-align: center;
+}
+
+/* --- history --- */
+
+.history {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.txn {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.6rem 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.txn__main {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+}
+
+.txn__desc {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.txn__who,
+.txn__when {
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+}
+
+.txn__side {
+  display: grid;
+  justify-items: end;
+}
+
+.txn__amount {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.txn--in .txn__amount {
+  color: var(--credit);
+}
+
+.txn--out .txn__amount {
+  color: var(--debit);
+}
+
+/*
+ * Row actions sit after the amount and wrap onto their own line on a phone,
+ * which is what the row's flex-wrap already does for the tags.
+ */
+.txn__actions {
+  display: flex;
+  gap: 0.375rem;
+  align-items: center;
+}
+
+/*
+ * The account switcher. Only rendered when a second account exists, so it
+ * costs a single-account household nothing.
+ */
+.switcher__select {
+  font: inherit;
+  padding: 0.25rem 0.375rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: inherit;
+  max-width: 10rem;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* --- Economy charts ---
+ *
+ * The data is the only thing allowed to be loud: hairline grid, recessive
+ * axes, 2px lines, and markers ringed in the surface colour so overlapping
+ * series stay legible where they cross.
+ */
+
+.chart {
+  margin: 0 0 1.5rem;
+  padding: 0.875rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.chart__caption {
+  display: grid;
+  gap: 0.125rem;
+  margin-bottom: 0.5rem;
+}
+
+.chart__title {
+  font-weight: 700;
+}
+
+.chart__subtitle {
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+}
+
+.chart__svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  touch-action: pan-y;
+}
+
+.chart__grid,
+.chart__axis {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.chart__line {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.chart__marker {
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+
+.chart__crosshair {
+  stroke: var(--ink-soft);
+  stroke-width: 1;
+}
+
+/* Text wears text tokens, never the series colour. */
+.chart__tick {
+  fill: var(--ink-soft);
+  font-size: 11px;
+  text-anchor: end;
+}
+
+.chart__tick--start {
+  text-anchor: start;
+}
+
+.chart__tick--end {
+  text-anchor: end;
+}
+
+.chart__endlabel {
+  fill: var(--ink);
+  font-size: 11px;
+  font-weight: 600;
+  text-anchor: end;
+}
+
+.chart__readout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  margin: 0.5rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+  min-height: 1.5rem;
+}
+
+.chart__readout-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3125rem;
+}
+
+.chart__table {
+  margin-top: 0.5rem;
+  font-size: 0.8125rem;
+}
+
+.chart__table table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.5rem;
+}
+
+.chart__table th,
+.chart__table td {
+  padding: 0.25rem 0.5rem;
+  text-align: right;
+  border-bottom: 1px solid var(--line);
+  font-variant-numeric: tabular-nums;
+}
+
+.chart__table th[scope='row'] {
+  text-align: left;
+  font-weight: 400;
+  color: var(--ink-soft);
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 0 0 0.5rem;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+}
+
+.legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3125rem;
+}
+
+.legend__swatch {
+  display: inline-block;
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 2px;
+}
+
+.chart-controls {
+  margin-bottom: 0.75rem;
+  font-size: 0.875rem;
+  color: var(--ink-soft);
+}
+
+/* Charts need horizontal room; let the table scroll rather than the page. */
+@media (max-width: 520px) {
+  .chart__table {
+    overflow-x: auto;
+  }
+}
+
+/* --- Seeding progress --- */
+
+.seed__progress {
+  margin: 0.5rem 0 0.25rem;
+  font-size: 0.875rem;
+  color: var(--ink-soft);
+}
+
+.seed__bar {
+  width: 100%;
+  height: 0.5rem;
+}
+
+/* --- Dialogs ---
+ *
+ * The platform <dialog> element, so focus trapping, Escape and the top layer
+ * come from the browser. ::backdrop is why this needs no overlay div.
+ */
+
+.dlg {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  padding: 0;
+  max-width: min(28rem, calc(100vw - 2rem));
+  box-shadow: 0 12px 32px rgb(0 0 0 / 18%);
+}
+
+.dlg::backdrop {
+  background: rgb(0 0 0 / 35%);
+  backdrop-filter: blur(2px);
+}
+
+.dlg__body {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1.25rem;
+}
+
+.dlg__title {
+  margin: 0;
+  font-size: 1.125rem;
+}
+
+.dlg__message {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.9375rem;
+}
+
+.dlg__detail {
+  margin: 0;
+  padding: 0.625rem 0.75rem;
+  list-style: none;
+  display: grid;
+  gap: 0.25rem;
+  background: var(--bg);
+  border-radius: 8px;
+  font-size: 0.875rem;
+}
+
+.dlg__field {
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.875rem;
+  color: var(--ink-soft);
+}
+
+.dlg__input {
+  font: inherit;
+  color: var(--ink);
+  padding: 0.5rem 0.625rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.dlg__input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.dlg__error {
+  margin: 0;
+  color: var(--warn-ink);
+  font-size: 0.875rem;
+}
+
+.dlg__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+/* An irreversible action reads as one. */
+.btn--danger {
+  background: var(--debit);
+  border-color: var(--debit);
+  color: #fff;
+}
+
+/* --- Pick a person (the public demo's login) --- */
+
+.whoami {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+}
+
+.whoami__pick {
+  display: grid;
+  gap: 0.125rem;
+  text-align: left;
+  padding: 0.625rem 0.75rem;
+  font: inherit;
+  color: inherit;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.whoami__pick:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.whoami__pick:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.whoami__hint {
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+}
+
+/* A standing note that nothing here is real. */
+.demobar {
+  padding: 0.5rem 0.875rem;
+  background: var(--accent-soft);
+  color: var(--ink);
+  font-size: 0.8125rem;
+  text-align: center;
+  border-bottom: 1px solid var(--line);
+}
+
+.demobar a {
+  color: inherit;
+}
+
+/* --- The browser's own log --- */
+
+.logbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  margin-bottom: 0.75rem;
+  font-size: 0.875rem;
+}
+
+.clientlog {
+  display: grid;
+  gap: 1px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.75rem;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.clientlog__row {
+  display: grid;
+  grid-template-columns: 5.5rem 3.5rem 5rem 1fr;
+  gap: 0.5rem;
+  padding: 0.3rem 0.5rem;
+  background: var(--surface);
+  align-items: baseline;
+}
+
+.clientlog__when,
+.clientlog__level,
+.clientlog__scope {
+  color: var(--ink-soft);
+}
+
+.clientlog__row--warn .clientlog__level {
+  color: var(--debit);
+  font-weight: 600;
+}
+
+.clientlog__row--error {
+  background: var(--warn-bg);
+}
+
+.clientlog__row--error .clientlog__level {
+  color: var(--warn-ink);
+  font-weight: 700;
+}
+
+.clientlog__msg {
+  overflow-wrap: anywhere;
+}
+
+.clientlog__detail {
+  color: var(--ink-soft);
+  margin-left: 0.5rem;
+}
+
+/* The log is wide; let it scroll rather than the page. */
+@media (max-width: 640px) {
+  .clientlog__row {
+    grid-template-columns: 4.5rem 1fr;
+  }
+  .clientlog__scope,
+  .clientlog__level {
+    grid-column: 2;
+  }
+}
+
+/* --- Nana's panel --- */
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+
+.stat {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+  text-align: center;
+}
+
+.stat span {
+  display: block;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.stat label {
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+  text-align: center;
+}
+
+.members {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.member {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.member__name {
+  font-weight: 600;
+}
+
+.member__balance {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-soft);
+}
+
+.ledger {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.ledger-row {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.6rem 0.75rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.ledger-row__head {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+
+.ledger-row__kind {
+  font-weight: 700;
+  font-size: 0.8125rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--accent);
+}
+
+.ledger-row__desc {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ledger-row__when {
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+}
+
+.ledger-row__postings {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.posting {
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+}
+
+.posting--credit {
+  color: var(--credit);
+}
+
+.posting--debit {
+  color: var(--debit);
+}
+
+.ledger-row .btn,
+.ledger-row .tag {
+  /* Grid items stretch by default; these should be only as wide as their
+     text, or a one-word tag reads as a full-width banner. */
+  justify-self: start;
+}
+
+/* --- tags, warnings, toast --- */
+
+.tag {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.tag--reversed,
+.tag--off {
+  background: var(--warn-bg);
+  color: var(--warn-ink);
+}
+
+.warning {
+  background: var(--warn-bg);
+  color: var(--warn-ink);
+  border: 1px solid currentColor;
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  font-weight: 600;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+/* --- additions for the Angular site --- */
+
+.screen--centred {
+  display: grid;
+  place-items: center;
+  min-height: 80vh;
+}
+
+.muted {
+  color: var(--ink-soft);
+}
+
+.small {
+  font-size: 0.875rem;
+}
+
+.topbar__unit {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.card--closed {
+  opacity: 0.6;
+}
+
+.tag--warn {
+  background: var(--warn-bg);
+  color: var(--warn-ink);
+}
+
+/* Router links styled as tabs need the anchor reset that <button> did not. */
+a.tab {
+  text-decoration: none;
+  display: inline-block;
+}
+
+.apinote {
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+}
+
+@font-face {
+  font-family: 'Nana Hand';
+  src: url('../public/fonts/dancing-script.ttf') format('truetype');
+  font-weight: 400 700;
+  font-display: swap;
+}
+.notebook-controls { display:flex; flex-wrap:wrap; gap:1rem; margin:1rem 0; }
+[data-keyboard-row]:focus-visible { outline:3px solid #467791; outline-offset:3px; }
+.notebook-controls label { display:flex; align-items:center; gap:.4rem; }
+.notebook-controls input { width:auto; margin:0; }
+.notebook {
+  position:relative; padding:1rem 1rem 1rem 3.6rem;
+  color:#153c57; border:1px solid #d0c9a8; border-radius:4px 14px 14px 4px;
+  box-shadow:4px 5px 0 #d9d4bc, 7px 8px 0 #b2b0a2;
+  background:linear-gradient(90deg,transparent 2.9rem,#d98181 2.9rem,#d98181 3rem,transparent 3rem),
+    repeating-linear-gradient(#fffdef 0,#fffdef 31px,#b9d2dc 31px,#b9d2dc 32px);
+}
+.notebook::before {
+  content:'';position:absolute;left:.2rem;top:.5rem;bottom:.5rem;width:2.1rem;
+  background:radial-gradient(ellipse at 50% 50%,transparent 35%,#363638 40%,#363638 49%,transparent 54%) 0 0/2rem 32px repeat-y;
+  pointer-events:none;
+}
+.notebook .ledger,.notebook .history,.notebook .ledger-row,.notebook .txn { background:transparent;color:inherit; }
+.cursive-ledger .ledger,.cursive-ledger .history { font-family:'Nana Hand','Segoe Script','Snell Roundhand',cursive;font-size:1.4rem;line-height:1.65; }
+.cursive-ledger button,.cursive-ledger .btn { font-family:system-ui,sans-serif;font-size:.9rem; }
+.voucher-secret { display:block;overflow-wrap:anywhere;white-space:normal;font-size:1rem;user-select:all; }
+@media print {
+  body:has(.printable-voucher) * { visibility:hidden; }
+  body:has(.printable-voucher) .printable-voucher,
+  body:has(.printable-voucher) .printable-voucher * { visibility:visible; }
+  .printable-voucher { position:absolute;left:0;top:0;width:100%;color:black;background:white;border:2px dashed black; }
+  .notebook-controls { display:none; }
+}
+
+.apinote code {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.1rem 0.4rem;
+}

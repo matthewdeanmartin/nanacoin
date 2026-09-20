@@ -1,0 +1,125 @@
+<h2>Market</h2>
+
+@if (session.forSale().length === 0) {
+  <p class="muted">Nothing for sale right now.</p>
+} @else {
+  <div class="cards">
+    @for (l of session.forSale(); track l.id) {
+      <article class="card" data-keyboard-row tabindex="-1">
+        <h3>{{ l.title }}</h3>
+
+        @if (l.description) {
+          <p class="card__desc">{{ l.description }}</p>
+        }
+
+        @if (l.kind === 'currency' && l.currency && l.minor_units) {
+          <p class="card__note">
+            Offers {{ cashAmount(l) }} in cash. NanaCoin records only the coin
+            side — the cash is between you and the seller.
+          </p>
+        }
+
+        <p class="card__meta">
+          <strong>{{ l.price }} {{ l.price === 1 ? 'coin' : 'coins' }}</strong>
+          · {{ l.seller_name }}
+        </p>
+
+        @if (mine(l)) {
+          <button class="btn btn--quiet" (click)="cancel(l)">Cancel listing</button>
+        } @else if (wanted(l)) {
+          <!--
+            A want-ad: they have the money and want the thing. There is
+            nothing to buy, so the only move is to offer to do it.
+          -->
+          <button class="btn" (click)="offer(l)" [disabled]="offering() !== null">
+            {{ offering() === l.id ? 'Offering…' : 'Offer to do this' }}
+          </button>
+        } @else {
+          <button
+            class="btn"
+            (click)="buy(l)"
+            [disabled]="!affordable(l) || buying() !== null"
+            [title]="affordable(l) ? '' : 'You do not have enough coins.'"
+          >
+            @if (buying() === l.id) {
+              Buying…
+            } @else {
+              Buy for {{ l.price }}
+            }
+          </button>
+
+          <!--
+            Haggling. Buying at the asking price was the only thing this
+            marketplace could do; an offer is a proposal the seller can turn
+            down, and no money moves until they accept.
+          -->
+          <button
+            class="btn btn--quiet"
+            (click)="offer(l)"
+            [disabled]="offering() !== null"
+          >
+            {{ offering() === l.id ? 'Offering…' : 'Offer a different price' }}
+          </button>
+        }
+      </article>
+    }
+  </div>
+}
+
+<details class="disclosure">
+  <summary>Post a listing</summary>
+  <form (ngSubmit)="post()">
+    <!--
+      Which way round the listing is. Selling was the only option before:
+      there was no way to say "100 coins for peanut butter cookies", which is
+      half of what a household marketplace is for.
+    -->
+    <label>
+      I want to
+      <select name="side" [(ngModel)]="side">
+        <option value="SELL">sell or do something</option>
+        <option value="BUY">pay someone to do something</option>
+      </select>
+    </label>
+    <label>
+      {{ side === 'BUY' ? 'What do you want done?' : 'What are you offering?' }}
+      <input name="title" [(ngModel)]="title" required maxlength="80"
+             [placeholder]="side === 'BUY' ? 'Peanut butter cookies' : 'One hour of Switch time'" />
+    </label>
+    <label>
+      Details
+      <input name="description" [(ngModel)]="description" maxlength="500"
+             placeholder="Uninterrupted" />
+    </label>
+    <label>
+      {{ side === 'BUY' ? 'How many coins are you offering?' : 'Price in coins' }}
+      <input name="price" type="number" min="1" step="1" [(ngModel)]="price" required />
+    </label>
+    <button class="btn" type="submit" [disabled]="posting()">
+      {{ posting() ? 'Listing…' : 'List it' }}
+    </button>
+  </form>
+</details>
+
+@if (session.closed().length > 0) {
+  <details class="disclosure">
+    <summary>Sold and cancelled ({{ session.closed().length }})</summary>
+    <div class="cards">
+      @for (l of session.closed(); track l.id) {
+        <article class="card card--closed" data-keyboard-row tabindex="-1">
+          <h3>{{ l.title }}</h3>
+          <p class="card__meta">
+            <strong>{{ l.price }} coins</strong> · {{ l.seller_name }}
+          </p>
+          <p class="card__status">
+            @if (l.status === 'SOLD') {
+              Sold to {{ l.buyer_name ?? 'someone' }}
+            } @else {
+              Cancelled
+            }
+          </p>
+        </article>
+      }
+    </div>
+  </details>
+}

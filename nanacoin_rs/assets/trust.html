@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NanaCoin connection setup</title>
+<style>body{font:18px system-ui,sans-serif;line-height:1.5;max-width:46rem;margin:2rem auto;padding:0 1rem;background:#fbf7f0;color:#2a2520}a{color:#954020}.button{display:inline-block;padding:.8rem 1rem;border-radius:.5rem;background:#954020;color:white}code{overflow-wrap:anywhere}section{padding:1rem;border:1px solid #d6c9b8;border-radius:.6rem;margin:1rem 0}.warning{border-left:5px solid #954020;padding-left:1rem}</style>
+<h1>Choose the connection that fits your household</h1>
+<p>Easy home mode lets everyone use HTTP without certificates. Secure household mode requires trusted HTTPS for everyone. Nana can switch to Secure mode after preparing the household devices.</p>
+<p><a href="http://nanacoin.local/?api=">Open Easy home connection</a> · <a href="https://nanacoin.local/?api=">Open secure connection</a></p>
+<p>When Secure mode is enabled, the HTTP link returns here instead of opening the app. Using HTTPS on just the adults' devices does not protect accounts still used over HTTP.</p>
+<h2>Set up trusted HTTPS once per device</h2>
+<p class="warning">Install this CA only if Nana gave you this address on your home network. A trusted CA can certify other websites too. This HTTP page cannot prove the download is authentic: compare its SHA-256 fingerprint with Nana's build console or another trusted channel, not just this page.</p>
+<p><a class="button" href="/ca">Download NanaCoin Home CA</a></p>
+<p>Only the public certificate is downloaded, never a private key or your economy.</p>
+<details><summary>CA fingerprint (SHA-256)</summary><code>@@FINGERPRINT@@</code></details>
+<section><h2>iPhone / iPad</h2><ol>
+<li>Download the certificate in Safari and allow the profile download.</li>
+<li>Open Settings → Profile Downloaded (or General → VPN &amp; Device Management). Install the certificate profile.</li>
+<li>Open Settings → General → About → Certificate Trust Settings and enable full trust for this CA. Its name may start with “mkcert”.</li>
+<li>Open secure NanaCoin below, sign in again, and save its bookmark for the child.</li></ol>
+<a href="https://support.apple.com/en-ae/102390">Apple's trust instructions</a></section>
+<section><h2>Android</h2><ol><li>Download the certificate.</li>
+<li>In Settings, search for “Install a certificate”, select <strong>CA certificate</strong>, and choose NanaCoin-Home-CA.crt. Menu names vary; a screen lock may be required.</li>
+<li>Confirm after checking with Nana, then open the secure site in the browser.</li></ol>
+<p>Managed devices may prohibit user CAs. Native apps and WebViews may not trust user roots even if the browser does.</p>
+<a href="https://support.google.com/android/answer/9654714?hl=en">Google's certificate instructions</a></section>
+<p><a class="button" href="https://nanacoin.local/?api=">Open secure NanaCoin</a></p>
+<p>If a warning remains, check the CA, full-trust setting, device clock and hostname. Browsers cannot install trust automatically. Do not enter passwords on this setup page: it accepts no logins or payments.</p>
+<p>Once every device is ready, Nana opens Household → Connection security using HTTPS and enables Secure mode. Everyone is signed out to revoke old sessions. This cannot undo earlier HTTP exposure; change passwords if interception is suspected.</p>
+<p>Remove trust later by removing the installed profile (iOS) or user CA (Android). If Nana gets locked out, the project includes an explicit USB recovery procedure—not a public HTTP downgrade switch.</p>
+</html>

@@ -1,0 +1,144 @@
+<app-toast-list />
+<app-dialog-host />
+@if (!isDemo) {
+  <p class="demobar">
+    {{ plainHttp() ? 'Unencrypted home connection — use only on a network you trust.' : 'HTTPS connection — household HTTP access may still be enabled.' }}
+    <a href="http://nanacoin.local/trust" target="_blank" rel="noopener noreferrer">Set up trusted HTTPS</a>
+  </p>
+}
+
+@if (isDemo) {
+  <!--
+    Said once, at the top, on every screen. Someone who lands here from a link
+    should not have to work out whether the coins are real.
+  -->
+  <p class="demobar">
+    A demonstration. Everything runs in this browser tab — no server, no board,
+    nothing saved. Reload to start over.
+    <a href="https://github.com/matthewdeanmartin/nanacoin/tree/main/nanacoin_go">Source</a>
+  </p>
+}
+
+<app-site-menu />
+@if (publicPage()) {
+  <main class="screen"><router-outlet /></main>
+} @else {
+@switch (phase()) {
+  @case ('loading') {
+    <section class="screen screen--centred">
+      <p class="muted">Looking for NanaCoin…</p>
+    </section>
+  }
+
+  @case ('connect') {
+    <section class="screen screen--centred">
+      <app-connect-form
+        [reason]="connectReason()"
+        [logsAvailable]="logsOfferable()"
+        (connected)="onConnected()"
+        (showLogs)="showLogs()"
+      />
+    </section>
+  }
+
+  @case ('logs') {
+    <div class="screen">
+      <header class="topbar">
+        <div class="topbar__who"><strong>Server logs</strong></div>
+        <div class="topbar__actions">
+          <button class="btn btn--quiet btn--small" (click)="leaveLogs()">Back</button>
+        </div>
+      </header>
+      <main>
+        <app-logs />
+      </main>
+    </div>
+  }
+
+  @case ('setup') {
+    <section class="screen screen--centred">
+      <app-setup-form (done)="onProvisioned()" />
+    </section>
+  }
+
+  @case ('login') {
+    <section class="screen screen--centred">
+      <app-login-form
+        [household]="household()"
+        [adding]="addingAccount()"
+        [current]="session.me()?.display_name ?? ''"
+        (done)="onLoggedIn()"
+        (cancel)="cancelAddAccount()"
+      />
+    </section>
+  }
+
+  @case ('app') {
+    <div class="screen">
+      <header class="topbar">
+        <div class="topbar__who">
+          <strong>{{ session.me()?.display_name }}</strong>
+          @if (session.isNana()) {
+            <span class="tag">nana</span>
+          }
+        </div>
+
+        <div class="topbar__balance" [attr.aria-label]="session.balance() + ' coins'">
+          {{ session.balance() }}
+          <span class="topbar__unit">{{ session.balance() === 1 ? 'coin' : 'coins' }}</span>
+        </div>
+
+        <div class="topbar__actions">
+          <!--
+            The switcher appears once there is something to switch to. With
+            one account it would be a dropdown of one, so "Add account" beside
+            it is what advertises that holding several is possible at all -
+            which is the thing nobody could find.
+          -->
+          @if (session.hasSeveralAccounts()) {
+            <label class="switcher">
+              <span class="visually-hidden">Active account</span>
+              <select
+                class="switcher__select"
+                [value]="session.me()?.id ?? ''"
+                (change)="switchTo($any($event.target).value)"
+              >
+                @for (a of session.signedInAccounts(); track a.userId) {
+                  <option [value]="a.userId">
+                    {{ a.displayName }}@if (a.role === 'nana') { (nana) }
+                  </option>
+                }
+              </select>
+            </label>
+          }
+
+          <button class="btn btn--quiet btn--small" (click)="addAccount()">Add account</button>
+          <button class="btn btn--quiet btn--small" (click)="refresh()" [disabled]="session.loading()">
+            {{ session.loading() ? 'Refreshing…' : 'Refresh' }}
+          </button>
+          <button class="btn btn--quiet btn--small" (click)="logout()">
+            {{ session.hasSeveralAccounts() ? 'Leave this account' : 'Log out' }}
+          </button>
+          @if (session.hasSeveralAccounts()) {
+            <button class="btn btn--quiet btn--small" (click)="logoutAll()">Log out all</button>
+          }
+        </div>
+      </header>
+
+      <main>
+        <router-outlet />
+      </main>
+
+      <footer class="apinote">
+        {{ isDemo ? 'Fictional economy in this browser tab; no board connected.' : 'Connected to ' + apiBase.description() }}
+        @if (!isDemo) {
+        <button class="btn btn--quiet btn--small" (click)="changeServer()">
+          Change server
+        </button>
+        }
+      </footer>
+    </div>
+  }
+}
+}
+<app-keyboard-help />

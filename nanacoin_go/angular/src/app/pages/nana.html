@@ -1,0 +1,265 @@
+<h2>Household</h2>
+@if (session.isNana() && !isDemo) {
+  <app-connection-security />
+}
+
+<!--
+  A second check behind the route guard, because this page is the one that
+  offers irreversible things - disabling a member, creating a user, issuing
+  coin. The guard redirects a non-Nana away; this makes sure that even if the
+  component is somehow reached, it shows nothing to act on. The server refuses
+  all of it regardless, which is the rule that actually holds.
+-->
+@if (!session.isNana()) {
+  <p class="muted">
+    This is Nana's screen. Ask Nana if you need a member added or coins issued.
+  </p>
+} @else {
+
+@if (session.status()?.checkpoint_supported) {
+  <section class="panel">
+    <h3>Journal and economy</h3>
+    <p>Balances are saved in durable checkpoints. The journal closes automatically after 2,048 changes so the economy can keep running.</p>
+    @if (storage(); as s) {
+      <p class="muted">Generation {{ s.generation }} · {{ s.journal_records }} changes since the last checkpoint</p>
+    }
+    @if (storageError()) { <p class="warning">{{ storageError() }}</p> }
+    <div class="actions">
+      <button class="btn btn--quiet" (click)="loadStorage()" [disabled]="storageBusy()">Refresh storage</button>
+      <button class="btn" (click)="closeBooks()" [disabled]="storageBusy() || seeder.running()">Close journal now</button>
+      <button class="btn btn--quiet" (click)="resetEconomy()" [disabled]="storageBusy() || seeder.running()">Reset economy…</button>
+    </div>
+    <p class="muted small">Closing preserves current state and recent history. Reset removes the whole household and returns to setup. Neither action is an archival backup.</p>
+  </section>
+}
+
+@if (session.status() && !session.status()!.ledger_balanced) {
+  <p class="warning">
+    The ledger does not balance. Something is wrong — do not issue more coins
+    until this has been looked at.
+  </p>
+}
+
+<div class="stats">
+  <div class="stat">
+    <span>{{ session.status()?.circulation ?? 0 }}</span>
+    <label>in circulation</label>
+  </div>
+  <div class="stat">
+    <span>{{ session.status()?.users ?? 0 }}</span>
+    <label>members</label>
+  </div>
+  <div class="stat">
+    <span>{{ session.status()?.transactions ?? 0 }}</span>
+    <label>transactions</label>
+  </div>
+  <div class="stat">
+    <span>{{ journalKb() }}</span>
+    <label>journal used</label>
+  </div>
+</div>
+
+<div class="members">
+  @for (u of session.household(); track u.id) {
+    <div class="member">
+      <span class="member__name">{{ u.display_name }}</span>
+      <span class="member__balance">
+        {{ u.balance === undefined ? '—' : u.balance + ' coins' }}
+      </span>
+      @if (u.role === 'nana') {
+        <span class="tag">nana</span>
+      }
+      @if (u.status === 'DISABLED') {
+        <span class="tag tag--warn">disabled</span>
+        <button class="btn btn--quiet btn--small" (click)="setStatus(u.id, 'ACTIVE')">
+          Re-enable
+        </button>
+      } @else if (u.id !== session.me()?.id) {
+        <button class="btn btn--quiet btn--small" (click)="setStatus(u.id, 'DISABLED')">
+          Disable
+        </button>
+      }
+    </div>
+  }
+</div>
+
+<details class="disclosure">
+  <summary>Add a member</summary>
+  <form (ngSubmit)="addMember()">
+    <label>
+      Username
+      <input name="username" [(ngModel)]="newUsername" required maxlength="40"
+             autocomplete="off" />
+    </label>
+    <label>
+      Display name
+      <input name="display" [(ngModel)]="newDisplayName" maxlength="40" />
+    </label>
+    <label>
+      PIN or password
+      <input name="password" type="password" [(ngModel)]="newPassword" required minlength="4"
+             autocomplete="new-password" />
+    </label>
+    <label class="checkbox">
+      <input name="grant" type="checkbox" [(ngModel)]="grant" />
+      Give them the starting allocation
+    </label>
+    <button class="btn" type="submit" [disabled]="adding()">
+      {{ adding() ? 'Adding…' : 'Add' }}
+    </button>
+  </form>
+</details>
+
+<details class="disclosure">
+  <summary>Issue coins</summary>
+  <form (ngSubmit)="issue()">
+    <label>
+      To
+      <select name="to" [(ngModel)]="issueTo" required>
+        <option value="" disabled>Choose someone</option>
+        @for (u of session.household(); track u.id) {
+          @if (u.status === 'ACTIVE') {
+            <option [value]="u.account">{{ u.display_name }}</option>
+          }
+        }
+      </select>
+    </label>
+    <label>
+      Amount
+      <input name="amount" type="number" min="1" step="1" [(ngModel)]="issueAmount" required />
+    </label>
+    <label>
+      Reason
+      <input name="reason" [(ngModel)]="issueReason" maxlength="140" placeholder="Birthday" />
+    </label>
+    <button class="btn" type="submit" [disabled]="issuing()">
+      {{ issuing() ? 'Issuing…' : 'Issue' }}
+    </button>
+  </form>
+</details>
+
+<!--
+  Dollars enter the household the same way coins do, and only here. The
+  exchange has two sides and neither can trade until somebody holds the other
+  currency, so this is the form that makes the Exchange tab useful at all.
+-->
+<details class="disclosure">
+  <summary>Issue dollars</summary>
+  <p class="muted small">
+    Records that someone holds dollars. No real money moves — handing over the
+    actual note is between you and them.
+  </p>
+  <form (ngSubmit)="issueDollars()">
+    <label>
+      To
+      <select name="usdTo" [(ngModel)]="usdTo" required>
+        <option value="" disabled>Choose someone</option>
+        @for (u of session.household(); track u.id) {
+          @if (u.status === 'ACTIVE') {
+            <option [value]="u.account">{{ u.display_name }}</option>
+          }
+        }
+      </select>
+    </label>
+    <label>
+      Cents
+      <input name="usdCents" type="number" min="1" step="1" [(ngModel)]="usdCents" required
+             placeholder="500" />
+    </label>
+    <label>
+      Reason
+      <input name="usdReason" [(ngModel)]="usdReason" maxlength="140" placeholder="Pocket money" />
+    </label>
+    <button class="btn" type="submit" [disabled]="issuingUsd()">
+      {{ issuingUsd() ? 'Issuing…' : 'Issue dollars' }}
+    </button>
+  </form>
+</details>
+
+<!--
+  Held open while seeding and after a failure. A <details> that closes on
+  re-render took the only report of what went wrong with it, which is how a
+  stopped run came to look like nothing happening at all.
+-->
+<details class="disclosure" [open]="seeder.running() || !!seeder.lastError()">
+  <summary>Fill this household with a year of history</summary>
+  <p class="muted small">
+    Creates members, issues them a float, posts listings and plays out a year of
+    chores, purchases and offers — through the ordinary API, so every record is
+    real. Useful for seeing what the charts and the market look like with
+    something in them.
+  </p>
+  <p class="muted small">
+    It writes a few hundred transactions and takes a couple of minutes against
+    the board. Existing members and history are left alone.
+  </p>
+
+  @if (seeder.running()) {
+    <p class="seed__progress">
+      <strong>{{ seeder.progress()?.phase }}</strong>
+      {{ seeder.progress()?.done }} / {{ seeder.progress()?.total }}
+    </p>
+    <progress
+      class="seed__bar"
+      [value]="seeder.progress()?.done ?? 0"
+      [max]="seeder.progress()?.total ?? 1"
+    ></progress>
+  } @else {
+    <button class="btn" type="button" (click)="seedDemo()">Add a year of history</button>
+  }
+
+  @if (seeder.lastError()) {
+    <p class="warning">Stopped early — {{ seeder.lastError() }}</p>
+    <p class="muted small">
+      Whatever was written before it stopped is real and stays. Running it
+      again picks up from where the household is now.
+    </p>
+  }
+</details>
+
+<h3>Full ledger</h3>
+
+@if (loadingLedger()) {
+  <p class="muted">Loading…</p>
+} @else if (ledger().length === 0) {
+  <p class="muted">Nothing yet.</p>
+} @else {
+  <app-notebook><div class="ledger">
+    @for (t of ledger(); track t.id) {
+      <div class="ledger-row" data-keyboard-row tabindex="-1">
+        <div class="ledger-row__head">
+          <span class="ledger-row__kind">{{ kindLabel(t.kind) }}</span>
+          <span class="ledger-row__desc">{{ t.description }}</span>
+          <span class="ledger-row__when">{{ when(t.created_at) }}</span>
+        </div>
+
+        <!-- Both sides of every transaction: this is the double-entry view. -->
+        <div class="ledger-row__postings">
+          @for (p of t.postings; track $index) {
+            <span
+              class="posting"
+              [class.posting--credit]="p.amount >= 0"
+              [class.posting--debit]="p.amount < 0"
+            >
+              {{ p.name }} {{ p.amount >= 0 ? '+' : '' }}{{ p.amount }}
+            </span>
+          }
+        </div>
+
+        @if (t.reversed_by) {
+          <span class="tag tag--warn">reversed</span>
+        } @else if (reversible(t)) {
+          <button
+            class="btn btn--quiet btn--small"
+            (click)="reverse(t)"
+            [disabled]="reversing() !== null"
+          >
+            {{ reversing() === t.id ? 'Reversing…' : 'Reverse' }}
+          </button>
+        }
+      </div>
+    }
+  </div></app-notebook>
+}
+
+}

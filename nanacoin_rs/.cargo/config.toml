@@ -1,0 +1,9 @@
+# Host remains the default. Firmware builds explicitly select the Xtensa target.
+[target.xtensa-esp32s3-espidf]
+linker = "ldproxy"
+runner = "espflash flash --monitor --partition-table partitions.csv --flash-size 16mb"
+rustflags = ["--cfg", "espidf_time64"]
+
+[env]
+MCU = "esp32s3"
+CARGO_WORKSPACE_DIR = { value = "", relative = true }

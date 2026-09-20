@@ -1,0 +1,16 @@
+/target/
+/.embuild/
+/certs/
+/.env
+/.local/
+/*.journal
+/*.journal.bank1
+/*.journal.checkpoint0
+/*.journal.checkpoint1
+/*.journal.head
+/*.journal.head.next
+/*.journal.transport
+/*.journal.transport.next
+/sdkconfig*
+!/sdkconfig.defaults
+/*.tmp

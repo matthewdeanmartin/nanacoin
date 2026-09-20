@@ -1,0 +1,14 @@
+chunk-BjBPyXwV.js.gz	1585
+chunk-BYorDk_e.js.gz	59644
+chunk-C1ID6T44.js.gz	4637
+chunk-Cj0kXIB-.js.gz	3325
+chunk-D1s0h7R7.js.gz	1941
+chunk-IrSX5c4H.js.gz	2315
+chunk-pLBiJtv5.js	89
+favicon.ico	15086
+index.html	1727
+index.html.gz	993
+main-W3LCGMTD.js.gz	44364
+styles-XV6T23UG.css.gz	2456
+index.html	1775
+index.html.gz	1001

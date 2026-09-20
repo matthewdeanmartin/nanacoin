@@ -1,0 +1,123 @@
+<h1>Machine health</h1>
+<p class="muted">API board at {{ base.description() }} · live machine diagnostics.</p>
+<div class="toolbar">
+  <button class="btn" (click)="refresh()" [disabled]="busy()">{{ busy() ? 'Reading…' : 'Refresh' }}</button>
+  <button class="btn btn--quiet" (click)="toggle()">{{ following() ? 'Pause live updates' : 'Resume live updates' }}</button>
+  <span class="muted" role="status">
+    @if (receivedAt(); as time) { Last response {{ time | date:'mediumTime' }} · {{ latency() }} ms }
+    @else { Waiting for a sample… }
+  </span>
+</div>
+@if (failure()) { <p class="warning" role="alert">{{ failure() }} Displayed values are the last successful response.</p> }
+@if (stalled()) { <p class="warning" role="alert">The sampler has not advanced for over six seconds. These readings may be stale.</p> }
+@if (snapshot(); as s) {
+  @if (!s.schema) { <p class="warning">Older firmware: only the original memory counters are available.</p> }
+  @if (s.sampling === 'on_request') { <p class="muted">TinyGo samples on request on its single active core. Memory figures cover the managed heap, not all physical SRAM. Unsupported measurements are unavailable.</p> }
+  <div class="grid">
+    <section class="panel">
+      <h2>Internal RAM</h2>
+      @if (s.internal; as heap) {
+        <progress [value]="heap.total - heap.free" [max]="heap.total" aria-label="Internal RAM used"></progress>
+        <p>{{ bytes(heap.total - heap.free) }} used of {{ bytes(heap.total) }}</p>
+      }
+      <dl>
+        <dt>Free</dt><dd>{{ bytes(s.free_heap) }}</dd>
+        <dt>Largest free block</dt><dd>{{ bytes(s.largest_free_block) }}</dd>
+        <dt>Lowest free since boot</dt><dd>{{ bytes(s.minimum_free_heap) }}</dd>
+        <dt>Free space contiguous</dt><dd>{{ contiguous(s.free_heap, s.largest_free_block) }}</dd>
+        <dt>Allocated / free blocks</dt><dd>{{ s.internal?.allocated_blocks ?? '—' }} / {{ s.internal?.free_blocks ?? '—' }}</dd>
+      </dl>
+      <p class="muted small">A small largest block can prevent TLS connections even when total free memory looks healthy.</p>
+    </section>
+    <section class="panel">
+      <h2>PSRAM</h2>
+      @if (s.psram_enabled === false) { <p class="muted">Not enabled by this firmware; zero free is not a measurement of the installed chip.</p> }
+      @if (s.psram; as heap) {
+        <progress [value]="heap.total - heap.free" [max]="heap.total" aria-label="PSRAM used"></progress>
+        <p>{{ bytes(heap.total - heap.free) }} used of {{ bytes(heap.total) }}</p>
+      }
+      <dl>
+        <dt>Free</dt><dd>{{ bytes(s.psram_free) }}</dd>
+        <dt>Largest free block</dt><dd>{{ bytes(s.psram?.largest) }}</dd>
+        <dt>Lowest free since boot</dt><dd>{{ bytes(s.psram?.minimum) }}</dd>
+        <dt>Allocated / free blocks</dt><dd>{{ s.psram?.allocated_blocks ?? '—' }} / {{ s.psram?.free_blocks ?? '—' }}</dd>
+      </dl>
+    </section>
+    <section class="panel">
+      <h2>CPU, clock and server</h2>
+      <dl>
+        <dt>Uptime</dt><dd>{{ s.uptime_seconds | number }} seconds</dd>
+        <dt>Die temperature</dt><dd>{{ s.temperature_c == null ? 'Unavailable' : (s.temperature_c | number:'1.1-1') + ' °C' }}</dd>
+        <dt>Diagnostics / HTTP(S) cores</dt><dd>{{ s.sampler_core }} / {{ s.http_core }}</dd>
+        <dt>RTOS tasks</dt><dd>{{ s.tasks ?? 'Unavailable' }}</dd>
+        <dt>Sampler stack minimum free</dt><dd>{{ bytes(s.sampler_stack_free_min_bytes) }}</dd>
+        <dt>Samples</dt><dd>{{ s.machine_samples ?? s.samples | number }}</dd>
+        <dt>Reset to ready</dt><dd>{{ s.boot_ready_ms ?? '—' }} ms</dd>
+        <dt>HTTP requests / errors</dt><dd>{{ s.requests ?? '—' }} / {{ s.errors ?? '—' }}</dd>
+        <dt>Board UTC clock</dt><dd>{{ s.unix_seconds ? (s.unix_seconds * 1000 | date:'medium':'UTC') + ' UTC' : 'Not synchronized' }}</dd>
+      </dl>
+      <p class="muted small">Temperature is the chip die, not room temperature. Task count and stack headroom are not CPU utilization.</p>
+    </section>
+    <section class="panel">
+      <h2>Wi-Fi</h2>
+      <dl>
+        <dt>Signal</dt><dd>{{ s.rssi_dbm == null ? 'Disconnected / unavailable' : s.rssi_dbm + ' dBm' }}</dd>
+        <dt>Channel</dt><dd>{{ s.wifi_channel ?? 'Unavailable' }}</dd>
+        <dt>Address</dt><dd>{{ ip(s.ip) }}</dd>
+        <dt>Gateway</dt><dd>{{ ip(s.gateway) }}</dd>
+        <dt>Netmask</dt><dd>{{ ip(s.netmask) }}</dd>
+      </dl>
+    </section>
+  </div>
+  <section class="panel">
+    <h2>Recent readings</h2>
+    <p class="muted small">Up to 120 samples held in this browser only. Polls every two seconds after each response, pauses in hidden tabs, and clears history after a detected reboot.</p>
+    <app-line-chart title="Internal memory" [series]="memorySeries()" />
+    <div class="grid">
+      <app-line-chart title="Die temperature" [series]="temperatureSeries()" />
+      <app-line-chart title="Wi-Fi signal" [series]="rssiSeries()" />
+    </div>
+  </section>
+  <section class="panel">
+    <h2>Ledger flash storage</h2>
+    @if (s.ledger_storage; as storage) {
+      <progress [value]="storage.used_entries" [max]="storage.total_entries" aria-label="Ledger NVS entries used"></progress>
+      <dl>
+        <dt>Used / total entries</dt><dd>{{ storage.used_entries | number }} / {{ storage.total_entries | number }}</dd>
+        <dt>Available entries</dt><dd>{{ storage.available_entries | number }}</dd>
+        <dt>Free entries</dt><dd>{{ storage.free_entries | number }}</dd>
+        <dt>Sample at uptime</dt><dd>{{ (s.storage_sampled_at_ms ?? 0) / 1000 | number }} seconds</dd>
+      </dl>
+    } @else { <p class="muted">Storage accounting is unavailable.</p> }
+    <p class="muted small">Rust reports read-only NVS accounting every 30 seconds. Entries are storage units, not transactions or erase cycles; NVS reclaims obsolete entries internally. TinyGo's board journal is volatile and has no flash accounting.</p>
+  </section>
+}
+<section class="panel">
+  <div class="toolbar">
+    <h2>Hardware and firmware</h2>
+    <button class="btn btn--quiet btn--small" (click)="loadInfo()" [disabled]="infoBusy()">Refresh system information</button>
+  </div>
+  @if (infoFailure()) { <p class="warning">{{ infoFailure() }}</p> }
+  @if (info(); as i) {
+    <dl>
+      <dt>Platform</dt><dd>{{ i.platform }}</dd>
+      <dt>Firmware / ESP-IDF</dt><dd>{{ i.firmware }} / {{ i.idf }}</dd>
+      <dt>Chip model / revision</dt><dd>{{ i.chip_model ?? 'Unavailable' }} / {{ i.chip_revision ?? 'Unavailable' }}</dd>
+      <dt>CPU</dt><dd>{{ i.cores }} physical cores · {{ i.cpu_mhz == null ? 'Clock unavailable' : i.cpu_mhz + ' MHz' }} @if (i.active_cores) { · {{ i.active_cores }} active }</dd>
+      <dt>Reset cause</dt><dd>{{ resetReason(i.reset_reason) }}</dd>
+      <dt>Physical flash</dt><dd>{{ bytes(i.flash_bytes) }}</dd>
+      <dt>Shared diagnostics object</dt><dd>{{ i.snapshot_bytes }} bytes</dd>
+      <dt>Request encoding storage</dt><dd>{{ i.response_bytes }} bytes · {{ i.response_mode ?? 'request-local response buffer' }}</dd>
+    </dl>
+    <h3>Flash partition map</h3>
+    @if (i.partitions_available === false) { <p class="muted">Partition enumeration is unavailable on this firmware.</p> }
+    <div class="table-scroll"><table>
+      <thead><tr><th>Name</th><th>Type / subtype</th><th>Offset</th><th>Size</th><th>Encrypted</th></tr></thead>
+      <tbody>@for (p of i.partitions; track p.offset) {
+        <tr><td>{{ p.name }}</td><td>{{ p.kind === 0 ? 'Application' : 'Data' }} / {{ p.subtype }}</td><td>0x{{ p.offset.toString(16) }}</td><td>{{ bytes(p.size) }}</td><td>{{ p.encrypted ? 'Yes' : 'No' }}</td></tr>
+      }</tbody>
+    </table></div>
+    @if (i.partitions_truncated) { <p class="warning">Partition list capped at 16 entries.</p> }
+  }
+</section>
+<details><summary>Raw diagnostic response</summary><pre>{{ snapshot() | json }}</pre></details>

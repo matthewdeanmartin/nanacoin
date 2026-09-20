@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>NanaCoin</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+
+  <!--
+    data-api points the client at the board. Empty means same-origin, which is
+    what the Go server serves during development. A cloud-hosted copy of this
+    page sets it to the board's address, e.g. data-api="http://nanacoin.local".
+  -->
+  <body data-api="">
+    <div id="toast" class="toast" hidden></div>
+
+    <!-- First run: no Nana exists yet. -->
+    <section id="setup" class="screen" hidden>
+      <div class="panel">
+        <h1>Set up NanaCoin</h1>
+        <p class="lede">
+          This board has no household yet. Whoever fills this in becomes Nana:
+          the one who issues coins, adds members and fixes mistakes.
+        </p>
+        <form id="setup-form">
+          <label>Household name <input name="household_name" required maxlength="40" placeholder="The Martin House" /></label>
+          <label>Your username <input name="username" required maxlength="40" autocomplete="username" placeholder="nana" /></label>
+          <label>Your display name <input name="display_name" maxlength="40" placeholder="Nana" /></label>
+          <label>PIN or password <input name="password" type="password" required minlength="4" autocomplete="new-password" /></label>
+          <button type="submit" class="btn">Create household</button>
+        </form>
+      </div>
+    </section>
+
+    <section id="login" class="screen" hidden>
+      <div class="panel">
+        <h1 id="household-name">NanaCoin</h1>
+        <form id="login-form">
+          <label>Username <input name="username" required autocomplete="username" /></label>
+          <label>PIN or password <input name="password" type="password" required autocomplete="current-password" /></label>
+          <button type="submit" class="btn">Log in</button>
+        </form>
+      </div>
+    </section>
+
+    <section id="app" class="screen" hidden>
+      <header class="topbar">
+        <div class="topbar__who">
+          <span id="whoami"></span>
+          <span id="role-badge" class="tag" hidden>nana</span>
+        </div>
+        <div class="topbar__balance">
+          <span id="balance">0</span> <span id="balance-unit">coins</span>
+        </div>
+        <div class="topbar__actions">
+          <button id="refresh" class="btn btn--quiet btn--small">Refresh</button>
+          <button id="logout" class="btn btn--quiet btn--small">Log out</button>
+        </div>
+      </header>
+
+      <nav class="tabs">
+        <button class="tab tab--active" data-tab="market">Market</button>
+        <button class="tab" data-tab="send">Send</button>
+        <button class="tab" data-tab="history">History</button>
+        <button class="tab" data-tab="nana" id="nana-panel" hidden>Nana</button>
+      </nav>
+
+      <main>
+        <div data-panel="market">
+          <h2>For sale</h2>
+          <div id="market-active" class="cards"></div>
+
+          <details class="disclosure">
+            <summary>Sell something</summary>
+            <form id="listing-form">
+              <label>What are you offering? <input name="title" required maxlength="80" placeholder="One hour of Switch time" /></label>
+              <label>Details <input name="description" maxlength="500" placeholder="Uninterrupted" /></label>
+              <label>Price in coins <input name="price" type="number" min="1" step="1" required /></label>
+              <button type="submit" class="btn">List it</button>
+            </form>
+          </details>
+
+          <details class="disclosure">
+            <summary>Sold and cancelled</summary>
+            <div id="market-closed" class="cards"></div>
+          </details>
+        </div>
+
+        <div data-panel="send" hidden>
+          <h2>Send coins</h2>
+          <form id="transfer-form">
+            <label>To <select id="transfer-to" name="to" required></select></label>
+            <label>Amount <input name="amount" type="number" min="1" step="1" required /></label>
+            <label>What for? <input name="memo" maxlength="140" placeholder="Taking out the trash" /></label>
+            <button type="submit" class="btn">Send</button>
+          </form>
+        </div>
+
+        <div data-panel="history" hidden>
+          <h2>Your history</h2>
+          <div id="history" class="history"></div>
+        </div>
+
+        <div data-panel="nana" hidden>
+          <h2>Household</h2>
+
+          <p id="ledger-warning" class="warning" hidden>
+            The ledger does not balance. Something is wrong — do not issue more
+            coins until this is looked at.
+          </p>
+
+          <div class="stats">
+            <div class="stat"><span id="stat-circulation">0</span><label>in circulation</label></div>
+            <div class="stat"><span id="stat-users">0</span><label>members</label></div>
+            <div class="stat"><span id="stat-txns">0</span><label>transactions</label></div>
+            <div class="stat"><span id="stat-journal">0</span><label>journal used</label></div>
+          </div>
+
+          <div id="member-list" class="members"></div>
+
+          <details class="disclosure">
+            <summary>Add a member</summary>
+            <form id="member-form">
+              <label>Username <input name="username" required maxlength="40" autocomplete="off" /></label>
+              <label>Display name <input name="display_name" maxlength="40" /></label>
+              <label>PIN or password <input name="password" type="password" required minlength="4" autocomplete="new-password" /></label>
+              <label class="checkbox"><input name="grant" type="checkbox" checked /> Give them the starting allocation</label>
+              <button type="submit" class="btn">Add</button>
+            </form>
+          </details>
+
+          <details class="disclosure">
+            <summary>Issue coins</summary>
+            <form id="issue-form">
+              <label>To <select id="issue-to" name="to" required></select></label>
+              <label>Amount <input name="amount" type="number" min="1" step="1" required /></label>
+              <label>Reason <input name="reason" maxlength="140" placeholder="Birthday" /></label>
+              <button type="submit" class="btn">Issue</button>
+            </form>
+          </details>
+
+          <h3>Full ledger</h3>
+          <div id="full-ledger" class="ledger"></div>
+        </div>
+      </main>
+    </section>
+
+    <script type="module" src="dist/app.js"></script>
+  </body>
+</html>
