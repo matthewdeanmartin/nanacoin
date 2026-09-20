@@ -60,6 +60,8 @@ struct CreateMember {
     role: Role,
     #[serde(default = "default_grant")]
     grant: bool,
+    #[serde(default)]
+    mastodon_id: MastodonId,
 }
 fn default_role() -> Role {
     Role::User
@@ -75,6 +77,7 @@ struct UpdateMember {
     password: Option<String<128>>,
     role: Option<Role>,
     disabled: Option<bool>,
+    mastodon_id: Option<MastodonId>,
 }
 
 #[derive(Deserialize)]
@@ -352,6 +355,7 @@ pub fn handle_keyed<J: Journal>(
                         } else {
                             0
                         },
+                        mastodon_id: req.mastodon_id,
                     },
                 )?;
                 serialize(
@@ -380,6 +384,7 @@ pub fn handle_keyed<J: Journal>(
                             .transpose()?,
                         role: req.role,
                         disabled: req.disabled,
+                        mastodon_id: req.mastodon_id,
                     },
                 )?;
                 serialize(&receipt, output)

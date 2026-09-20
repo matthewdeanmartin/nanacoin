@@ -39,6 +39,7 @@ export class NanaPage {
   protected newUsername = '';
   protected newDisplayName = '';
   protected newPassword = '';
+  protected newMastodonId = '';
   protected grant = true;
   protected readonly adding = signal(false);
 
@@ -126,10 +127,12 @@ export class NanaPage {
         this.newDisplayName.trim(),
         this.newPassword,
         this.grant,
+        this.newMastodonId.trim(),
       );
       this.newUsername = '';
       this.newDisplayName = '';
       this.newPassword = '';
+      this.newMastodonId = '';
       this.toasts.ok('Member added.');
       await Promise.all([this.session.refresh(), this.loadLedger()]);
     } catch (e) {
@@ -274,6 +277,23 @@ export class NanaPage {
     } catch (e) {
       this.toasts.fromError(e);
     }
+  }
+
+  protected async setMastodonId(id: string, displayName: string, current = ''): Promise<void> {
+    const value = await this.dialogs.prompt({
+      title: `${displayName}'s Mastodon ID`,
+      message: 'This is the only Mastodon recipient NanaCoin will allow household messages to use.',
+      detail: ['Use a full handle such as @alex@mastodon.social. Leave it empty to remove it.'],
+      placeholder: '@name@server.example',
+      initial: current,
+      confirmLabel: 'Save',
+    });
+    if (value === null) return;
+    try {
+      await this.api.setUserMastodonId(id, value.trim());
+      this.toasts.ok('Mastodon ID saved.');
+      await this.session.refresh();
+    } catch (e) { this.toasts.fromError(e); }
   }
 
   /** Nana can replace a member's forgotten password; the server revokes that

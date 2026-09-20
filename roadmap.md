@@ -1,5 +1,19 @@
 # NanaCoin roadmap
 
+## Mastodon subscriptions and sharing intents
+
+- Subscribe to all household offers and all forex offers through Mastodon. This
+  is deliberately separate from the first direct-message integration: it needs
+  clear opt-in, deduplication, reconnect/backoff behavior, and a decision about
+  whether a browser must remain open.
+- Add platform intents in Send for the major networks so a member can post about
+  NanaCoin from their own account, optionally in ALL CAPS. Facebook is the first
+  intent; the other platforms remain deferred.
+
+The shipped direct-message boundary stays private: only `visibility=direct`,
+and only household members whose Mastodon ID is registered in NanaCoin may be
+selected as recipients. OAuth tokens remain browser-local.
+
 ## Private transaction descriptions on a shared ledger
 
 NanaCoin's ledger remains publicly visible to anyone who can reach the board: amounts,

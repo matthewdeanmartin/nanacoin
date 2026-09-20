@@ -58,6 +58,7 @@ fn house() -> (Service<Memory>, Memory) {
                 password: PasswordVerifier::hash("1234").unwrap(),
                 role: Role::User,
                 grant: 100,
+                mastodon_id: MastodonId::new(),
             },
         )
         .unwrap();

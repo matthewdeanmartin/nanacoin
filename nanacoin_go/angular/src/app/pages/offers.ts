@@ -25,12 +25,23 @@ import { ApiError, NanacoinService, newIdempotencyKey } from '../api/nanacoin.se
 import { Session } from '../api/session';
 import { Dialogs } from '../ui/dialog';
 import { Toasts } from '../ui/toasts';
+import { Mastodon } from '../api/mastodon';
 
 @Component({
   selector: 'app-offers',
   imports: [FormsModule],
   template: `
     <h1>Offers</h1>
+
+    @if (mastodon.connected()) {
+      <label class="checkbox">
+        <input type="checkbox" [(ngModel)]="notifyAccepted" />
+        Send a private Mastodon message when I accept an offer
+      </label>
+      @if (notifyAccepted) {
+        <label class="checkbox"><input type="checkbox" [(ngModel)]="notificationAllCaps" /> ALL CAPS</label>
+      }
+    }
 
     @if (unsupported()) {
       <!--
@@ -139,6 +150,7 @@ export class OffersPage {
   private readonly api = inject(NanacoinService);
   private readonly toasts = inject(Toasts);
   private readonly dialogs = inject(Dialogs);
+  protected readonly mastodon = inject(Mastodon);
   protected readonly session = inject(Session);
 
   protected readonly offers = signal<Offer[]>([]);
@@ -149,6 +161,8 @@ export class OffersPage {
 
   /** The offer currently being acted on, so only its buttons go busy. */
   protected readonly busy = signal<string | null>(null);
+  protected notifyAccepted = false;
+  protected notificationAllCaps = false;
 
   /** Open offers on listings this user owns: the ones needing a decision. */
   protected readonly toDecide = computed(() => {
@@ -209,6 +223,17 @@ export class OffersPage {
     try {
       await this.api.acceptOffer(offer.id, newIdempotencyKey());
       this.toasts.ok('Accepted.');
+      if (this.notifyAccepted) {
+        const recipient = this.session.household().find((u) => u.account === offer.offerer);
+        if (!recipient?.mastodon_id) {
+          this.toasts.error(`${offer.offerer_name} has no registered Mastodon ID; the offer was still accepted.`);
+        } else {
+          let message = `Your NanaCoin offer for ${offer.listing_title} was accepted for ${offer.amount} coins.`;
+          if (this.notificationAllCaps) message = message.toLocaleUpperCase();
+          try { await this.mastodon.sendDirect(recipient, message); }
+          catch (e) { this.toasts.error(`Offer accepted, but the private message failed: ${e instanceof Error ? e.message : 'Mastodon error'}`); }
+        }
+      }
       await this.session.refresh();
       await this.load();
     } catch (e) {

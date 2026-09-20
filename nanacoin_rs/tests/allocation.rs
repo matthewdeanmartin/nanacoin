@@ -173,6 +173,7 @@ fn forex_recycling_and_repeated_http_trades_do_not_allocate() {
             password: PasswordVerifier::hash("1234").unwrap(),
             role: Role::User,
             grant: 100,
+            mastodon_id: MastodonId::new(),
         },
     )
     .unwrap();
@@ -258,6 +259,7 @@ fn full_offer_table_and_repeated_offer_http_requests_do_not_allocate() {
             password: PasswordVerifier::hash("1234").unwrap(),
             role: Role::User,
             grant: 100,
+            mastodon_id: MastodonId::new(),
         },
     )
     .unwrap();

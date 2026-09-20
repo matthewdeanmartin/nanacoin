@@ -45,8 +45,8 @@ IDs use user-1, account-1, listing-5 and tx-6 forms. Roles are nana/user and mem
 | Endpoint | Purpose |
 |---|---|
 | GET `/me`, `/users` | Current user and members |
-| POST `/users` | Nana creates member with username, display_name, password, optional role/grant |
-| PATCH `/users/user-N` | Name/password; Nana can also change role/status or other members |
+| POST `/users` | Nana creates member with username, display_name, password, optional role/grant/mastodon_id |
+| PATCH `/users/user-N` | Name/password/Mastodon ID; Nana can also change role/status or other members |
 | GET `/transactions`, `/transactions/tx-N` | Recent ledger and individual transaction |
 | GET `/accounts/account-N`, `/accounts/account-N/transactions` | Own balance/history, or any account for Nana; `account-N-usd` selects dollars |
 | POST `/transfers` | Transfer with to, amount, memo |

@@ -32,12 +32,23 @@ import { ApiError, NanacoinService, newIdempotencyKey } from '../api/nanacoin.se
 import { Session } from '../api/session';
 import { Dialogs } from '../ui/dialog';
 import { Toasts } from '../ui/toasts';
+import { Mastodon } from '../api/mastodon';
 
 @Component({
   selector: 'app-forex',
   imports: [FormsModule],
   template: `
     <h1>Exchange</h1>
+
+    @if (mastodon.connected()) {
+      <label class="checkbox">
+        <input type="checkbox" [(ngModel)]="notifyTrade" />
+        Send a private Mastodon message when I accept an exchange
+      </label>
+      @if (notifyTrade) {
+        <label class="checkbox"><input type="checkbox" [(ngModel)]="notificationAllCaps" /> ALL CAPS</label>
+      }
+    }
 
     @if (unsupported()) {
       <!--
@@ -212,6 +223,7 @@ export class ForexPage {
   private readonly api = inject(NanacoinService);
   private readonly toasts = inject(Toasts);
   private readonly dialogs = inject(Dialogs);
+  protected readonly mastodon = inject(Mastodon);
   protected readonly session = inject(Session);
 
   protected readonly quotes = signal<Quote[]>([]);
@@ -227,6 +239,8 @@ export class ForexPage {
   protected side: QuoteSide = 'ASK';
   protected coins: number | null = null;
   protected rate: number | null = null;
+  protected notifyTrade = false;
+  protected notificationAllCaps = false;
 
   /**
    * Dollars held, in cents.
@@ -402,6 +416,17 @@ export class ForexPage {
     try {
       await this.api.takeQuote(q.id, newIdempotencyKey());
       this.toasts.ok(buying ? 'Bought.' : 'Sold.');
+      if (this.notifyTrade) {
+        const recipient = this.session.household().find((u) => u.account === q.maker);
+        if (!recipient?.mastodon_id) {
+          this.toasts.error(`${q.maker_name} has no registered Mastodon ID; the exchange still completed.`);
+        } else {
+          let message = `Your NanaCoin exchange for ${q.coins} ${unit} at ${this.cents(q.cents_per_coin)} each was accepted.`;
+          if (this.notificationAllCaps) message = message.toLocaleUpperCase();
+          try { await this.mastodon.sendDirect(recipient, message); }
+          catch (e) { this.toasts.error(`Exchange completed, but the private message failed: ${e instanceof Error ? e.message : 'Mastodon error'}`); }
+        }
+      }
       await this.session.refresh();
       await this.load();
     } catch (e) {

@@ -20,6 +20,7 @@ pub fn next_sequence(sequence: u64) -> Option<u64> {
         .filter(|s| *s <= MAX_SEQUENCE - 4096)
 }
 pub type Name = String<40>;
+pub type MastodonId = String<128>;
 pub type Memo = String<96>;
 /// Ledger text also holds the TinyGo offer-undo reason (up to 140 bytes).
 pub type TransactionMemo = String<140>;
@@ -74,6 +75,8 @@ pub enum Command {
         role: Role,
         #[serde(default)]
         grant: i64,
+        #[serde(default)]
+        mastodon_id: MastodonId,
     },
     UpdateMember {
         member: MemberId,
@@ -81,6 +84,8 @@ pub enum Command {
         password: Option<PasswordVerifier>,
         role: Option<Role>,
         disabled: Option<bool>,
+        #[serde(default)]
+        mastodon_id: Option<MastodonId>,
     },
     /// Local-only upgrade of an existing token account; preserves its identity.
     MigrateMember {
@@ -199,6 +204,8 @@ pub struct Member {
     pub id: MemberId,
     pub name: Name,
     pub username: Name,
+    #[serde(default)]
+    pub mastodon_id: MastodonId,
     pub role: Role,
     pub disabled: bool,
     #[serde(skip)]
@@ -462,10 +469,12 @@ impl State {
                 display_name,
                 password,
                 grant,
+                mastodon_id,
                 ..
             } => {
                 self.admin(actor)?;
                 self.validate_new_member(username, display_name, password)?;
+                valid_mastodon_id(mastodon_id)?;
                 if !(0..=MAX_AMOUNT).contains(grant) {
                     return Err(Error::InvalidInput);
                 }
@@ -499,6 +508,7 @@ impl State {
                 password,
                 role,
                 disabled,
+                mastodon_id,
             } => {
                 let target = self.member(*member)?;
                 if target.password.is_none() && password.is_some() {
@@ -509,6 +519,9 @@ impl State {
                 }
                 if let Some(name) = display_name {
                     valid_name(name)?;
+                }
+                if let Some(value) = mastodon_id {
+                    valid_mastodon_id(value)?;
                 }
                 if password.as_ref().is_some_and(|p| !p.valid()) {
                     return Err(Error::InvalidInput);
@@ -766,8 +779,10 @@ impl State {
                 password,
                 role,
                 grant,
+                mastodon_id,
             } => {
                 self.add_password_member(username, display_name, password, *role, event.timestamp);
+                self.members.last_mut().unwrap().mastodon_id = mastodon_id.clone();
                 if *grant > 0 {
                     posting = Some((
                         MemberId(0),
@@ -802,6 +817,7 @@ impl State {
                 password,
                 role,
                 disabled,
+                mastodon_id,
             } => {
                 let m = self.members.iter_mut().find(|m| m.id == *member).unwrap();
                 if let Some(name) = display_name {
@@ -816,6 +832,9 @@ impl State {
                 }
                 if let Some(disabled) = disabled {
                     m.disabled = *disabled;
+                }
+                if let Some(value) = mastodon_id {
+                    m.mastodon_id = value.clone();
                 }
             }
             Command::MigrateMember {
@@ -838,6 +857,7 @@ impl State {
                         id,
                         name: name.clone(),
                         username: Name::new(),
+                        mastodon_id: MastodonId::new(),
                         role: if id == MemberId(1) {
                             Role::Nana
                         } else {
@@ -1055,6 +1075,7 @@ impl State {
             .push(Member {
                 id,
                 username: username.clone(),
+                mastodon_id: MastodonId::new(),
                 name: display_name.clone(),
                 role,
                 disabled: false,
@@ -1077,6 +1098,28 @@ fn is_zero(value: &u64) -> bool {
 
 fn valid_name(name: &str) -> Result<(), Error> {
     if name.trim().is_empty() || name.chars().any(char::is_control) {
+        Err(Error::InvalidInput)
+    } else {
+        Ok(())
+    }
+}
+
+fn valid_mastodon_id(value: &str) -> Result<(), Error> {
+    if value.is_empty() {
+        return Ok(());
+    }
+    let value = value.strip_prefix('@').unwrap_or(value);
+    let mut parts = value.split('@');
+    let user = parts.next().unwrap_or_default();
+    let host = parts.next().unwrap_or_default();
+    if user.is_empty()
+        || host.is_empty()
+        || parts.next().is_some()
+        || !host.contains('.')
+        || value
+            .chars()
+            .any(|c| c.is_control() || c.is_whitespace() || c == '/')
+    {
         Err(Error::InvalidInput)
     } else {
         Ok(())

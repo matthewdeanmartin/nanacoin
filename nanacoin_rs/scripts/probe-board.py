@@ -3,11 +3,21 @@ import argparse
 import http.client
 import json
 from pathlib import Path
+import re
 import socket
 import ssl
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def bundled_index():
+    """Return the exact index bytes embedded by the most recent local build."""
+    generated = (ROOT / ".embuild" / "web" / "assets.rs").read_text(encoding="utf-8")
+    match = re.search(r'path: "/index\.html".*?web/(\d+)\.raw', generated)
+    if not match:
+        raise SystemExit("Could not identify the locally bundled index.html")
+    return (ROOT / ".embuild" / "web" / f"{match.group(1)}.raw").read_bytes()
 
 
 def get(address: str, hostname: str, context: ssl.SSLContext, path: str):
@@ -59,6 +69,26 @@ def main():
         raise SystemExit("Bundled Angular shell is not being served")
     if b'name="nanacoin-api" content=""' not in site:
         raise SystemExit("Bundled Angular shell is not configured for the same-origin API")
+    if site != bundled_index():
+        raise SystemExit("Board is serving an Angular bundle different from this deployment build")
+
+    # These are intentionally anonymous. The public book and machine health
+    # must work before login, not merely with a stale token on the build PC.
+    ledger_status, ledger_body, _ = get(
+        args.address, args.hostname, context, "/api/v1/transactions?limit=1"
+    )
+    if ledger_status != 200:
+        raise SystemExit(f"Public ledger returned HTTP {ledger_status}")
+    ledger = json.loads(ledger_body)
+    if not isinstance(ledger.get("transactions"), list) or "circulation" not in ledger:
+        raise SystemExit("Public ledger response has the wrong shape")
+
+    diag_status, diag_body, _ = get(args.address, args.hostname, context, "/api/v1/diag")
+    if diag_status != 200:
+        raise SystemExit(f"Public board health returned HTTP {diag_status}")
+    diag = json.loads(diag_body)
+    if not all(field in diag for field in ("uptime_seconds", "free_heap", "samples")):
+        raise SystemExit("Public board health response has the wrong shape")
 
     ca_status, served_ca, _ = get(args.address, args.hostname, context, "/ca")
     if ca_status != 200 or served_ca != ca_der.read_bytes():
@@ -66,7 +96,8 @@ def main():
 
     print(
         "Board probe passed: strict CA/hostname verification, "
-        f"{cipher[0]}, API, balanced ledger, Angular shell and matching /ca."
+        f"{cipher[0]}, API, balanced ledger, exact Angular build, public notebook, "
+        "public board health and matching /ca."
     )
 
 

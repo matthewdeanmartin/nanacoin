@@ -49,6 +49,7 @@ export class App {
   private readonly log = inject(Log);
   private readonly discovery = inject(Discovery);
   private readonly discoveryLifetime = new AbortController();
+  private mastodonCallback: { code: string; state: string } | null = null;
 
   protected readonly isDemo = IS_DEMO;
   protected readonly plainHttp = computed(() =>
@@ -84,6 +85,13 @@ export class App {
   );
 
   constructor() {
+    // Mastodon redirects cannot target a hash route. Move its root-level query
+    // into Angular's /send route before the callback component is created.
+    const callback = new URLSearchParams(location.search);
+    if (callback.has('code') && callback.has('state') && sessionStorage.getItem('nanacoin:mastodon:oauth')) {
+      this.mastodonCallback = { code: callback.get('code')!, state: callback.get('state')! };
+      history.replaceState(null, '', location.pathname + location.hash);
+    }
     this.router.events.pipe(takeUntilDestroyed()).subscribe(event => {
       if (event instanceof NavigationEnd) {
         const path = event.urlAfterRedirects.split('?')[0];
@@ -121,6 +129,7 @@ export class App {
       }
       const restored = await this.session.restore();
       this.phase.set(restored ? 'app' : 'login');
+      if (restored) void this.routeMastodonCallback();
       this.log.info('boot', `showing the ${restored ? 'app' : 'login'} screen`);
     } catch (e) {
       // A default or remembered HTTP endpoint may now run Rust over HTTPS.
@@ -185,6 +194,16 @@ export class App {
   protected onLoggedIn(): void {
     this.addingAccount.set(false);
     this.phase.set('app');
+    void this.routeMastodonCallback();
+  }
+
+  private async routeMastodonCallback(): Promise<void> {
+    const callback = this.mastodonCallback;
+    if (!callback) return;
+    this.mastodonCallback = null;
+    await this.router.navigate(['/send'], {
+      queryParams: { mastodon_code: callback.code, mastodon_state: callback.state },
+    });
   }
 
   /**

@@ -49,6 +49,8 @@ pub(crate) struct User<'a> {
     account: Id,
     created_at: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
+    mastodon_id: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     balance: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     usd_cents: Option<i64>,
@@ -66,6 +68,7 @@ pub(crate) fn user(member: &Member) -> User<'_> {
         },
         account: account(member.id),
         created_at: member.created_at,
+        mastodon_id: (!member.mastodon_id.is_empty()).then_some(member.mastodon_id.as_str()),
         balance: Some(member.balance),
         usd_cents: Some(member.usd_cents),
     }
@@ -511,6 +514,7 @@ pub(crate) fn route<J: Journal>(
             password: Option<String<128>>,
             role: Option<Role>,
             status: Option<String<16>>,
+            mastodon_id: Option<MastodonId>,
         }
         let member = member_id(&path[14..], "user-")?;
         let req: Update = parse(body)?;
@@ -542,6 +546,7 @@ pub(crate) fn route<J: Journal>(
                 password,
                 role: req.role,
                 disabled,
+                mastodon_id: req.mastodon_id,
             },
         )?;
         return serialize(&user(s.state.member(member)?), output);

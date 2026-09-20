@@ -92,6 +92,9 @@ and requires every client to trust the new CA from `/trust` after deployment.
 
 ## Single-board build and deployment
 
+For the copy-paste upgrade runbook, including port discovery, stop conditions,
+and required live-board checks, see [DEPLOY.md](DEPLOY.md).
+
 ```bash
 (cd ../nanacoin_go/angular && npm ci) # one-time dependencies, if needed
 make run-bundle                   # local UI + API on http://127.0.0.1:8080

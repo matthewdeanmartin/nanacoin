@@ -126,6 +126,7 @@ fn checkpoint_preserves_passwords_balances_open_deals_deadlines_and_retries() {
             password: PasswordVerifier::hash("1234").unwrap(),
             role: Role::User,
             grant: 100,
+            mastodon_id: MastodonId::try_from("@alice@example.social").unwrap(),
         },
     );
     exec(
@@ -296,6 +297,7 @@ fn reset_requires_nana_confirmation_and_fresh_state_and_revokes_sessions() {
             password: PasswordVerifier::hash("1234").unwrap(),
             role: Role::User,
             grant: 100,
+            mastodon_id: MastodonId::new(),
         },
     );
     let nana = common::login(&mut s);

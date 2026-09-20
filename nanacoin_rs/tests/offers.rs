@@ -66,6 +66,7 @@ fn house() -> (House, Memory) {
                 password: PasswordVerifier::hash("1234").unwrap(),
                 role: Role::User,
                 grant: 100,
+                mastodon_id: MastodonId::new(),
             },
         )
         .unwrap();
@@ -187,6 +188,7 @@ fn funds_checked_only_on_acceptance_and_disabled_parties_cannot_trade() {
             password: None,
             role: None,
             disabled: Some(true),
+            mastodon_id: None,
         },
     )
     .unwrap();

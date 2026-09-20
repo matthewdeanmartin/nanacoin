@@ -36,6 +36,7 @@ nav:
       - "Domain, HTTP and Concurrency": "rust/architecture.md"
       - "NVS Keys and Recovery": "rust/storage.md"
       - "Diagnostics": "rust/diagnostics.md"
+      - "Mastodon Integration": "rust/mastodon.md"
   - "TinyGo and NanaCoin":
       - "Overview": "tinygo/index.md"
       - "How It Works": "tinygo/how_it_works.md"

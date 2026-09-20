@@ -29,6 +29,8 @@ export interface User {
   status: UserStatus;
   account: AccountId;
   created_at: number;
+  /** Public household handle; OAuth credentials never leave this browser. */
+  mastodon_id?: string;
   /** Present only where the caller is entitled to see it. */
   balance?: number;
 

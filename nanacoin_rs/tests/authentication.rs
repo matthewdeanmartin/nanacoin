@@ -37,6 +37,7 @@ fn setup() -> (Service<Memory>, Memory) {
             password: PasswordVerifier::hash("5678").unwrap(),
             role: Role::User,
             grant: 0,
+            mastodon_id: MastodonId::new(),
         },
     )
     .unwrap();
@@ -45,6 +46,18 @@ fn setup() -> (Service<Memory>, Memory) {
 fn get<J: Journal>(s: &mut Service<J>, auth: &str, path: &str) -> (u16, serde_json::Value) {
     let mut out = vec![0; api::RESPONSE_LIMIT];
     let (status, len) = api::handle(s, "GET", path, auth, &[], &mut out);
+    (status, serde_json::from_slice(&out[..len]).unwrap())
+}
+
+fn patch<J: Journal>(
+    s: &mut Service<J>,
+    auth: &str,
+    path: &str,
+    body: serde_json::Value,
+) -> (u16, serde_json::Value) {
+    let mut out = vec![0; api::RESPONSE_LIMIT];
+    let body = serde_json::to_vec(&body).unwrap();
+    let (status, len) = api::handle(s, "PATCH", path, auth, &body, &mut out);
     (status, serde_json::from_slice(&out[..len]).unwrap())
 }
 
@@ -66,6 +79,48 @@ fn provisions_once_and_uses_the_existing_angular_login_shapes() {
     assert!(get(&mut s, &header, "/api/v1/users").1["users"].is_array());
     assert!(get(&mut s, &header, "/api/v1/listings").1["listings"].is_array());
     assert_eq!(get(&mut s, "", "/").0, 404);
+}
+
+#[test]
+fn mastodon_ids_are_bounded_persistent_member_metadata() {
+    let (mut s, memory) = setup();
+    let nana = common::login(&mut s);
+    let alice = common::login_as(&mut s, "alice", "5678");
+    let (status, user) = patch(
+        &mut s,
+        &alice,
+        "/api/v1/users/user-2",
+        json!({"mastodon_id":"@alice@example.social"}),
+    );
+    assert_eq!(status, 200, "{user}");
+    assert_eq!(user["mastodon_id"], "@alice@example.social");
+    assert_eq!(
+        patch(
+            &mut s,
+            &alice,
+            "/api/v1/users/user-1",
+            json!({"mastodon_id":"@nana@example.social"})
+        )
+        .0,
+        403
+    );
+    assert_eq!(
+        patch(
+            &mut s,
+            &nana,
+            "/api/v1/users/user-2",
+            json!({"mastodon_id":"not-a-handle"})
+        )
+        .0,
+        400
+    );
+    drop(s);
+    let mut replay = Service::open(memory).unwrap();
+    let nana = common::login(&mut replay);
+    assert_eq!(
+        get(&mut replay, &nana, "/api/v1/users").1["users"][1]["mastodon_id"],
+        "@alice@example.social"
+    );
 }
 
 #[test]

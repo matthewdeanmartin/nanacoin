@@ -341,13 +341,18 @@ export class NanacoinService {
     displayName: string,
     password: string,
     grant: boolean,
+    mastodonId = '',
   ): Promise<User> {
-    return this.post<User>('/users', {
+    const body: Record<string, unknown> = {
       username,
       display_name: displayName,
       password,
       grant,
-    });
+    };
+    // Keep the ordinary request compatible with older/frozen servers. The
+    // Rust-only extension is sent only when Nana actually supplied it.
+    if (mastodonId) body['mastodon_id'] = mastodonId;
+    return this.post<User>('/users', body);
   }
 
   setUserStatus(id: UserId, status: UserStatus): Promise<User> {
@@ -360,6 +365,10 @@ export class NanacoinService {
    */
   setUserPassword(id: UserId, password: string): Promise<User> {
     return this.patch<User>(`/users/${encodeURIComponent(id)}`, { password });
+  }
+
+  setUserMastodonId(id: UserId, mastodonId: string): Promise<User> {
+    return this.patch<User>(`/users/${encodeURIComponent(id)}`, { mastodon_id: mastodonId });
   }
 
   // --- money ---

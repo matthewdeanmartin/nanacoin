@@ -71,7 +71,7 @@
   </div>
   <section class="panel">
     <h2>Recent readings</h2>
-    <p class="muted small">Up to 120 samples held in this browser only. Polls every two seconds after each response, pauses in hidden tabs, and clears history after a detected reboot.</p>
+    <p class="muted small">Up to 120 samples held in this browser only. When started, polls every five seconds after each response, pauses in hidden tabs, and clears history after a detected reboot.</p>
     <app-line-chart title="Internal memory" [series]="memorySeries()" />
     <div class="grid">
       <app-line-chart title="Die temperature" [series]="temperatureSeries()" />

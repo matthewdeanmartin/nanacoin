@@ -100,6 +100,8 @@ checks the attached board's partition table, and writes only the application
 at `0x10000`. It refuses other layouts; no automatic migration/erase occurs.
 The ledger and bootloader are not written. `bash scripts/deploy.sh COM9 --dry-run`
 does the build and prints the plan without opening a port. This is not an
-initial installation tool. See the
+initial installation tool. The canonical operator/automation runbook is
+[`nanacoin_rs/DEPLOY.md`](https://github.com/matthewdeanmartin/nanacoin/blob/main/nanacoin_rs/DEPLOY.md);
+it covers port discovery, stop conditions and required live-board checks. See the
 [crate README](https://github.com/matthewdeanmartin/nanacoin/blob/main/nanacoin_rs/README.md)
 for prerequisites and `make web-check` for offline integration checks.
