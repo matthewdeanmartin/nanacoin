@@ -21,7 +21,7 @@ export function isEditing(target: EventTarget | null): boolean {
    Get your own at <a href="https://github.com/matthewdeanmartin/nanacoin">GitHub</a></p>
  </footer>
  <dialog #help aria-labelledby="keyboard-help-title" (cancel)="close($event)" (click)="backdrop($event)">
-   <header><h2 id="keyboard-help-title">Keyboard shortcuts</h2><button type="button" class="btn btn--quiet" autofocus (click)="close()">Close</button></header>
+   <header><h2 id="keyboard-help-title">Keyboard shortcuts</h2><button type="button" class="btn btn--quiet" title="Close keyboard shortcut help" autofocus (click)="close()">Close</button></header>
    <p>Familiar Mawkingbird / Mastodon patterns, adapted where there is a real NanaCoin equivalent. “Then” means a sequence, within one second—not keys held together.</p>
    <h3>Navigation</h3><dl>
      <dt><kbd>?</kbd></dt><dd>Open this help</dd>

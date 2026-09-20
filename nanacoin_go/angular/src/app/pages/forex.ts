@@ -102,11 +102,11 @@ import { Toasts } from '../ui/toasts';
               }
               <div class="card__actions">
                 @if (isMine(q)) {
-                  <button class="btn btn--quiet" (click)="cancel(q)" [disabled]="busy() !== null">
+                  <button class="btn btn--quiet" title="Remove your exchange rate without making a trade" (click)="cancel(q)" [disabled]="busy() !== null">
                     Withdraw
                   </button>
                 } @else {
-                  <button class="btn" (click)="take(q)" [disabled]="busy() !== null">
+                  <button class="btn" title="Trade dollars for the listed coins after confirmation" (click)="take(q)" [disabled]="busy() !== null">
                     {{ busy() === q.id ? 'Trading…' : 'Buy coins' }}
                   </button>
                 }
@@ -137,11 +137,11 @@ import { Toasts } from '../ui/toasts';
               }
               <div class="card__actions">
                 @if (isMine(q)) {
-                  <button class="btn btn--quiet" (click)="cancel(q)" [disabled]="busy() !== null">
+                  <button class="btn btn--quiet" title="Remove your exchange rate without making a trade" (click)="cancel(q)" [disabled]="busy() !== null">
                     Withdraw
                   </button>
                 } @else {
-                  <button class="btn" (click)="take(q)" [disabled]="busy() !== null">
+                  <button class="btn" title="Trade coins for the listed dollars after confirmation" (click)="take(q)" [disabled]="busy() !== null">
                     {{ busy() === q.id ? 'Trading…' : 'Sell coins' }}
                   </button>
                 }
@@ -180,7 +180,7 @@ import { Toasts } from '../ui/toasts';
           @if (preview(); as p) {
             <p class="muted small">{{ p }}</p>
           }
-          <button class="btn" type="submit" [disabled]="posting()">
+          <button class="btn" title="Publish this rate for another household member to take" type="submit" [disabled]="posting()">
             {{ posting() ? 'Posting…' : 'Post rate' }}
           </button>
         </form>

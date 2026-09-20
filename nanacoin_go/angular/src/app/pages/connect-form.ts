@@ -44,17 +44,17 @@ import { candidates, Discovery } from '../api/discovery';
           />
         </label>
 
-        <button class="btn" type="submit" [disabled]="busy()">
+        <button class="btn" title="Connect to the NanaCoin server at this address" type="submit" [disabled]="busy()">
           {{ busy() ? 'Trying…' : 'Connect' }}
         </button>
       </form>
 
       <p>
-        <button class="btn btn--quiet" type="button" (click)="search()" [disabled]="busy()">
+        <button class="btn btn--quiet" title="Look for NanaCoin servers on the local network" type="button" (click)="search()" [disabled]="busy()">
           Search for NanaCoin (HTTP and HTTPS)
         </button>
         @if (searching()) {
-          <button class="btn btn--quiet" type="button" (click)="cancelSearch()">Cancel search</button>
+          <button class="btn btn--quiet" title="Stop looking for servers" type="button" (click)="cancelSearch()">Cancel search</button>
         }
       </p>
       <p class="muted small" role="status">{{ searchMessage() }}</p>
@@ -95,7 +95,7 @@ import { candidates, Discovery } from '../api/discovery';
       @if (diagnosis()) {
         <p class="muted small">
           @if (logsAvailable()) {
-            <button class="btn btn--quiet btn--small" type="button" (click)="showLogs.emit()">
+            <button class="btn btn--quiet btn--small" title="Open server logs to diagnose the connection" type="button" (click)="showLogs.emit()">
               Look at the server logs
             </button>
           }
@@ -109,7 +109,7 @@ import { candidates, Discovery } from '../api/discovery';
           development, where <code>npm start</code> forwards to the Go server on
           port 8080.
         </p>
-        <button class="btn btn--quiet" type="button" (click)="useThisSite()" [disabled]="busy()">
+        <button class="btn btn--quiet" title="Try the server at this website's own address" type="button" (click)="useThisSite()" [disabled]="busy()">
           Use this site's own server
         </button>
       </details>

@@ -63,14 +63,43 @@ describe('machine diagnostics', () => {
     TestBed.configureTestingModule({ providers: [{ provide: MachineDiagnostics, useValue: { read } }] });
     const fixture = TestBed.createComponent(DiagnosticsPage);
     await vi.advanceTimersByTimeAsync(0);
+    fixture.detectChanges();
+    const live = [...fixture.nativeElement.querySelectorAll('button')]
+      .find((button: HTMLButtonElement) => button.textContent?.includes('Start live updates')) as HTMLButtonElement;
+    expect(live).toBeTruthy();
+    live.click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(read).toHaveBeenCalledTimes(3);
     hidden.mockReturnValue(true);
     await vi.advanceTimersByTimeAsync(10000);
-    expect(read).toHaveBeenCalledTimes(2);
+    expect(read).toHaveBeenCalledTimes(3);
     hidden.mockReturnValue(false);
     document.dispatchEvent(new Event('visibilitychange'));
     await vi.advanceTimersByTimeAsync(0);
-    expect(read).toHaveBeenCalledTimes(3);
+    expect(read).toHaveBeenCalledTimes(4);
     fixture.destroy();
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('starts paused and polls every five seconds only after being started', async () => {
+    vi.useFakeTimers();
+    const read = vi.fn((path: string) => path ? Promise.reject(new Error('older firmware')) : Promise.resolve(sample));
+    TestBed.configureTestingModule({ providers: [{ provide: MachineDiagnostics, useValue: { read } }] });
+    const fixture = TestBed.createComponent(DiagnosticsPage);
+    await vi.advanceTimersByTimeAsync(0);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Start live updates');
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(read).toHaveBeenCalledTimes(2);
+    const live = [...fixture.nativeElement.querySelectorAll('button')]
+      .find((button: HTMLButtonElement) => button.textContent?.includes('Start live updates')) as HTMLButtonElement;
+    live.click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(read).toHaveBeenCalledTimes(3);
+    await vi.advanceTimersByTimeAsync(4999);
+    expect(read).toHaveBeenCalledTimes(3);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(read).toHaveBeenCalledTimes(4);
+    fixture.destroy();
   });
 });

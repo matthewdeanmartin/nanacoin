@@ -45,7 +45,7 @@ interface RecentSend {
           <input name="memo" [(ngModel)]="memo" maxlength="140"
                  placeholder="Taking out the trash" />
         </label>
-        <button class="btn" type="submit" [disabled]="busy()">
+        <button class="btn" title="Transfer the entered coins to the selected household member" type="submit" [disabled]="busy()">
           {{ busy() ? 'Sending…' : 'Send' }}
         </button>
       </form>

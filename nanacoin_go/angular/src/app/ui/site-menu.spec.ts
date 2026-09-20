@@ -20,6 +20,7 @@ describe('responsive site navigation', () => {
    const buySell = [...fixture.nativeElement.querySelectorAll('details')].find((group: Element) => group.textContent?.includes('Buy/Sell'));
    expect(buySell?.textContent).toContain('Market');
    expect(buySell?.textContent).toContain('Offers');
+   expect(fixture.nativeElement.textContent).toContain('Board Health');
  });
  it('toggles expanded state and dismisses on Escape or outside click', () => {
    const fixture = setup(true);

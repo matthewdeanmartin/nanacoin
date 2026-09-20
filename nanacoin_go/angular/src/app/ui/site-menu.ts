@@ -9,7 +9,7 @@ import { IS_DEMO } from '../demo/demo';
  host: { '(keydown.escape)': 'close(true)', '(document:click)': 'outside($event)', '(focusout)': 'focusOut($event)' },
  template: `<header class="menu-bar">
    <a class="brand" routerLink="/market" aria-label="NanaCoin app" (click)="close()">NanaCoin<span>the household bank</span></a>
-   <button #toggle type="button" class="menu-toggle" aria-controls="site-navigation" [attr.aria-expanded]="open()"
+   <button #toggle type="button" class="menu-toggle" title="Open or close the main navigation" aria-controls="site-navigation" [attr.aria-expanded]="open()"
      [attr.aria-label]="open() ? 'Close navigation menu' : 'Open navigation menu'" (click)="open.set(!open())">
      <span aria-hidden="true" class="hamburger"><i></i><i></i><i></i></span><span>Menu</span>
    </button>
@@ -43,8 +43,8 @@ import { IS_DEMO } from '../demo/demo';
          <div class="menu-group__items">
            <a routerLink="/clientlog" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Browser Log</a>
            @if (demo) {
-             <a routerLink="/diagnostics" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Browser Health</a>
-           } @else if (session.isNana() && session.diagAvailable()) {
+             <a routerLink="/diagnostics" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Board Health</a>
+           } @else if (session.diagAvailable()) {
              <a routerLink="/diagnostics" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Board Health</a>
            }
            @if (session.logsAvailable()) {
@@ -54,11 +54,11 @@ import { IS_DEMO } from '../demo/demo';
        </details>
      } @else {
        <a routerLink="/ledger" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">The Notebook</a>
-       @if (demo) {
+       @if (demo || session.diagAvailable()) {
          <details class="menu-group">
            <summary>System Info</summary>
            <div class="menu-group__items">
-             <a routerLink="/diagnostics" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Browser Health</a>
+             <a routerLink="/diagnostics" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Board Health</a>
            </div>
          </details>
        }

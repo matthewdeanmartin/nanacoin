@@ -41,7 +41,7 @@ import { Toasts } from '../ui/toasts';
           <input name="password" type="password" [(ngModel)]="password" required minlength="4"
                  autocomplete="new-password" />
         </label>
-        <button class="btn" type="submit" [disabled]="busy()">
+        <button class="btn" title="Create the household and its first Nana account" type="submit" [disabled]="busy()">
           {{ busy() ? 'Creating…' : 'Create household' }}
         </button>
       </form>

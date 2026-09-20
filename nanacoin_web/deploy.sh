@@ -32,7 +32,7 @@ red()   { printf '\033[31m%s\033[0m\n' "$*"; }
 green() { printf '\033[32m%s\033[0m\n' "$*"; }
 cyan()  { printf '\033[36m%s\033[0m\n' "$*"; }
 
-ANGULAR_DIR="../nanacoin/angular"
+ANGULAR_DIR="../nanacoin_go/angular"
 
 # Angular 22 puts the actual site under dist/<project>/browser/, alongside
 # build metadata (3rdpartylicenses.txt, prerendered-routes.json) that is not

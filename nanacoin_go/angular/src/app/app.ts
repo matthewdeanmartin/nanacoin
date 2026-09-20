@@ -88,8 +88,7 @@ export class App {
       if (event instanceof NavigationEnd) {
         const path = event.urlAfterRedirects.split('?')[0];
         this.aboutPage.set(path === '/about');
-        this.publicPage.set(['/about', '/recipes', '/ledger'].includes(path)
-          || (IS_DEMO && path === '/diagnostics'));
+        this.publicPage.set(['/about', '/recipes', '/ledger', '/diagnostics'].includes(path));
         requestAnimationFrame(() => document.getElementById('main-content')?.focus());
       }
     });
@@ -236,14 +235,6 @@ export class App {
       // switchTo's 401 has already dropped that account. Whatever remains
       // active is where the user lands; with nothing left, that is login.
       this.phase.set(this.session.signedIn() ? 'app' : 'login');
-    }
-  }
-
-  protected async refresh(): Promise<void> {
-    try {
-      await this.session.refresh();
-    } catch (e) {
-      this.toasts.fromError(e);
     }
   }
 

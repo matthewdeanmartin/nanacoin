@@ -1,13 +1,8 @@
 // The household economy: what the money supply has done, what changed hands,
 // and how each person's balance moved.
 //
-// # Two views, because the server has two
-//
-// The full ledger is Nana's (ledger:read_all), so money supply and GDP are
-// hers to see - they are facts about everyone. An ordinary member gets the one
-// series they are entitled to: their own balance, from their own account
-// history. That split is the server's and is enforced there; this page only
-// avoids asking for what it would be refused.
+// The ledger is shared with the household, like the paper notebook in the
+// NanaCoin premise. Everyone can audit the supply, GDP, and balance movement.
 //
 // All the arithmetic runs here rather than on the board. See series.ts.
 
@@ -51,8 +46,7 @@ const LEDGER_LIMIT = 365;
         </p>
       }
 
-      @if (session.isNana()) {
-        <div class="chart-controls">
+      <div class="chart-controls">
           <label>
             Group by
             <select [value]="bucket()" (change)="bucket.set($any($event.target).value)">
@@ -60,7 +54,7 @@ const LEDGER_LIMIT = 365;
               <option value="week">Week</option>
             </select>
           </label>
-        </div>
+      </div>
 
         <app-line-chart
           title="Money supply"
@@ -79,17 +73,6 @@ const LEDGER_LIMIT = 365;
           subtitle="What each person holds over time."
           [series]="balances()"
         />
-      } @else {
-        <app-line-chart
-          title="Your balance"
-          subtitle="What you have held over time."
-          [series]="myBalance()"
-        />
-
-        <p class="muted small">
-          The household-wide figures are Nana's to see.
-        </p>
-      }
     }
   `,
 })
@@ -100,17 +83,14 @@ export class EconomyPage {
   protected readonly bucket = signal<Bucket>('day');
 
   /**
-   * Nana reads the whole ledger; everyone else reads their own history. Both
-   * shapes carry the transactions and the closing figure the series need to
-   * work backwards from.
+   * Every signed-in household member reads the shared ledger.
    */
   protected readonly data = resource({
     params: () => ({
-      nana: this.session.isNana(),
       account: this.session.me()?.account,
     }),
     loader: async ({ params }) => {
-      if (params.nana) {
+      if (params.account) {
         const page = await this.api.ledger(LEDGER_LIMIT);
         return {
           transactions: page.transactions,
@@ -118,15 +98,7 @@ export class EconomyPage {
           balance: 0,
         };
       }
-      if (!params.account) {
-        return { transactions: [], circulation: 0, balance: 0 };
-      }
-      const history = await this.api.accountHistory(params.account, LEDGER_LIMIT);
-      return {
-        transactions: history.transactions,
-        circulation: 0,
-        balance: history.balance,
-      };
+      return { transactions: [], circulation: 0, balance: 0 };
     },
   });
 
@@ -182,16 +154,4 @@ export class EconomyPage {
       .filter((s) => s.points.length > 0);
   });
 
-  protected readonly myBalance = computed<Series[]>(() => {
-    const me = this.session.me();
-    if (!me) return [];
-    return [
-      balanceSeries(
-        this.txns(),
-        me.account,
-        this.data.value()?.balance ?? me.balance ?? 0,
-        me.display_name,
-      ),
-    ];
-  });
 }

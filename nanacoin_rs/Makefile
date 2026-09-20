@@ -5,7 +5,7 @@ CARGO ?= cargo
 PYTHON ?= python
 export CARGO
 
-.PHONY: help run migrate-login build test check fmt smoke certs firmware web bundle deploy web-check run-bundle
+.PHONY: help run migrate-login build test check fmt smoke certs certs-check rotate-certs firmware web bundle deploy probe-board web-check run-bundle
 
 help:
 	@printf '%s\n' \
@@ -17,11 +17,14 @@ help:
 	  'make fmt       Format Rust source' \
 	  'make smoke     Build and test the real desktop HTTP server' \
 	  'make certs     Generate local development TLS certificate files' \
+	  'make certs-check  Validate certificate/key compatibility without a board' \
+	  'make rotate-certs  Archive the current CA and generate a compatible replacement' \
 	  'make firmware  Build ESP32-S3 firmware including Angular (no flashing)' \
 	  'make bundle    Build desktop server including Angular' \
 	  'make run-bundle  Serve UI + API locally on port 8080' \
 	  'make web-check Test bundled assets and deployment safety without a board' \
-	  'make deploy PORT=COM9  Build and update an existing Rust board; preserves ledger'
+	  'make deploy PORT=COM9  Build and update an existing Rust board; preserves ledger' \
+	  'make probe-board ADDRESS=192.168.1.158  Strict TLS/API/site post-flash check'
 
 run:
 	bash scripts/run-local.sh
@@ -50,6 +53,12 @@ smoke: build
 certs:
 	bash scripts/dev-certs.sh
 
+certs-check:
+	bash scripts/test-certs.sh
+
+rotate-certs:
+	bash scripts/rotate-certs.sh --yes
+
 firmware:
 	bash scripts/build-esp32.sh
 
@@ -69,3 +78,6 @@ web-check: bundle
 
 deploy:
 	bash scripts/deploy.sh "$(PORT)"
+
+probe-board:
+	$(PYTHON) scripts/probe-board.py --address "$(ADDRESS)"

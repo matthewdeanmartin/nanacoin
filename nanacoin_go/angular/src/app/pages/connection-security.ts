@@ -14,7 +14,7 @@ import { NanacoinService } from '../api/nanacoin.service';
         HTTPS protects a connection, but an HTTP account can still be stolen while Easy mode is on.</p>
       <p><a href="http://nanacoin.local/trust" target="_blank" rel="noopener noreferrer">Set up trusted HTTPS on each device</a>
         · <a href="https://nanacoin.local/?api=">Open the secure site</a></p>
-      <button type="button" (click)="check()" [disabled]="busy()">Check household mode</button>
+      <button type="button" title="Read whether this household currently permits unencrypted HTTP" (click)="check()" [disabled]="busy()">Check household mode</button>
       @if (mode(); as current) {
         <p>{{ current.https_only ? 'Secure mode: HTTP app and API are disabled.' : 'Easy mode: HTTP and HTTPS are available.' }}</p>
         @if (current.supported && !current.https_only) {
@@ -22,7 +22,7 @@ import { NanacoinService } from '../api/nanacoin.service';
             All sessions will end. Economy reset does not turn HTTP back on; USB recovery is required.</p>
           @if (!secure()) { <p>Open this page over trusted HTTPS to enable Secure mode.</p> }
           <label><input type="checkbox" [(ngModel)]="ready"> Every device is ready; sign everyone out and disable HTTP.</label>
-          <button type="button" (click)="enable()" [disabled]="!ready || !secure() || busy()">Require HTTPS for the household</button>
+          <button type="button" title="Disable HTTP access for every household member after confirmation" (click)="enable()" [disabled]="!ready || !secure() || busy()">Require HTTPS for the household</button>
         }
       }
       <p role="status">{{ message() }}</p>

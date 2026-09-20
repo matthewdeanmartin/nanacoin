@@ -9,7 +9,7 @@ import { Toasts } from './toasts';
       @for (t of toasts.items(); track t.id) {
         <div class="toast" [class.toast--error]="t.kind === 'error'">
           <span>{{ t.text }}</span>
-          <button class="toast__close" (click)="toasts.dismiss(t.id)" aria-label="Dismiss">
+          <button class="toast__close" title="Dismiss this message" (click)="toasts.dismiss(t.id)" aria-label="Dismiss">
             &times;
           </button>
         </div>

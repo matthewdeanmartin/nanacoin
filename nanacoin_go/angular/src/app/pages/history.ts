@@ -4,8 +4,8 @@ import { Component, computed, inject, resource, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { Notebook } from '../ui/notebook';
 
-import { Transaction } from '../api/models';
-import { NanacoinService, newIdempotencyKey } from '../api/nanacoin.service';
+import { Offer, Quote, Transaction } from '../api/models';
+import { ApiError, NanacoinService, newIdempotencyKey } from '../api/nanacoin.service';
 import { Session } from '../api/session';
 import { Dialogs } from '../ui/dialog';
 import { Toasts } from '../ui/toasts';
@@ -41,6 +41,78 @@ interface Row {
   imports: [RouterLink, Notebook],
   template: `
     <h1>My Account</h1>
+    <p class="lede">Your activity, offers, exchange bids, and sign-in settings.</p>
+
+    <nav class="section-nav" aria-label="My Account sections">
+      <a href="#recent-events">Recent events</a>
+      <a href="#my-offers">My offers</a>
+      <a href="#my-forex-bids">My forex bids</a>
+      <a href="#account-security">Password</a>
+    </nav>
+
+    <section id="my-offers" class="account-section">
+      <div class="section-heading">
+        <h2>My Offers</h2>
+        <a routerLink="/offers">View all offers</a>
+      </div>
+      @if (offers.isLoading()) {
+        <p class="muted">Loading offers…</p>
+      } @else if (offers.error()) {
+        <p class="muted">Offers are not supported by this server.</p>
+      } @else if (myOffers().length === 0) {
+        <p class="empty">You have no offers yet.</p>
+      } @else {
+        <div class="account-summary-list">
+          @for (o of myOffers().slice(0, 4); track o.id) {
+            <a routerLink="/offers">
+              <span>{{ o.listing_title || 'Offer' }}</span>
+              <span>{{ o.amount }} coins · {{ o.status.toLowerCase() }}</span>
+            </a>
+          }
+        </div>
+      }
+    </section>
+
+    <section id="my-forex-bids" class="account-section">
+      <div class="section-heading">
+        <h2>My Forex Bids</h2>
+        <a routerLink="/forex">Open exchange</a>
+      </div>
+      @if (quotes.isLoading()) {
+        <p class="muted">Loading bids…</p>
+      } @else if (quotes.error()) {
+        <p class="muted">Foreign exchange is not supported by this server.</p>
+      } @else if (myBids().length === 0) {
+        <p class="empty">You have no forex bids.</p>
+      } @else {
+        <div class="account-summary-list">
+          @for (q of myBids().slice(0, 4); track q.id) {
+            <a routerLink="/forex">
+              <span>{{ q.coins }} coins at {{ q.cents_per_coin }}¢ each</span>
+              <span>{{ q.status.toLowerCase() }}</span>
+            </a>
+          }
+        </div>
+      }
+    </section>
+
+    <section id="account-security" class="account-section">
+      <div class="section-heading">
+        <h2>Password</h2>
+        <button class="btn btn--quiet btn--small" type="button" title="Choose a new PIN or password for your account" (click)="changePassword()">Change password…</button>
+      </div>
+      <p class="muted small">Changing it ends your other signed-in sessions and asks you to sign in again here.</p>
+    </section>
+
+    <section id="recent-events" class="account-section">
+    <h2>Recent Events</h2>
+
+    @for (o of recentOfferEvents(); track o.id) {
+      <a class="account-event" routerLink="/offers">
+        <span>{{ offerEventLabel(o) }}</span>
+        <span>{{ o.listing_title || 'Offer' }} · {{ when(o.updated_at) }}</span>
+      </a>
+    }
 
     @if (history.isLoading()) {
       <p class="muted">Loading…</p>
@@ -77,6 +149,7 @@ interface Row {
               @if (r.repeatable) {
                 <a
                   class="btn btn--quiet btn--small"
+                  title="Start another transfer with the same recipient, amount, and memo"
                   routerLink="/send"
                   [queryParams]="{ to: r.otherAccount, amount: -r.delta, memo: r.txn.description }"
                 >Repeat</a>
@@ -93,6 +166,7 @@ interface Row {
                 <button
                   class="btn btn--quiet btn--small"
                   type="button"
+                  title="Append a correcting transaction; the original remains in your history"
                   [disabled]="reversing() === r.txn.id"
                   (click)="reverse(r.txn)"
                 >{{ reversing() === r.txn.id ? 'Reversing…' : 'Reverse' }}</button>
@@ -102,6 +176,7 @@ interface Row {
         }
       </div></app-notebook>
     }
+    </section>
   `,
 })
 export class HistoryPage {
@@ -125,6 +200,42 @@ export class HistoryPage {
         ? this.api.accountHistory(params.account, 50)
         : Promise.resolve({ account: '', balance: 0, transactions: [] }),
   });
+
+  protected readonly offers = resource({
+    params: () => this.session.me()?.account,
+    loader: async ({ params }) => {
+      if (!params) return [] as Offer[];
+      try { return (await this.api.offers()).offers; }
+      catch (e) { if (e instanceof ApiError && e.status === 404) return []; throw e; }
+    },
+  });
+
+  protected readonly quotes = resource({
+    params: () => this.session.me()?.account,
+    loader: async ({ params }) => {
+      if (!params) return [] as Quote[];
+      try { return (await this.api.quotes()).quotes; }
+      catch (e) { if (e instanceof ApiError && e.status === 404) return []; throw e; }
+    },
+  });
+
+  /** Offers made by this account, plus offers awaiting its decision. */
+  protected readonly myOffers = computed(() => {
+    const account = this.session.me()?.account;
+    return (this.offers.value() ?? [])
+      .filter((o) => o.offerer === account || (o.status === 'OPEN' && o.offerer !== account))
+      .sort((a, b) => b.updated_at - a.updated_at);
+  });
+
+  protected readonly myBids = computed(() => {
+    const account = this.session.me()?.account;
+    return (this.quotes.value() ?? [])
+      .filter((q) => q.maker === account && q.side === 'BID')
+      .sort((a, b) => b.updated_at - a.updated_at);
+  });
+
+  /** Offer changes belong in the event stream alongside money movement. */
+  protected readonly recentOfferEvents = computed(() => this.myOffers().slice(0, 5));
 
   protected readonly rows = computed<Row[]>(() => {
     const account = this.session.me()?.account;
@@ -186,6 +297,50 @@ export class HistoryPage {
       this.toasts.fromError(e);
     } finally {
       this.reversing.set(null);
+    }
+  }
+
+  protected offerEventLabel(offer: Offer): string {
+    const mine = offer.offerer === this.session.me()?.account;
+    if (offer.status === 'OPEN') return mine ? 'Your offer is awaiting a decision' : 'You have an offer to consider';
+    if (offer.status === 'ACCEPTED') return 'Offer accepted';
+    if (offer.status === 'DECLINED') return 'Offer declined';
+    return 'Offer withdrawn';
+  }
+
+  protected async changePassword(): Promise<void> {
+    const password = await this.dialogs.password({
+      title: 'Change your password',
+      message: 'Choose a new PIN or password with at least 4 characters.',
+      placeholder: 'New PIN or password',
+      confirmLabel: 'Continue',
+      required: true,
+    });
+    if (password === null) return;
+    if (password.length < 4) {
+      this.toasts.error('The password must be at least 4 characters.');
+      return;
+    }
+    const confirmation = await this.dialogs.password({
+      title: 'Confirm your new password',
+      placeholder: 'Type it again',
+      confirmLabel: 'Change password',
+      required: true,
+    });
+    if (confirmation === null) return;
+    if (confirmation !== password) {
+      this.toasts.error('The passwords did not match.');
+      return;
+    }
+    try {
+      const id = this.session.me()?.id;
+      if (!id) return;
+      await this.api.setUserPassword(id, password);
+      // The server revokes this token deliberately. Reload into the ordinary
+      // sign-in flow rather than leaving a dead session on screen.
+      window.location.reload();
+    } catch (e) {
+      this.toasts.fromError(e);
     }
   }
 

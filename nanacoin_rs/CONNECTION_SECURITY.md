@@ -41,12 +41,23 @@ page; never enter credentials into an old HTTP bookmark in Secure mode.
 
 ## Certificates and deployment
 
-`scripts/dev-certs.sh` uses installed `mkcert` to create a dedicated CA in ignored
+`scripts/dev-certs.sh` uses OpenSSL to create a dedicated CA in ignored
 `.local/ca`, and a CA-signed server certificate in ignored
-`certs/nanacoin-ca-signed.crt` / `.key`. It does **not** run `mkcert -install` or
-change the computer trust store. Existing self-signed files are preserved.
+`certs/nanacoin-ca-signed.crt` / `.key`. It does **not** install anything in the
+computer trust store. Existing self-signed files are preserved.
 Existing generated certificates are checked, not silently replaced. Renewal
 must keep the same CA if household devices should keep their existing trust.
+The CA and server key are RSA and valid for 36,525 days (100 years):
+`scripts/test-certs.sh` enforces at least 99 years of remaining validity, the
+algorithm, matching public/private keys, hostname and TLS usages during every
+build. This avoids Firefox/NSS `SEC_ERROR_INVALID_KEY` failures seen with the
+appliance's previous ECDSA certificate.
+
+`make rotate-certs` is the explicit recovery path for incompatible or lost
+certificate material. It moves the old CA, server certificate and private keys
+to ignored `.local/cert-backups/<UTC timestamp>` before generating anything;
+it never silently deletes them. Rotation changes the trust anchor, so all
+devices must install the replacement from `http://nanacoin.local/trust`.
 
 The server's private key is necessarily embedded for TLS. The **CA private key
 `rootCA-key.pem` is never bundled, served, or flashed**. Only `home-ca.der` and the

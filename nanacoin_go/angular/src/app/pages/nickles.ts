@@ -28,7 +28,7 @@ export function redemptionUrl(token: string, pageUrl = location.href): string {
  <p>Any member can move existing coins into the voucher reserve. Only Nana can issue new money. A lost secret leaves its coins reserved until this demo is reset.</p>
  <label>Whole NanaCoins <input type="number" min="1" step="1" [(ngModel)]="amount"></label>
  @if (session.isNana()) { <label><input type="checkbox" [(ngModel)]="fresh"> Nana: issue new money instead of using my balance</label> }
- <button class="btn" [disabled]="busy() || !session.signedIn()" (click)="create()">Create voucher</button>
+ <button class="btn" title="Move coins into a new single-use bearer voucher" [disabled]="busy() || !session.signedIn()" (click)="create()">Create voucher</button>
  </section>
  @if (voucher(); as v) {
  <section class="panel printable-voucher"><h2>DEMO nana-nickle · {{ v.amount }} NC</h2><p>Serial {{ v.serial }} · One redemption only · Same tab only</p>
@@ -37,11 +37,11 @@ export function redemptionUrl(token: string, pageUrl = location.href): string {
    <figure class="voucher-qr"><img [src]="qrCode()" width="256" height="256" alt="QR code linking to the Nana-nickle redemption page"><figcaption>Scan to open NanaCoin’s redemption page with this voucher ready.</figcaption></figure>
  }
  <p>DEMO ONLY — no cash value — destroyed by reload. Redeem in NanaCoin → Nana-nickles in the issuing browser tab.</p></section>
- <button class="btn" (click)="print()">Print this voucher</button> <button class="btn" (click)="hide()">Hide secret</button>
+ <button class="btn" title="Open the browser print dialog for this voucher" (click)="print()">Print this voucher</button> <button class="btn" title="Remove the voucher secret from the screen" (click)="hide()">Hide secret</button>
  }
  <section class="panel"><h2>Redeem into your account</h2>
  <label>Voucher code <input type="password" autocomplete="off" spellcheck="false" [(ngModel)]="token"></label>
- <button class="btn" [disabled]="busy() || !session.signedIn()" (click)="redeem()">Redeem once</button></section>
+ <button class="btn" title="Claim this voucher into the active account; it cannot be redeemed twice" [disabled]="busy() || !session.signedIn()" (click)="redeem()">Redeem once</button></section>
  <p role="status">{{ message() }}</p>
  }`,
 })

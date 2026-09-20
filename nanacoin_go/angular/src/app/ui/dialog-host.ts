@@ -70,8 +70,9 @@ import { Dialogs } from './dialog';
               <input
                 #field
                 class="dlg__input"
-                [type]="r.kind === 'number' ? 'number' : 'text'"
+                [type]="r.kind === 'number' ? 'number' : r.kind === 'password' ? 'password' : 'text'"
                 [placeholder]="r.placeholder ?? ''"
+                [attr.autocomplete]="r.kind === 'password' ? 'new-password' : null"
                 [attr.min]="r.min ?? null"
                 [attr.max]="r.max ?? null"
                 [(ngModel)]="value"
@@ -84,11 +85,12 @@ import { Dialogs } from './dialog';
           }
 
           <div class="dlg__actions">
-            <button class="btn btn--quiet" type="button" (click)="cancel()">Cancel</button>
+            <button class="btn btn--quiet" type="button" title="Close without making this change" (click)="cancel()">Cancel</button>
             <button
               class="btn"
               [class.btn--danger]="r.danger"
               type="submit"
+              [attr.title]="r.confirmLabel ?? 'Confirm this action'"
             >
               {{ r.confirmLabel ?? 'Confirm' }}
             </button>

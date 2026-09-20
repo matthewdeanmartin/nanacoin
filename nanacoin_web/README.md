@@ -124,7 +124,7 @@ browser. Hidden tabs stop polling, requests do not overlap, and leaving the
 page cancels pending requests. Old Rust firmware can show basic heap
 counters; unsupported firmware reports its limitations.
 
-Building with `npm run build` in `nanacoin/angular` only produces local
+Building with `npm run build` in `nanacoin_go/angular` only produces local
 assets. Deploy scripts write to the web board; do not run them until a
 board update is intended. This diagnostics change does not require or
 perform a flash/deployment as part of local validation.

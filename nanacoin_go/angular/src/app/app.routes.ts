@@ -68,8 +68,7 @@ export const routes: Routes = [
     loadComponent: () => IS_DEMO
       ? import('./pages/browser-health').then(m => m.BrowserHealth)
       : import('./pages/diagnostics').then((m) => m.DiagnosticsPage),
-    title: IS_DEMO ? 'Browser Health — NanaCoin' : 'Board Health — NanaCoin',
-    canActivate: IS_DEMO ? [] : [nanaOnly],
+    title: 'Board Health — NanaCoin',
   },
   { path: '', pathMatch: 'full', redirectTo: 'market' },
   { path: '**', redirectTo: 'market' },

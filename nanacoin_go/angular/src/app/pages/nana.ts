@@ -276,6 +276,30 @@ export class NanaPage {
     }
   }
 
+  /** Nana can replace a member's forgotten password; the server revokes that
+   * member's existing sessions as part of the same operation. */
+  protected async resetPassword(id: string, displayName: string): Promise<void> {
+    const password = await this.dialogs.password({
+      title: `Reset ${displayName}'s password`,
+      message: 'Choose a temporary PIN or password and give it to them privately.',
+      detail: ["Their other signed-in sessions will end immediately."],
+      placeholder: 'At least 4 characters',
+      confirmLabel: 'Reset password',
+      required: true,
+    });
+    if (password === null) return;
+    if (password.length < 4) {
+      this.toasts.error('The password must be at least 4 characters.');
+      return;
+    }
+    try {
+      await this.api.setUserPassword(id, password);
+      this.toasts.ok(`${displayName}'s password was reset.`);
+    } catch (e) {
+      this.toasts.fromError(e);
+    }
+  }
+
   /** A reversal cannot itself be reversed, and issuance is corrected by retiring. */
   protected reversible(t: Transaction): boolean {
     if (t.reference?.startsWith('nickle:')) return false;

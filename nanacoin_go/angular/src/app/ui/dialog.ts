@@ -12,7 +12,7 @@
 import { Injectable, signal } from '@angular/core';
 
 /** What a dialog is asking for. */
-export type DialogKind = 'confirm' | 'text' | 'number' | 'offer';
+export type DialogKind = 'confirm' | 'text' | 'password' | 'number' | 'offer';
 
 export interface DialogRequest {
   kind: DialogKind;
@@ -65,6 +65,11 @@ export class Dialogs {
   /** A line of text. Resolves to the text, or null if cancelled. */
   prompt(req: Omit<DialogRequest, 'kind'>): Promise<DialogResult> {
     return this.open({ ...req, kind: 'text' });
+  }
+
+  /** A secret line of text, kept out of browser history and screen display. */
+  password(req: Omit<DialogRequest, 'kind'>): Promise<DialogResult> {
+    return this.open({ ...req, kind: 'password' });
   }
 
   /** A whole number. Resolves to the digits, or null if cancelled. */

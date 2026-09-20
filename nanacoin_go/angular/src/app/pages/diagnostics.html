@@ -1,8 +1,8 @@
-<h1>Machine health</h1>
+<h1>Board health</h1>
 <p class="muted">API board at {{ base.description() }} · live machine diagnostics.</p>
 <div class="toolbar">
-  <button class="btn" (click)="refresh()" [disabled]="busy()">{{ busy() ? 'Reading…' : 'Refresh' }}</button>
-  <button class="btn btn--quiet" (click)="toggle()">{{ following() ? 'Pause live updates' : 'Resume live updates' }}</button>
+  <button class="btn" title="Request fresh health and diagnostic readings from the board" (click)="refresh()" [disabled]="busy()">{{ busy() ? 'Reading…' : 'Refresh' }}</button>
+  <button class="btn btn--quiet" title="Start or stop automatic five-second diagnostic refreshes" (click)="toggle()">{{ following() ? 'Stop live updates' : 'Start live updates' }}</button>
   <span class="muted" role="status">
     @if (receivedAt(); as time) { Last response {{ time | date:'mediumTime' }} · {{ latency() }} ms }
     @else { Waiting for a sample… }
@@ -95,7 +95,7 @@
 <section class="panel">
   <div class="toolbar">
     <h2>Hardware and firmware</h2>
-    <button class="btn btn--quiet btn--small" (click)="loadInfo()" [disabled]="infoBusy()">Refresh system information</button>
+    <button class="btn btn--quiet btn--small" title="Request the board's current build and system information" (click)="loadInfo()" [disabled]="infoBusy()">Refresh system information</button>
   </div>
   @if (infoFailure()) { <p class="warning">{{ infoFailure() }}</p> }
   @if (info(); as i) {

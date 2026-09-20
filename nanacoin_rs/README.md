@@ -51,6 +51,7 @@ the exact NVS key layout, start with [the Rust guide](../docs/rust/index.md).
 make check       # format, Clippy, Rust tests and real local HTTP smoke
 make help
 make certs       # development TLS files; preserves existing keys
+make certs-check # offline RSA/key/hostname/usage validation
 make firmware   # compile only; requires Wi-Fi settings
 ```
 
@@ -76,10 +77,18 @@ The board serves `http://nanacoin.local/` and `https://nanacoin.local/` in Easy
 mode. mDNS needs multicast reachability. `/trust` guides certificate installation;
 `/ca` serves only the public household CA. Nana can require HTTPS for everyone
 after preparing all devices. Secure mode leaves HTTP available only for trust
-setup and CA download. The build needs `mkcert` and OpenSSL, preserves its dedicated
+setup and CA download. The build needs OpenSSL, preserves its dedicated
 CA, and never installs trust automatically. See [connection security](CONNECTION_SECURITY.md)
 for limitations, key handling and explicit USB recovery without economy reset.
 Both canonical origins are accepted even when other CORS origins are customized.
+
+Certificate generation uses 100-year RSA certificates for compatibility with
+the ESP-IDF server and Firefox/NSS clients. Every firmware build runs
+`make certs-check` implicitly and refuses short-lived, EC or mismatched key
+material. If the ignored CA files are missing or a
+deliberate replacement is required, run `make rotate-certs`; it archives the old
+CA and keys under `.local/cert-backups`, generates and validates the replacement,
+and requires every client to trust the new CA from `/trust` after deployment.
 
 ## Single-board build and deployment
 
@@ -90,7 +99,18 @@ make web-check                    # Rust, HTTP assets and deployment safety test
 make firmware                     # Angular + gzip manifest + ELF + checked .bin
 # Only when a board is attached and deployment is intended:
 make deploy PORT=COM9
+make probe-board ADDRESS=192.168.1.158 # strict post-flash TLS/API/site check
 ```
+
+`make deploy` builds both halves of the single-board application: the current
+shared client from `../nanacoin_go/angular` and the Rust API firmware that
+embeds it. Do not run `nanacoin_web/deploy.ps1` as a second step unless you are
+deliberately restoring the legacy two-board arrangement.
+
+After flashing, `make probe-board ADDRESS=<board-ip>` verifies the live server
+against the generated CA without a certificate bypass, checks hostname and TLS,
+reads the API status, confirms the ledger invariant and Angular shell, and
+compares the board's downloadable `/ca` byte-for-byte with the build input.
 
 Deployment rebuilds first, reads the board's partition table, and refuses any
 layout other than the current Rust layout. It writes **only** the application

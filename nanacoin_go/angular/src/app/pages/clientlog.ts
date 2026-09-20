@@ -38,8 +38,8 @@ import { Toasts } from '../ui/toasts';
         Also print to the console
       </label>
 
-      <button class="btn btn--quiet btn--small" (click)="copy()">Copy</button>
-      <button class="btn btn--quiet btn--small" (click)="log.clear()">Clear</button>
+      <button class="btn btn--quiet btn--small" title="Copy the visible browser log to the clipboard" (click)="copy()">Copy</button>
+      <button class="btn btn--quiet btn--small" title="Remove all browser log entries from this tab" (click)="log.clear()">Clear</button>
     </div>
 
     @if (entries().length === 0) {

@@ -7,17 +7,17 @@
 </p>
 
 <div class="logs__bar">
-  <button class="btn btn--quiet btn--small" (click)="load()" [disabled]="loading()">
+  <button class="btn btn--quiet btn--small" title="Request the newest server events now" (click)="load()" [disabled]="loading()">
     {{ loading() ? 'Reading…' : 'Refresh' }}
   </button>
-  <button class="btn btn--quiet btn--small" (click)="toggleFollow()">
+  <button class="btn btn--quiet btn--small" title="Start or stop automatic server-log refreshes" (click)="toggleFollow()">
     {{ following() ? 'Stop following' : 'Follow' }}
   </button>
   <label class="checkbox">
     <input type="checkbox" [checked]="problemsOnly()" (change)="problemsOnly.set(!problemsOnly())" />
     Problems only
   </label>
-  <button class="btn btn--quiet btn--small" (click)="copy()">Copy</button>
+  <button class="btn btn--quiet btn--small" title="Copy the visible server log to the clipboard" (click)="copy()">Copy</button>
   <span class="logs__count">{{ total() }} recorded</span>
 </div>
 

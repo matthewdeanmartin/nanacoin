@@ -25,13 +25,13 @@
         </p>
 
         @if (mine(l)) {
-          <button class="btn btn--quiet" (click)="cancel(l)">Cancel listing</button>
+          <button class="btn btn--quiet" title="Remove your listing from the active market" (click)="cancel(l)">Cancel listing</button>
         } @else if (wanted(l)) {
           <!--
             A want-ad: they have the money and want the thing. There is
             nothing to buy, so the only move is to offer to do it.
           -->
-          <button class="btn" (click)="offer(l)" [disabled]="offering() !== null">
+          <button class="btn" title="Propose a different price or terms to the listing owner" (click)="offer(l)" [disabled]="offering() !== null">
             {{ offering() === l.id ? 'Offering…' : 'Offer to do this' }}
           </button>
         } @else {
@@ -95,7 +95,7 @@
       {{ side === 'BUY' ? 'How many coins are you offering?' : 'Price in coins' }}
       <input name="price" type="number" min="1" step="1" [(ngModel)]="price" required />
     </label>
-    <button class="btn" type="submit" [disabled]="posting()">
+    <button class="btn" title="Publish this listing to the household market" type="submit" [disabled]="posting()">
       {{ posting() ? 'Listing…' : 'List it' }}
     </button>
   </form>

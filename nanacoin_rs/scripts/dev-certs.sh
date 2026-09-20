@@ -9,20 +9,41 @@ ca=certs/home-ca.crt
 if [[ -e $leaf || -e $key || -e $ca ]]; then
   [[ -f $leaf && -f $key && -f $ca ]] || { echo 'Incomplete CA-signed certificate set; refusing to replace it.' >&2; exit 1; }
 else
-  command -v mkcert >/dev/null || { echo 'Install mkcert first.' >&2; exit 1; }
+  command -v openssl >/dev/null || { echo 'Install OpenSSL first.' >&2; exit 1; }
   mkdir -p .local/ca
-  export CAROOT="$(pwd)/.local/ca"
-  if command -v cygpath >/dev/null; then CAROOT="$(cygpath -m "$CAROOT")"; export CAROOT; fi
-  # No -install: system trust stores are changed only by the owner.
-  mkcert -ecdsa -cert-file "$leaf" -key-file "$key" nanacoin.local localhost 127.0.0.1
-  cp "$CAROOT/rootCA.pem" "$ca"
+  root_key=.local/ca/rootCA-key.pem
+  root_cert=.local/ca/rootCA.pem
+  csr=.local/ca/nanacoin.csr
+  extensions=.local/ca/nanacoin.ext
+
+  # RSA gives the ESP-IDF ECDHE-RSA server and supported browsers the same
+  # operation. 36,525 days spans a full century including the usual leap-day
+  # average; this is a private household trust anchor, not a public Web PKI
+  # certificate.
+  # Git Bash otherwise rewrites a leading /O= X.509 subject as a Windows path.
+  MSYS2_ARG_CONV_EXCL='*' openssl req -x509 -newkey rsa:3072 -sha256 -days 36525 -nodes \
+    -keyout "$root_key" -out "$root_cert" \
+    -subj '/O=NanaCoin household/OU=Private home CA/CN=NanaCoin Home CA' \
+    -addext 'basicConstraints=critical,CA:TRUE,pathlen:0' \
+    -addext 'keyUsage=critical,keyCertSign,cRLSign' \
+    -addext 'subjectKeyIdentifier=hash'
+  MSYS2_ARG_CONV_EXCL='*' openssl req -new -newkey rsa:2048 -sha256 -nodes -keyout "$key" -out "$csr" \
+    -subj '/O=NanaCoin household/OU=Private home server/CN=nanacoin.local'
+  cat >"$extensions" <<'EOF'
+basicConstraints=critical,CA:FALSE
+keyUsage=critical,digitalSignature,keyEncipherment
+extendedKeyUsage=serverAuth
+subjectAltName=DNS:nanacoin.local,DNS:localhost,IP:127.0.0.1
+subjectKeyIdentifier=hash
+authorityKeyIdentifier=keyid,issuer
+EOF
+  serial=$(openssl rand -hex 16)
+  openssl x509 -req -in "$csr" -CA "$root_cert" -CAkey "$root_key" \
+    -set_serial "0x$serial" -days 36525 -sha256 -extfile "$extensions" -out "$leaf"
+  cp "$root_cert" "$ca"
+  rm -f "$csr" "$extensions"
 fi
-openssl verify -CAfile "$ca" -verify_hostname nanacoin.local "$leaf"
-openssl x509 -in "$leaf" -noout -checkend 0
-openssl x509 -in "$ca" -noout -checkend 0
-leaf_public=$(openssl x509 -in "$leaf" -pubkey -noout | openssl pkey -pubin -outform DER | openssl dgst -sha256)
-key_public=$(openssl pkey -in "$key" -pubout -outform DER | openssl dgst -sha256)
-[[ "$leaf_public" == "$key_public" ]] || { echo 'Server certificate and key do not match.' >&2; exit 1; }
+bash scripts/test-certs.sh
 openssl x509 -in "$ca" -outform DER -out certs/home-ca.der
 echo 'Compare this CA SHA-256 fingerprint through a trusted channel:'
 openssl x509 -in "$ca" -noout -fingerprint -sha256

@@ -47,7 +47,7 @@
       <header class="topbar">
         <div class="topbar__who"><strong>Server logs</strong></div>
         <div class="topbar__actions">
-          <button class="btn btn--quiet btn--small" (click)="leaveLogs()">Back</button>
+          <button class="btn btn--quiet btn--small" title="Return to NanaCoin" (click)="leaveLogs()">Back</button>
         </div>
       </header>
       <main id="main-content" tabindex="-1">
@@ -113,16 +113,18 @@
             </label>
           }
 
-          <button class="btn btn--quiet btn--small" (click)="addAccount()">Add account</button>
-          <button class="btn btn--quiet btn--small" (click)="refresh()" [disabled]="session.loading()">
-            {{ session.loading() ? 'Refreshing…' : 'Refresh' }}
-          </button>
-          <button class="btn btn--quiet btn--small" (click)="logout()">
-            {{ session.hasSeveralAccounts() ? 'Leave this account' : 'Log out' }}
-          </button>
-          @if (session.hasSeveralAccounts()) {
-            <button class="btn btn--quiet btn--small" (click)="logoutAll()">Log out all</button>
-          }
+          <details class="account-menu">
+            <summary title="Account, session, and data actions">Account</summary>
+            <div class="account-menu__items">
+              <button type="button" title="Sign in to another existing NanaCoin account on this device" (click)="addAccount()">Sign in another account</button>
+              <button type="button" title="End the active account's session on this device" (click)="logout()">
+                {{ session.hasSeveralAccounts() ? 'Leave this account' : 'Log out' }}
+              </button>
+              @if (session.hasSeveralAccounts()) {
+                <button type="button" title="End every NanaCoin session saved on this device" (click)="logoutAll()">Log out all accounts</button>
+              }
+            </div>
+          </details>
         </div>
       </header>
 
@@ -133,7 +135,7 @@
       <footer class="apinote">
         {{ isDemo ? 'Fictional economy in this browser tab; no board connected.' : 'Connected to ' + apiBase.description() }}
         @if (!isDemo) {
-        <button class="btn btn--quiet btn--small" (click)="changeServer()">
+        <button class="btn btn--quiet btn--small" title="Connect this client to a different NanaCoin server" (click)="changeServer()">
           Change server
         </button>
         }

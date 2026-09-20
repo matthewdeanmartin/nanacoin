@@ -22,7 +22,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-$AngularDir = Join-Path $PSScriptRoot '..\nanacoin\angular'
+$AngularDir = Join-Path $PSScriptRoot '..\nanacoin_go\angular'
 
 # Angular 22 puts the actual site under dist/<project>/browser/, alongside
 # build metadata (3rdpartylicenses.txt, prerendered-routes.json) that is not

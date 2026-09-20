@@ -41,7 +41,7 @@ export class DiagnosticsPage {
   protected readonly infoFailure = signal('');
   protected readonly busy = signal(false);
   protected readonly infoBusy = signal(false);
-  protected readonly following = signal(true);
+  protected readonly following = signal(false);
   protected readonly receivedAt = signal<number | null>(null);
   protected readonly latency = signal(0);
   protected readonly stalled = signal(false);
@@ -116,7 +116,7 @@ export class DiagnosticsPage {
         this.timer = setTimeout(() => {
           if (document.hidden) this.scheduleVisible();
           else void this.refresh();
-        }, 2000);
+        }, 5000);
       }
     }
   }

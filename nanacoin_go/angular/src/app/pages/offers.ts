@@ -76,6 +76,7 @@ import { Toasts } from '../ui/toasts';
                 @if (o.listing_title) {
                   <button
                     class="btn"
+                    title="Accept this proposal and settle the transaction after confirmation"
                     (click)="accept(o)"
                     [disabled]="busy() !== null"
                   >
@@ -84,6 +85,7 @@ import { Toasts } from '../ui/toasts';
                 }
                 <button
                   class="btn btn--quiet"
+                  title="Refuse this proposal without moving money"
                   (click)="decline(o)"
                   [disabled]="busy() !== null"
                 >
@@ -112,6 +114,7 @@ import { Toasts } from '../ui/toasts';
               @if (o.status === 'OPEN') {
                 <button
                   class="btn btn--quiet"
+                  title="Take back this open proposal"
                   (click)="withdraw(o)"
                   [disabled]="busy() !== null"
                 >

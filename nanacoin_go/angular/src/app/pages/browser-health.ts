@@ -14,7 +14,7 @@ export function browserHealth() {
 
 @Component({
   selector: 'app-browser-health',
-  template: `<h1>Browser health</h1>
+  template: `<h1>Board health</h1>
     <p>This static showcase runs in your browser tab, not on an ESP32. These are browser-reported readings, not pretend board measurements.</p>
     <section class="panel"><dl>
       <dt>Page lifetime</dt><dd>{{ data().uptime }} seconds</dd>
@@ -23,7 +23,7 @@ export function browserHealth() {
       <dt>Viewport</dt><dd>{{ data().viewport }}</dd>
       <dt>Browser says network available</dt><dd>{{ data().online ? 'Yes (not an Internet connectivity test)' : 'No' }}</dd>
       <dt>Secure browser context</dt><dd>{{ data().secure ? 'Yes' : 'No' }}</dd>
-    </dl><button class="btn" (click)="refresh()">Refresh readings</button></section>
+    </dl><button class="btn" title="Measure the browser's current memory and runtime information again" (click)="refresh()">Refresh readings</button></section>
     <p>No network requests are made for these readings. The browser does not expose board SRAM, PSRAM, flash wear, die temperature, Wi-Fi signal or whole-device power here. No invented zeroes stand in for those values.</p>`,
 })
 export class BrowserHealth {

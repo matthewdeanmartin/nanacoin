@@ -62,11 +62,11 @@ import { Toasts } from '../ui/toasts';
           <input name="password" type="password" [(ngModel)]="password" required
                  autocomplete="current-password" />
         </label>
-        <button class="btn" type="submit" [disabled]="busy()">
+        <button class="btn" title="Sign in with this username and password" type="submit" [disabled]="busy()">
           {{ busy() ? (adding() ? 'Adding…' : 'Logging in…') : (adding() ? 'Add account' : 'Log in') }}
         </button>
         @if (adding()) {
-          <button class="btn btn--quiet" type="button" (click)="cancel.emit()">
+          <button class="btn btn--quiet" title="Return to the account already signed in" type="button" (click)="cancel.emit()">
             Cancel
           </button>
         }
@@ -74,7 +74,7 @@ import { Toasts } from '../ui/toasts';
       }
 
       @if (isDemo && adding()) {
-        <button class="btn btn--quiet" type="button" (click)="cancel.emit()">Cancel</button>
+        <button class="btn btn--quiet" title="Return to the account already signed in" type="button" (click)="cancel.emit()">Cancel</button>
       }
     </div>
   `,

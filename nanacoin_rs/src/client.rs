@@ -349,14 +349,10 @@ pub(crate) fn route<J: Journal>(
             }
             return serialize(
                 &Response {
-                    users: Rows(s.state.members.iter().map(|m| {
-                        let mut view = user(m);
-                        if !is_admin && m.id != actor {
-                            view.balance = None;
-                            view.usd_cents = None;
-                        }
-                        view
-                    })),
+                    // Balances are part of the shared household ledger. A
+                    // future private-description flag may hide memo text, but
+                    // amounts and postings remain auditable by every member.
+                    users: Rows(s.state.members.iter().map(user)),
                 },
                 output,
             );
@@ -388,28 +384,7 @@ pub(crate) fn route<J: Journal>(
             );
         }
         ("GET", "/api/v1/transactions") => {
-            if !is_admin {
-                return Err(Error::Forbidden);
-            }
-            #[derive(Serialize)]
-            struct Response<T> {
-                transactions: T,
-                circulation: i64,
-            }
-            return serialize(
-                &Response {
-                    transactions: Rows(
-                        s.state
-                            .history
-                            .iter()
-                            .rev()
-                            .take(limit)
-                            .map(|t| transaction(&s.state, t)),
-                    ),
-                    circulation: -s.state.issuance_balance,
-                },
-                output,
-            );
+            return public_ledger(&s.state, limit, output);
         }
         _ => {}
     }
@@ -447,15 +422,11 @@ pub(crate) fn route<J: Journal>(
         }
         if let Some(tx) = path.strip_prefix("/api/v1/transactions/") {
             let tx_id = number(tx, "tx-")?;
-            let tx = s
-                .state
+            s.state
                 .history
                 .iter()
                 .find(|t| t.id == tx_id)
                 .ok_or(Error::NotFound)?;
-            if !is_admin && tx.from != actor && tx.to != actor {
-                return Err(Error::Forbidden);
-            }
             return transaction_response(&s.state, tx_id, output);
         }
     }
@@ -750,6 +721,42 @@ pub(crate) fn route<J: Journal>(
     } else {
         transaction_response(&s.state, receipt.sequence, output)
     }
+}
+
+/** The household notebook is public by design. Authentication still protects
+ * writes, account-scoped endpoints, and administration, but not audit data. */
+pub(crate) fn public_ledger(
+    state: &State,
+    limit: usize,
+    output: &mut [u8],
+) -> Result<usize, Error> {
+    #[derive(Serialize)]
+    struct Response<T> {
+        transactions: T,
+        circulation: i64,
+    }
+    serialize(
+        &Response {
+            transactions: Rows(
+                state
+                    .history
+                    .iter()
+                    .rev()
+                    .take(limit)
+                    .map(|t| transaction(state, t)),
+            ),
+            circulation: -state.issuance_balance,
+        },
+        output,
+    )
+}
+
+pub(crate) fn public_transaction(
+    state: &State,
+    id: &str,
+    output: &mut [u8],
+) -> Result<usize, Error> {
+    transaction_response(state, number(id, "tx-")?, output)
 }
 fn transaction_response(state: &State, sequence: u64, output: &mut [u8]) -> Result<usize, Error> {
     serialize(

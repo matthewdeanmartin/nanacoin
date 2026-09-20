@@ -1,7 +1,5 @@
 <h1>Household</h1>
-@if (session.isNana() && !isDemo) {
-  <app-connection-security />
-}
+<p class="lede">Manage household members, money, security, storage, and the full ledger.</p>
 
 <!--
   A second check behind the route guard, because this page is the one that
@@ -16,31 +14,9 @@
   </p>
 } @else {
 
-@if (session.status()?.checkpoint_supported) {
-  <section class="panel">
-    <h3>Journal and economy</h3>
-    <p>Balances are saved in durable checkpoints. The journal closes automatically after 2,048 changes so the economy can keep running.</p>
-    @if (storage(); as s) {
-      <p class="muted">Generation {{ s.generation }} · {{ s.journal_records }} changes since the last checkpoint</p>
-    }
-    @if (storageError()) { <p class="warning">{{ storageError() }}</p> }
-    <div class="actions">
-      <button class="btn btn--quiet" (click)="loadStorage()" [disabled]="storageBusy()">Refresh storage</button>
-      <button class="btn" (click)="closeBooks()" [disabled]="storageBusy() || seeder.running()">Close journal now</button>
-      <button class="btn btn--quiet" (click)="resetEconomy()" [disabled]="storageBusy() || seeder.running()">Reset economy…</button>
-    </div>
-    <p class="muted small">Closing preserves current state and recent history. Reset removes the whole household and returns to setup. Neither action is an archival backup.</p>
-  </section>
-}
-
-@if (session.status() && !session.status()!.ledger_balanced) {
-  <p class="warning">
-    The ledger does not balance. Something is wrong — do not issue more coins
-    until this has been looked at.
-  </p>
-}
-
-<div class="stats">
+<!-- The household snapshot is intentionally first: changing sections must
+     never make Nana hunt for the economy's current state. -->
+<div class="stats" aria-label="Household summary">
   <div class="stat">
     <span>{{ session.status()?.circulation ?? 0 }}</span>
     <span class="stat__label">in circulation</span>
@@ -59,6 +35,48 @@
   </div>
 </div>
 
+<nav class="section-nav" aria-label="Household sections">
+  @if (!isDemo) { <a href="#security">Security</a> }
+  @if (session.status()?.checkpoint_supported) { <a href="#storage">Storage</a> }
+  <a href="#members">Members</a>
+  <a href="#money">Issue money</a>
+  <a href="#demo-data">Demo data</a>
+  <a href="#full-ledger">Full ledger</a>
+</nav>
+
+@if (session.status() && !session.status()!.ledger_balanced) {
+  <p class="warning">
+    The ledger does not balance. Something is wrong — do not issue more coins
+    until this has been looked at.
+  </p>
+}
+
+@if (!isDemo) {
+  <section id="security" class="household-section">
+    <h2>Connection security</h2>
+    <app-connection-security />
+  </section>
+}
+
+@if (session.status()?.checkpoint_supported) {
+  <section id="storage" class="panel household-section">
+    <h2>Journal and economy</h2>
+    <p>Balances are saved in durable checkpoints. The journal closes automatically after 2,048 changes so the economy can keep running.</p>
+    @if (storage(); as s) {
+      <p class="muted">Generation {{ s.generation }} · {{ s.journal_records }} changes since the last checkpoint</p>
+    }
+    @if (storageError()) { <p class="warning">{{ storageError() }}</p> }
+    <div class="actions">
+      <button class="btn btn--quiet" title="Re-read journal generation and usage from the server; this does not change stored data" (click)="loadStorage()" [disabled]="storageBusy()">Refresh storage status</button>
+      <button class="btn" title="Save a durable checkpoint and start a fresh journal while preserving the household" (click)="closeBooks()" [disabled]="storageBusy() || seeder.running()">Close journal now</button>
+      <button class="btn btn--quiet" title="Erase the household, accounts, balances, listings, offers, and history" (click)="resetEconomy()" [disabled]="storageBusy() || seeder.running()">Reset economy…</button>
+    </div>
+    <p class="muted small">Closing preserves current state and recent history. Reset removes the whole household and returns to setup. Neither action is an archival backup.</p>
+  </section>
+}
+
+<section id="members" class="household-section">
+<h2>Members</h2>
 <div class="members">
   @for (u of session.household(); track u.id) {
     <div class="member">
@@ -71,12 +89,17 @@
       }
       @if (u.status === 'DISABLED') {
         <span class="tag tag--warn">disabled</span>
-        <button class="btn btn--quiet btn--small" (click)="setStatus(u.id, 'ACTIVE')">
+        <button class="btn btn--quiet btn--small" title="Restore this member's ability to sign in and use NanaCoin" (click)="setStatus(u.id, 'ACTIVE')">
           Re-enable
         </button>
       } @else if (u.id !== session.me()?.id) {
-        <button class="btn btn--quiet btn--small" (click)="setStatus(u.id, 'DISABLED')">
+        <button class="btn btn--quiet btn--small" title="Block this member and revoke their current sessions" (click)="setStatus(u.id, 'DISABLED')">
           Disable
+        </button>
+      }
+      @if (u.id !== session.me()?.id) {
+        <button class="btn btn--quiet btn--small" title="Set a replacement PIN or password and revoke this member's current sessions" (click)="resetPassword(u.id, u.display_name)">
+          Reset password…
         </button>
       }
     </div>
@@ -104,12 +127,15 @@
       <input name="grant" type="checkbox" [(ngModel)]="grant" />
       Give them the starting allocation
     </label>
-    <button class="btn" type="submit" [disabled]="adding()">
+    <button class="btn" title="Create this household member with their own account" type="submit" [disabled]="adding()">
       {{ adding() ? 'Adding…' : 'Add' }}
     </button>
   </form>
 </details>
+</section>
 
+<section id="money" class="household-section">
+<h2>Issue money</h2>
 <details class="disclosure">
   <summary>Issue coins</summary>
   <form (ngSubmit)="issue()">
@@ -132,7 +158,7 @@
       Reason
       <input name="reason" [(ngModel)]="issueReason" maxlength="140" placeholder="Birthday" />
     </label>
-    <button class="btn" type="submit" [disabled]="issuing()">
+    <button class="btn" title="Create the entered number of new coins in the selected member's account" type="submit" [disabled]="issuing()">
       {{ issuing() ? 'Issuing…' : 'Issue' }}
     </button>
   </form>
@@ -170,18 +196,19 @@
       Reason
       <input name="usdReason" [(ngModel)]="usdReason" maxlength="140" placeholder="Pocket money" />
     </label>
-    <button class="btn" type="submit" [disabled]="issuingUsd()">
+    <button class="btn" title="Record the entered dollar amount in the selected member's account" type="submit" [disabled]="issuingUsd()">
       {{ issuingUsd() ? 'Issuing…' : 'Issue dollars' }}
     </button>
   </form>
 </details>
+</section>
 
 <!--
   Held open while seeding and after a failure. A <details> that closes on
   re-render took the only report of what went wrong with it, which is how a
   stopped run came to look like nothing happening at all.
 -->
-<details class="disclosure" [open]="seeder.running() || !!seeder.lastError()">
+<details id="demo-data" class="disclosure household-section" [open]="seeder.running() || !!seeder.lastError()">
   <summary>Fill this household with a year of history</summary>
   <p class="muted small">
     Creates members, issues them a float, posts listings and plays out a year of
@@ -205,7 +232,7 @@
       [max]="seeder.progress()?.total ?? 1"
     ></progress>
   } @else {
-    <button class="btn" type="button" (click)="seedDemo()">Add a year of history</button>
+    <button class="btn" title="Create sample members, listings, offers, and hundreds of real ledger entries" type="button" (click)="seedDemo()">Add a year of history</button>
   }
 
   @if (seeder.lastError()) {
@@ -217,7 +244,8 @@
   }
 </details>
 
-<h3>Full ledger</h3>
+<section id="full-ledger" class="household-section">
+<h2>Full ledger</h2>
 
 @if (loadingLedger()) {
   <p class="muted">Loading…</p>
@@ -251,6 +279,7 @@
         } @else if (reversible(t)) {
           <button
             class="btn btn--quiet btn--small"
+            title="Append a correcting transaction; the original remains in the ledger"
             (click)="reverse(t)"
             [disabled]="reversing() !== null"
           >
@@ -261,5 +290,6 @@
     }
   </div></app-notebook>
 }
+</section>
 
 }

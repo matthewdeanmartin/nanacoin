@@ -354,6 +354,14 @@ export class NanacoinService {
     return this.patch<User>(`/users/${encodeURIComponent(id)}`, { status });
   }
 
+  /**
+   * Changes a member's password. The server permits a member to change their
+   * own password and Nana to reset anybody's; every other case is refused.
+   */
+  setUserPassword(id: UserId, password: string): Promise<User> {
+    return this.patch<User>(`/users/${encodeURIComponent(id)}`, { password });
+  }
+
   // --- money ---
 
   accountHistory(id: AccountId, limit = 50): Promise<AccountHistory> {

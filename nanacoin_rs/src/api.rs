@@ -157,6 +157,25 @@ pub fn handle_keyed<J: Journal>(
         if service.storage_failed() {
             return Err(Error::Storage);
         }
+        let (route_path, query) = path.split_once('?').unwrap_or((path, ""));
+        // Like a Bitcoin explorer or Nana's paper notebook, the ledger is
+        // readable without a session. Mutations and account administration
+        // remain authenticated below.
+        if method == "GET" && route_path == "/api/v1/transactions" {
+            let limit = query
+                .split('&')
+                .find_map(|p| p.strip_prefix("limit="))
+                .and_then(|v| v.parse::<usize>().ok())
+                .filter(|n| *n > 0)
+                .unwrap_or(100)
+                .min(100);
+            return crate::client::public_ledger(service.state(), limit, output);
+        }
+        if method == "GET" {
+            if let Some(id) = route_path.strip_prefix("/api/v1/transactions/") {
+                return crate::client::public_transaction(service.state(), id, output);
+            }
+        }
         let now = service.auth.now();
         match (method, path) {
             ("GET", "/api/v1/transport") => {

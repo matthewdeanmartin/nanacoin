@@ -214,6 +214,74 @@ summary {
   gap: 0.5rem;
 }
 
+/* Session actions belong in one menu. This keeps the top bar stable as more
+ * account-level commands are added, instead of growing a row of tiny pills. */
+.account-menu {
+  position: relative;
+}
+
+.account-menu > summary {
+  min-height: 2.25rem;
+  display: flex;
+  align-items: center;
+  padding: 0.3rem 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  list-style: none;
+}
+
+.account-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.account-menu > summary::after {
+  content: "▾";
+  margin-left: 0.45rem;
+  font-size: 0.7em;
+}
+
+.account-menu[open] > summary::after {
+  content: "▴";
+}
+
+.account-menu__items {
+  position: absolute;
+  z-index: 20;
+  right: 0;
+  top: calc(100% + 0.25rem);
+  min-width: 15rem;
+  padding: 0.35rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 8px 20px rgb(0 0 0 / 14%);
+}
+
+.account-menu__items button {
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.55rem 0.7rem;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.account-menu__items button:last-child {
+  border-bottom: 0;
+}
+
+.account-menu__items button:hover:not(:disabled) {
+  background: var(--accent-soft);
+}
+
+.account-menu__items button:disabled {
+  opacity: 0.55;
+}
+
 .tabs {
   display: flex;
   gap: 0.25rem;
@@ -986,6 +1054,117 @@ a.tab {
   src: url('../public/fonts/dancing-script.ttf') format('truetype');
   font-weight: 400 700;
   font-display: swap;
+}
+
+/* Page-level navigation is deliberately a small version of the main nav:
+ * padded text with an underline, not another collection of rounded buttons. */
+.section-nav {
+  display: flex;
+  gap: 0.15rem 1rem;
+  overflow-x: auto;
+  margin: 0 0 1.25rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.section-nav a {
+  flex: 0 0 auto;
+  padding: 0.7rem 0.1rem 0.55rem;
+  color: var(--ink-soft);
+  border-bottom: 2px solid transparent;
+  text-decoration: none;
+  font-size: 0.875rem;
+}
+
+.section-nav a:hover,
+.section-nav a:focus-visible {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.household-section {
+  scroll-margin-top: 1rem;
+  margin-top: 2rem;
+}
+
+.household-section > h2 {
+  margin-bottom: 0.75rem;
+}
+
+.account-section {
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--line);
+  scroll-margin-top: 1rem;
+}
+
+.section-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.section-heading h2 {
+  margin: 0;
+}
+
+.section-heading > a {
+  font-size: 0.875rem;
+  color: var(--accent);
+}
+
+.account-summary-list {
+  display: grid;
+  margin-top: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.account-summary-list a,
+.account-event {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.65rem 0.75rem;
+  color: var(--ink);
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  text-decoration: none;
+}
+
+.account-summary-list a:last-child {
+  border-bottom: 0;
+}
+
+.account-summary-list a:hover,
+.account-event:hover {
+  background: var(--accent-soft);
+}
+
+.account-summary-list a span:last-child,
+.account-event span:last-child {
+  color: var(--ink-soft);
+  font-size: 0.8125rem;
+  text-align: right;
+}
+
+.account-event {
+  margin-bottom: 0.25rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+@media (max-width: 520px) {
+  .account-summary-list a,
+  .account-event {
+    display: grid;
+    gap: 0.15rem;
+  }
+
+  .account-summary-list a span:last-child,
+  .account-event span:last-child {
+    text-align: left;
+  }
 }
 
 /* The energy comparisons need enough horizontal room for their labels and
