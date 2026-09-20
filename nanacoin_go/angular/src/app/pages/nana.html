@@ -1,4 +1,4 @@
-<h2>Household</h2>
+<h1>Household</h1>
 @if (session.isNana() && !isDemo) {
   <app-connection-security />
 }
@@ -43,19 +43,19 @@
 <div class="stats">
   <div class="stat">
     <span>{{ session.status()?.circulation ?? 0 }}</span>
-    <label>in circulation</label>
+    <span class="stat__label">in circulation</span>
   </div>
   <div class="stat">
     <span>{{ session.status()?.users ?? 0 }}</span>
-    <label>members</label>
+    <span class="stat__label">members</span>
   </div>
   <div class="stat">
     <span>{{ session.status()?.transactions ?? 0 }}</span>
-    <label>transactions</label>
+    <span class="stat__label">transactions</span>
   </div>
   <div class="stat">
     <span>{{ journalKb() }}</span>
-    <label>journal used</label>
+    <span class="stat__label">journal used</span>
   </div>
 </div>
 

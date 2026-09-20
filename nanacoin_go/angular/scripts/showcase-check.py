@@ -52,9 +52,20 @@ def main():
                     route.continue_()
             page.route('**/*', network)
             def navigate(label):
-                link = page.get_by_role('navigation', name='Main navigation').get_by_role('link', name=label, exact=True)
-                if not link.is_visible():
+                nav = page.get_by_role('navigation', name='Main navigation')
+                if not nav.is_visible():
                     page.get_by_role('button', name='Open navigation menu').click()
+                    expect(nav).to_be_visible()
+                group = None
+                if label == 'Economy' or (label == 'The Notebook' and nav.get_by_text('Accounting', exact=True).count()):
+                    group = 'Accounting'
+                elif label in ('Browser Log', 'Browser Health', 'Board Health', 'Server Log'):
+                    group = 'System Info'
+                if group:
+                    summary = nav.get_by_text(group, exact=True)
+                    if summary.get_attribute('aria-expanded') != 'true':
+                        summary.click()
+                link = nav.get_by_role('link', name=label, exact=True)
                 link.click()
                 expect(page.locator('#site-navigation a').filter(has_text=re.compile('^' + re.escape(label) + '$'))).to_have_attribute('aria-current', 'page')
             page.goto(base + '#/about')
@@ -65,9 +76,10 @@ def main():
             expect(page.get_by_role('dialog', name='Keyboard shortcuts')).not_to_be_visible()
             expect(page.get_by_role('link', name='SMBC: Nanacoin')).to_have_attribute('href', 'https://www.smbc-comics.com/comic/nanacoin')
             assert page.get_by_role('navigation', name='Main navigation').evaluate('e => getComputedStyle(e).flexDirection') == 'row'
-            navigate('Lemon bars')
+            navigate('The Notebook')
+            page.get_by_role('link', name='Have a lemon bar').click()
             expect(page.get_by_role('heading', name='Vegan lemon bars (egg-free and dairy-free)')).to_be_visible()
-            navigate('The notebook')
+            navigate('The Notebook')
             expect(page.locator('app-public-ledger .ledger-row').first).to_be_visible()
             page.keyboard.press('j')
             expect(page.locator('app-public-ledger .ledger-row').nth(0)).to_be_focused()
@@ -93,7 +105,7 @@ def main():
             page.keyboard.press('Escape')
             expect(page.get_by_role('button', name='Open navigation menu')).to_be_focused()
             expect(page.get_by_role('navigation', name='Main navigation')).not_to_be_visible()
-            navigate('Browser health')
+            navigate('Browser Health')
             expect(page.get_by_role('navigation', name='Main navigation')).not_to_be_visible()
             expect(page.get_by_role('heading', name='Browser health')).to_be_visible()
             page.get_by_role('button', name='Refresh readings').click()
@@ -106,13 +118,15 @@ def main():
             expect(page.locator('app-market input[name="title"]')).to_have_value('gh?')
             expect(page.get_by_role('dialog', name='Keyboard shortcuts')).not_to_be_visible()
             page.locator('app-market input[name="title"]').fill('')
-            page.locator('app-market h2').first.click()
-            for label in ['History', 'Exchange', 'Offers', 'Economy', 'Market']:
+            page.locator('app-market h1').first.click()
+            for label in ['My Account', 'Exchange', 'Offers', 'Economy', 'Market']:
                 navigate(label)
-                expect(page.locator('main h2').first).to_be_visible()
-            navigate('Nana-nickles')
+                expect(page.locator('main h1').first).to_be_visible()
+            page.evaluate("location.hash = '#/nickles'")
+            expect(page.get_by_role('heading', name='Nana-nickles')).to_be_visible()
             page.get_by_role('button', name='Create voucher').click()
             expect(page.locator('.voucher-secret')).to_be_visible()
+            expect(page.get_by_role('img', name='QR code containing this Nana-nickle voucher code')).to_be_visible()
             token = page.locator('.voucher-secret').inner_text()
             page.emulate_media(media='print')
             expect(page.locator('.printable-voucher')).to_be_visible()

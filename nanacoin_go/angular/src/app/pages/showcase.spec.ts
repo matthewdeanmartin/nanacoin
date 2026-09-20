@@ -19,11 +19,12 @@ describe('public showcase', () => {
  it('has independently selectable notebook and accessible plain-text modes', () => {
    const fixture = TestBed.createComponent(Notebook); fixture.detectChanges();
    const controls = fixture.nativeElement.querySelectorAll('input');
-   expect(fixture.nativeElement.querySelector('.notebook')).toBeNull();
-   controls[0].click(); fixture.detectChanges();
    expect(fixture.nativeElement.querySelector('.notebook')).not.toBeNull();
-   controls[1].click(); fixture.detectChanges();
    expect(fixture.nativeElement.querySelector('.cursive-ledger')).not.toBeNull();
+   controls[0].click(); fixture.detectChanges();
+   expect(fixture.nativeElement.querySelector('.notebook')).toBeNull();
+   controls[1].click(); fixture.detectChanges();
+   expect(fixture.nativeElement.querySelector('.cursive-ledger')).toBeNull();
  });
  it('redacts voucher secrets from request logs', () => {
    expect(JSON.stringify(redact({ body: { token: 'DEMO-NN-secret' } }))).not.toContain('DEMO-NN-secret');

@@ -11,7 +11,7 @@ import { Notebook } from '../ui/notebook';
 
 @Component({
  selector: 'app-public-ledger', imports: [Notebook, RouterLink, DatePipe],
- template: `<h1>Nana’s notebook</h1><p><a routerLink="/recipes">Vegetarian or vegan lemon bar?</a> The recipes are for everyone; eating is optional.</p>
+ template: `<h1>The Notebook</h1><p><a class="btn" routerLink="/recipes">Have a lemon bar</a> <span class="notebook-treat">Vegetarian and vegan recipes are available to everyone; eating is optional.</span></p>
  <p>{{ demo ? 'Public fictional ledger: the latest 100 entries in this browser tab. No household information is published.' : 'Real household ledgers remain Nana-only. This page does not make private transactions public.' }}</p>
  @if (!demo && !session.isNana()) { <p>Sign in as Nana to see this board’s ledger. The public showcase uses fictional data instead.</p> }
  @else if (data.isLoading()) { <p>Opening the notebook…</p> }

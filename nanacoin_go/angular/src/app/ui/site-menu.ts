@@ -1,4 +1,4 @@
-import { Component, ElementRef, computed, inject, signal, viewChild } from '@angular/core';
+import { Component, ElementRef, inject, signal, viewChild } from '@angular/core';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Session } from '../api/session';
@@ -14,9 +14,51 @@ import { IS_DEMO } from '../demo/demo';
      <span aria-hidden="true" class="hamburger"><i></i><i></i><i></i></span><span>Menu</span>
    </button>
    <nav id="site-navigation" aria-label="Main navigation" [class.is-open]="open()">
-     @for (link of links(); track link.path) {
-       <a [routerLink]="link.path" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">{{ link.label }}</a>
+     @if (session.signedIn()) {
+       <a routerLink="/history" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">My Account</a>
+       <a routerLink="/send" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Send</a>
+       <a routerLink="/market" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Market</a>
+       <a routerLink="/offers" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Offers</a>
+       <a routerLink="/forex" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Exchange</a>
+       <details class="menu-group">
+         <summary>Accounting</summary>
+         <div class="menu-group__items">
+           <a routerLink="/economy" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Economy</a>
+           <a routerLink="/ledger" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">The Notebook</a>
+         </div>
+       </details>
+       @if (demo) {
+         <a routerLink="/nickles" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Nana-nickles</a>
+       }
+       @if (session.isNana()) {
+         <a routerLink="/nana" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Household</a>
+       }
+       <details class="menu-group">
+         <summary>System Info</summary>
+         <div class="menu-group__items">
+           <a routerLink="/clientlog" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Browser Log</a>
+           @if (demo) {
+             <a routerLink="/diagnostics" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Browser Health</a>
+           } @else if (session.isNana() && session.diagAvailable()) {
+             <a routerLink="/diagnostics" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Board Health</a>
+           }
+           @if (session.logsAvailable()) {
+             <a routerLink="/logs" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Server Log</a>
+           }
+         </div>
+       </details>
+     } @else {
+       <a routerLink="/ledger" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">The Notebook</a>
+       @if (demo) {
+         <details class="menu-group">
+           <summary>System Info</summary>
+           <div class="menu-group__items">
+             <a routerLink="/diagnostics" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Browser Health</a>
+           </div>
+         </details>
+       }
      }
+     <a class="about-link" routerLink="/about" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">About</a>
    </nav>
  </header>`,
  styleUrl: './site-menu.css',
@@ -25,26 +67,14 @@ export class SiteMenu {
  readonly open = signal(false);
  private readonly host = inject(ElementRef<HTMLElement>);
  private readonly toggle = viewChild<ElementRef<HTMLButtonElement>>('toggle');
- private readonly session = inject(Session);
- readonly links = computed(() => {
-   const links = this.session.signedIn() ? [
-     { path: '/market', label: 'Market' }, { path: '/send', label: 'Send' },
-     { path: '/offers', label: 'Offers' }, { path: '/forex', label: 'Exchange' },
-     { path: '/history', label: 'History' }, { path: '/economy', label: 'Economy' },
-     ...(IS_DEMO ? [{ path: '/nickles', label: 'Nana-nickles' }] : []),
-     ...(this.session.isNana() ? [{ path: '/nana', label: 'Household' },
-       ...(!IS_DEMO && this.session.diagAvailable() ? [{ path: '/diagnostics', label: 'Machine health' }] : [])] : []),
-     ...(this.session.logsAvailable() ? [{ path: '/logs', label: 'Server log' }] : []),
-     { path: '/clientlog', label: 'Browser log' },
-   ] : [];
-   return [...links, { path: '/ledger', label: 'The notebook' }, { path: '/recipes', label: 'Lemon bars' },
-     ...(IS_DEMO ? [{ path: '/diagnostics', label: 'Browser health' }] : []), { path: '/about', label: 'About' }];
- });
+ protected readonly session = inject(Session);
+ readonly demo = IS_DEMO;
  constructor() {
    inject(Router).events.pipe(takeUntilDestroyed()).subscribe(e => { if (e instanceof NavigationEnd) this.close(); });
  }
  close(restoreFocus = false): void {
    const wasOpen = this.open(); this.open.set(false);
+   for (const group of this.host.nativeElement.querySelectorAll('details')) group.open = false;
    if (restoreFocus && wasOpen) this.toggle()?.nativeElement.focus();
  }
  outside(event: Event): void { if (!this.host.nativeElement.contains(event.target as Node)) this.close(); }

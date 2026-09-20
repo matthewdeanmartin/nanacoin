@@ -27,8 +27,11 @@ import {
   ListingStatus,
   Offer,
   Posting,
+  Quote,
+  QuoteSide,
   Role,
   Status,
+  TradeResult,
   Transaction,
   TransactionKind,
   User,
@@ -59,7 +62,9 @@ export class DemoLedger {
   private users: DemoUser[] = [];
   private listings: Listing[] = [];
   private offers: Offer[] = [];
+  private quotes: Quote[] = [];
   private transactions: Transaction[] = [];
+  private usdBalances = new Map<string, number>();
   private nextTxn = 1;
   private nextId = 1;
   private nickles = new Map<string, { amount: number; serial: string }>();
@@ -182,6 +187,7 @@ export class DemoLedger {
       account: u.account,
       created_at: u.created_at,
       balance: maySee ? this.balanceOf(u.account) : undefined,
+      usd_cents: maySee ? (this.usdBalances.get(u.account) ?? 0) : undefined,
     };
   }
 
@@ -337,6 +343,114 @@ export class DemoLedger {
       { account: from, name: '', amount: -amount },
       { account: SYSTEM_ISSUANCE, name: '', amount },
     ]);
+  }
+
+  // --- foreign exchange ---
+
+  issueUSD(actor: DemoUser, to: string, cents: number, reason: string): Transaction {
+    this.requireNana(actor);
+    this.requireAmount(cents);
+    this.requireUserAccount(to);
+    this.usdBalances.set(to, (this.usdBalances.get(to) ?? 0) + cents);
+    return {
+      id: `usd-txn-${this.nextTxn++}`,
+      kind: 'ISSUE',
+      created_at: this.now(),
+      actor: actor.id,
+      description: reason,
+      postings: [
+        { account: 'account:usd-issuance', name: 'USD issuance', amount: -cents },
+        { account: to, name: this.userByAccount(to)?.display_name ?? to, amount: cents },
+      ],
+    };
+  }
+
+  allQuotes(): Quote[] {
+    return [...this.quotes].sort((a, b) => {
+      if (a.side !== b.side) return a.side === 'ASK' ? -1 : 1;
+      return a.side === 'ASK'
+        ? a.cents_per_coin - b.cents_per_coin
+        : b.cents_per_coin - a.cents_per_coin;
+    });
+  }
+
+  postQuote(actor: DemoUser, side: QuoteSide, centsPerCoin: number, coins: number): Quote {
+    this.requireActive(actor);
+    this.requireAmount(centsPerCoin);
+    this.requireAmount(coins);
+    if ((side !== 'ASK' && side !== 'BID') || centsPerCoin > 10_000 || coins > 100_000
+      || !Number.isSafeInteger(centsPerCoin * coins)) {
+      throw new DemoError(400, 'bad_request', 'That exchange rate or quantity is invalid.');
+    }
+    const created = this.now();
+    const quote: Quote = {
+      id: `quote-${this.nextId++}`,
+      maker: actor.account,
+      maker_name: actor.display_name,
+      side,
+      cents_per_coin: centsPerCoin,
+      coins,
+      cents: centsPerCoin * coins,
+      status: 'OPEN',
+      created_at: created,
+      updated_at: created,
+      live: true,
+    };
+    this.quotes.push(quote);
+    return quote;
+  }
+
+  takeQuote(actor: DemoUser, id: string): TradeResult {
+    this.requireActive(actor);
+    const quote = this.quotes.find((candidate) => candidate.id === id);
+    if (!quote) throw new DemoError(404, 'not_found', 'No such exchange rate.');
+    if (!quote.live || quote.status !== 'OPEN') throw new DemoError(409, 'quote_closed', 'That rate is no longer open.');
+    if (quote.maker === actor.account) throw new DemoError(400, 'self_deal', 'You cannot take your own rate.');
+
+    const coinSeller = quote.side === 'ASK' ? quote.maker : actor.account;
+    const coinBuyer = quote.side === 'ASK' ? actor.account : quote.maker;
+    const dollarBuyer = coinSeller;
+    const dollarSeller = coinBuyer;
+    if (this.balanceOf(coinSeller) < quote.coins) throw new DemoError(400, 'insufficient_funds', 'The coin seller no longer has enough coins.');
+    if ((this.usdBalances.get(dollarSeller) ?? 0) < quote.cents) throw new DemoError(400, 'insufficient_funds', 'The buyer no longer has enough dollars.');
+
+    this.usdBalances.set(dollarSeller, (this.usdBalances.get(dollarSeller) ?? 0) - quote.cents);
+    this.usdBalances.set(dollarBuyer, (this.usdBalances.get(dollarBuyer) ?? 0) + quote.cents);
+    const coinTransaction = this.append('TRANSFER', actor.id, 'Exchange', [
+      { account: coinSeller, name: '', amount: -quote.coins },
+      { account: coinBuyer, name: '', amount: quote.coins },
+    ], { reference: quote.id });
+    const cashTransaction: Transaction = {
+      id: `usd-txn-${this.nextTxn++}`,
+      kind: 'TRANSFER',
+      created_at: coinTransaction.created_at,
+      actor: actor.id,
+      description: 'Exchange',
+      reference: quote.id,
+      postings: [
+        { account: dollarSeller, name: this.userByAccount(dollarSeller)?.display_name ?? dollarSeller, amount: -quote.cents },
+        { account: dollarBuyer, name: this.userByAccount(dollarBuyer)?.display_name ?? dollarBuyer, amount: quote.cents },
+      ],
+    };
+    quote.status = 'FILLED';
+    quote.live = false;
+    quote.taker = actor.account;
+    quote.taker_name = actor.display_name;
+    quote.updated_at = coinTransaction.created_at;
+    quote.coin_tx = coinTransaction.id;
+    quote.cash_tx = cashTransaction.id;
+    return { quote, coin_transaction: this.named([coinTransaction])[0], cash_transaction: cashTransaction };
+  }
+
+  cancelQuote(actor: DemoUser, id: string): Quote {
+    const quote = this.quotes.find((candidate) => candidate.id === id);
+    if (!quote) throw new DemoError(404, 'not_found', 'No such exchange rate.');
+    if (quote.maker !== actor.account && actor.role !== 'nana') throw new DemoError(403, 'forbidden', 'That rate is not yours to withdraw.');
+    if (quote.status !== 'OPEN') throw new DemoError(409, 'quote_closed', 'That rate is no longer open.');
+    quote.status = 'CANCELLED';
+    quote.live = false;
+    quote.updated_at = this.now();
+    return quote;
   }
 
   /**

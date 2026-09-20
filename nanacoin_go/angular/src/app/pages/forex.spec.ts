@@ -181,7 +181,7 @@ describe('the exchange book', () => {
     fixture.detectChanges();
 
     expect((fixture.nativeElement as HTMLElement).textContent).toContain(
-      'does not support currency exchange yet',
+      'connected server does not support currency exchange',
     );
   });
 });

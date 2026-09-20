@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, resource, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 
@@ -6,11 +6,19 @@ import { NanacoinService, newIdempotencyKey } from '../api/nanacoin.service';
 import { Session } from '../api/session';
 import { Toasts } from '../ui/toasts';
 
+interface RecentSend {
+  id: string;
+  description: string;
+  recipient: string;
+  amount: number;
+  createdAt: number;
+}
+
 @Component({
   selector: 'app-send',
   imports: [FormsModule],
   template: `
-    <h2>Send coins</h2>
+    <h1>Send coins</h1>
 
     @if (session.recipients().length === 0) {
       <p class="muted">
@@ -46,6 +54,30 @@ import { Toasts } from '../ui/toasts';
         You have {{ session.balance() }} {{ session.balance() === 1 ? 'coin' : 'coins' }}.
       </p>
     }
+
+    <section aria-labelledby="recent-sends-title">
+      <h2 id="recent-sends-title">Recently sent</h2>
+      @if (history.isLoading()) {
+        <p class="muted" role="status">Loading recent sends…</p>
+      } @else if (recentSends().length === 0) {
+        <p class="muted">Nothing sent yet.</p>
+      } @else {
+        <div class="history">
+          @for (sent of recentSends(); track sent.id) {
+            <article class="txn txn--out" data-keyboard-row tabindex="-1">
+              <div class="txn__main">
+                <span class="txn__desc">{{ sent.description || 'Transfer' }}</span>
+                <span class="txn__who">to {{ sent.recipient }}</span>
+              </div>
+              <div class="txn__side">
+                <span class="txn__amount">−{{ sent.amount }}</span>
+                <time class="txn__when" [attr.datetime]="isoTime(sent.createdAt)">{{ when(sent.createdAt) }}</time>
+              </div>
+            </article>
+          }
+        </div>
+      }
+    </section>
   `,
 })
 export class SendPage {
@@ -57,6 +89,34 @@ export class SendPage {
   protected amount: number | null = null;
   protected memo = '';
   protected readonly busy = signal(false);
+  protected readonly history = resource({
+    params: () => ({ account: this.session.me()?.account }),
+    loader: ({ params }) => params.account
+      ? this.api.accountHistory(params.account, 100)
+      : Promise.resolve({ account: '', balance: 0, transactions: [] }),
+  });
+
+  protected readonly recentSends = computed<RecentSend[]>(() => {
+    const account = this.session.me()?.account;
+    if (!account) return [];
+    return (this.history.value()?.transactions ?? [])
+      .flatMap((txn) => {
+        if (txn.kind !== 'TRANSFER' || txn.reference || txn.reversed_by) return [];
+        const delta = txn.postings
+          .filter((posting) => posting.account === account)
+          .reduce((sum, posting) => sum + posting.amount, 0);
+        const recipient = txn.postings.find((posting) => posting.account !== account);
+        if (delta >= 0 || !recipient) return [];
+        return [{
+          id: txn.id,
+          description: txn.description,
+          recipient: recipient.name,
+          amount: -delta,
+          createdAt: txn.created_at,
+        }];
+      })
+      .slice(0, 5);
+  });
 
   /**
    * Repeating a past transaction fills the form in and stops.
@@ -107,10 +167,21 @@ export class SendPage {
       this.memo = '';
       this.toasts.ok('Sent.');
       await this.session.refresh();
+      this.history.reload();
     } catch (e) {
       this.toasts.fromError(e);
     } finally {
       this.busy.set(false);
     }
+  }
+
+  protected when(unixSeconds: number): string {
+    return new Date(unixSeconds * 1000).toLocaleString(undefined, {
+      month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+    });
+  }
+
+  protected isoTime(unixSeconds: number): string {
+    return new Date(unixSeconds * 1000).toISOString();
   }
 }

@@ -37,7 +37,7 @@ import { Toasts } from '../ui/toasts';
   selector: 'app-forex',
   imports: [FormsModule],
   template: `
-    <h2>Exchange</h2>
+    <h1>Exchange</h1>
 
     @if (unsupported()) {
       <!--
@@ -46,8 +46,8 @@ import { Toasts } from '../ui/toasts';
         than a fault anybody can act on.
       -->
       <p class="muted">
-        This NanaCoin does not support currency exchange yet. The board needs
-        newer firmware; everything else works as before.
+        This connected server does not support currency exchange. The Rust
+        service and current client do; update the server to use this screen.
       </p>
     } @else {
       <p class="lede">
@@ -59,16 +59,16 @@ import { Toasts } from '../ui/toasts';
       <div class="stats">
         <div class="stat">
           <span>{{ session.balance() }}</span>
-          <label>{{ session.balance() === 1 ? 'coin' : 'coins' }}</label>
+          <span class="stat__label">{{ session.balance() === 1 ? 'coin' : 'coins' }}</span>
         </div>
         <div class="stat">
           <span>{{ dollars(myCents()) }}</span>
-          <label>dollars</label>
+          <span class="stat__label">dollars</span>
         </div>
         @if (spread(); as s) {
           <div class="stat">
             <span>{{ cents(s.bid) }}–{{ cents(s.ask) }}</span>
-            <label>bid / ask</label>
+            <span class="stat__label">bid / ask</span>
           </div>
         }
       </div>

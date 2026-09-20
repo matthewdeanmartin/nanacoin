@@ -31,7 +31,7 @@ const LEDGER_LIMIT = 365;
   selector: 'app-economy',
   imports: [LineChart],
   template: `
-    <h2>Economy</h2>
+    <h1>Economy</h1>
 
     @if (data.isLoading()) {
       <p class="muted">Loading…</p>

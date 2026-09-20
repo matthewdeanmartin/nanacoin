@@ -1,5 +1,6 @@
 <app-toast-list />
 <app-dialog-host />
+<a class="skip-link" href="#main-content">Skip to main content</a>
 @if (!isDemo) {
   <p class="demobar">
     {{ plainHttp() ? 'Unencrypted home connection — use only on a network you trust.' : 'HTTPS connection — household HTTP access may still be enabled.' }}
@@ -21,24 +22,24 @@
 
 <app-site-menu />
 @if (publicPage()) {
-  <main class="screen"><router-outlet /></main>
+  <main id="main-content" class="screen" tabindex="-1"><router-outlet /></main>
 } @else {
 @switch (phase()) {
   @case ('loading') {
-    <section class="screen screen--centred">
-      <p class="muted">Looking for NanaCoin…</p>
-    </section>
+    <main id="main-content" class="screen screen--centred" tabindex="-1">
+      <p class="muted" role="status">Looking for NanaCoin…</p>
+    </main>
   }
 
   @case ('connect') {
-    <section class="screen screen--centred">
+    <main id="main-content" class="screen screen--centred" tabindex="-1">
       <app-connect-form
         [reason]="connectReason()"
         [logsAvailable]="logsOfferable()"
         (connected)="onConnected()"
         (showLogs)="showLogs()"
       />
-    </section>
+    </main>
   }
 
   @case ('logs') {
@@ -49,20 +50,20 @@
           <button class="btn btn--quiet btn--small" (click)="leaveLogs()">Back</button>
         </div>
       </header>
-      <main>
+      <main id="main-content" tabindex="-1">
         <app-logs />
       </main>
     </div>
   }
 
   @case ('setup') {
-    <section class="screen screen--centred">
+    <main id="main-content" class="screen screen--centred" tabindex="-1">
       <app-setup-form (done)="onProvisioned()" />
-    </section>
+    </main>
   }
 
   @case ('login') {
-    <section class="screen screen--centred">
+    <main id="main-content" class="screen screen--centred" tabindex="-1">
       <app-login-form
         [household]="household()"
         [adding]="addingAccount()"
@@ -70,7 +71,7 @@
         (done)="onLoggedIn()"
         (cancel)="cancelAddAccount()"
       />
-    </section>
+    </main>
   }
 
   @case ('app') {
@@ -125,7 +126,7 @@
         </div>
       </header>
 
-      <main>
+      <main id="main-content" tabindex="-1">
         <router-outlet />
       </main>
 

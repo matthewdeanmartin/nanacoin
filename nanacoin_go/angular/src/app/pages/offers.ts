@@ -30,7 +30,7 @@ import { Toasts } from '../ui/toasts';
   selector: 'app-offers',
   imports: [FormsModule],
   template: `
-    <h2>Offers</h2>
+    <h1>Offers</h1>
 
     @if (unsupported()) {
       <!--

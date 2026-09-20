@@ -194,6 +194,21 @@ function handle(req: HttpRequest<unknown>): unknown {
     return demoLedger.retire(me, body['from'], Number(body['amount']), body['reason'] ?? '');
   }
 
+  if (path === '/admin/issue-usd' && method === 'POST') {
+    return demoLedger.issueUSD(me, body['to'], Number(body['cents']), body['reason'] ?? '');
+  }
+
+  if (path === '/quotes' && method === 'GET') return { quotes: demoLedger.allQuotes() };
+  if (path === '/quotes' && method === 'POST') {
+    return demoLedger.postQuote(me, body['side'] as 'ASK' | 'BID', Number(body['cents_per_coin']), Number(body['coins']));
+  }
+  if (path.startsWith('/quotes/') && path.endsWith('/take') && method === 'POST') {
+    return demoLedger.takeQuote(me, path.slice('/quotes/'.length, -'/take'.length));
+  }
+  if (path.startsWith('/quotes/') && path.endsWith('/cancel') && method === 'POST') {
+    return demoLedger.cancelQuote(me, path.slice('/quotes/'.length, -'/cancel'.length));
+  }
+
   if (path === '/admin/config') {
     return { household_name: demoLedger.household, initial_grant: 20, currency: 'NanaCoin' };
   }

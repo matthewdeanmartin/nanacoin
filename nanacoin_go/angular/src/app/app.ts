@@ -88,6 +88,7 @@ export class App {
         const path = event.urlAfterRedirects.split('?')[0];
         this.publicPage.set(['/about', '/recipes', '/ledger'].includes(path)
           || (IS_DEMO && path === '/diagnostics'));
+        requestAnimationFrame(() => document.getElementById('main-content')?.focus());
       }
     });
     // Recorded once at startup, because it silently changes what the platform

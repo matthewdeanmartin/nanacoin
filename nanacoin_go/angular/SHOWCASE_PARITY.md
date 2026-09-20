@@ -11,7 +11,8 @@ it into firmware. TinyGo firmware remains frozen under `nanacoin/AGENTS.md`.
 | Cursive/spiral presentation | Public fictional ledger and authenticated history | Existing authorized ledger/history | Existing authorized ledger/history |
 | Diagnostics | Real browser-reported health, no API fetch | Actual ESP32 measurements | Supported single-core diagnostic subset |
 | Public full ledger | Fictional tab-local data, latest 100 | Remains Nana-only; no new public data exposure | Remains existing permissions |
-| Bearer nana-nickles | Prototype: member-funded reserve or Nana fresh issuance, single redemption | Not implemented; see `nanacoin_rs/NANANICKLES_PROPOSAL.md` | Not implemented; firmware frozen |
+| Foreign exchange | Tab-local USD balances, quotes and atomic two-leg settlement | Implemented: USD issuance, quotes and settlement | Unsupported |
+| Bearer nana-nickles | Prototype: member-funded reserve or Nana fresh issuance, QR/text voucher, single redemption | Not implemented; see `nanacoin_rs/NANANICKLES_PROPOSAL.md` | Not implemented; firmware frozen |
 | HTTP/HTTPS household policy | Hidden; no board policy to change | Implemented | Unsupported |
 
 Never present a mock ESP32 reading as a browser measurement. Browser memory is
@@ -34,7 +35,7 @@ The environment flag prevents Git Bash from turning `/microcontroller/...` into
 a Windows filesystem path. On Linux omit the flag if desired and install the
 Playwright Chromium browser. The browser check uses installed Edge on Windows.
 It blocks all external/API requests, tests anonymous pages, fonts, mobile width,
-browser health, and voucher creation/printing/redemption/replay.
+browser health, and QR voucher creation/printing/redemption/replay.
 
 The existing Pages workflow publishes on a matching push to `main` or manual
 dispatch of a committed ref. Local edits are not published by running a workflow

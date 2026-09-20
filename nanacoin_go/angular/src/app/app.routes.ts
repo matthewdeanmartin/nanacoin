@@ -35,7 +35,7 @@ export const routes: Routes = [
   {
     path: 'history',
     loadComponent: () => import('./pages/history').then((m) => m.HistoryPage),
-    title: 'History — NanaCoin',
+    title: 'My Account — NanaCoin',
   },
   {
     path: 'economy',
@@ -67,7 +67,7 @@ export const routes: Routes = [
     loadComponent: () => IS_DEMO
       ? import('./pages/browser-health').then(m => m.BrowserHealth)
       : import('./pages/diagnostics').then((m) => m.DiagnosticsPage),
-    title: IS_DEMO ? 'Browser health — NanaCoin' : 'Machine health — NanaCoin',
+    title: IS_DEMO ? 'Browser Health — NanaCoin' : 'Board Health — NanaCoin',
     canActivate: IS_DEMO ? [] : [nanaOnly],
   },
   { path: '', pathMatch: 'full', redirectTo: 'market' },

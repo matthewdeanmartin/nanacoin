@@ -24,10 +24,17 @@ export function seed(ledger: DemoLedger): void {
   const ivy = ledger.addUser('ivy', 'Ivy', 'demo', 'user');
   void nana;
 
+  // Nana is the central bank, so the demo should also demonstrate that she
+  // can inject currency on demand. Keep a visible reserve in her own account
+  // rather than making every issuance start from an empty balance.
+  ledger.issue(nanaUser, nanaUser.account, 1000, 'Central-bank warchest');
+
   // Opening balances. The parents hold the float; the children start small,
   // which is what makes the first few weeks of allowance visible on a chart.
   ledger.issue(nanaUser, dad.account, 200, 'Monthly household float');
   ledger.issue(nanaUser, mom.account, 200, 'Monthly household float');
+  ledger.issueUSD(nanaUser, dad.account, 10_000, 'Household cash float');
+  ledger.issueUSD(nanaUser, mom.account, 10_000, 'Household cash float');
   ledger.advance(DAY);
   ledger.issue(nanaUser, sam.account, 25, 'Starting allowance');
   ledger.issue(nanaUser, ivy.account, 25, 'Starting allowance');
@@ -145,6 +152,11 @@ export function seed(ledger: DemoLedger): void {
 
   const switchTime = ledger.allListings('ACTIVE').find((l) => l.title.includes('Switch'))!;
   ledger.makeOffer(ivy, switchTime.id, 9, 'Would you take 9?');
+
+  // Both sides of the exchange book are visible in the showcase. Dad can pay
+  // dollars for coins; Sam can sell coins for dollars.
+  ledger.postQuote(dad, 'BID', 20, 10);
+  ledger.postQuote(sam, 'ASK', 30, 8);
 
   ledger.advance(DAY);
 }

@@ -40,7 +40,7 @@ interface Row {
   selector: 'app-history',
   imports: [RouterLink, Notebook],
   template: `
-    <h2>Your history</h2>
+    <h1>My Account</h1>
 
     @if (history.isLoading()) {
       <p class="muted">Loading…</p>

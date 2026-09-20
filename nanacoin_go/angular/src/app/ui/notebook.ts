@@ -5,4 +5,4 @@ import { Component, signal } from '@angular/core';
  <label><input type="checkbox" [checked]="cursive()" (change)="cursive.set(!cursive())"> Handwritten cursive</label></div>
  <div [class.notebook]="paper()" [class.cursive-ledger]="cursive()"><ng-content /></div>`,
 })
-export class Notebook { readonly paper = signal(false); readonly cursive = signal(false); }
+export class Notebook { readonly paper = signal(true); readonly cursive = signal(true); }

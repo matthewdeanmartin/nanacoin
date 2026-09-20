@@ -17,7 +17,7 @@ import { Toasts } from '../ui/toasts';
 @Component({
   selector: 'app-clientlog',
   template: `
-    <h2>What this browser did</h2>
+    <h1>What this browser did</h1>
 
     <p class="muted small">
       The last {{ entries().length }} things the app did, newest first. Kept in

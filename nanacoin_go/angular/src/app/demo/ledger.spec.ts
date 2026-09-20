@@ -202,6 +202,32 @@ describe('the demo marketplace', () => {
   });
 });
 
+describe('the demo exchange', () => {
+  it('settles the coin and dollar legs together', () => {
+    const { l, nana, alice, bob } = household();
+    l.issueUSD(nana, bob.account, 1_000, 'Cash float');
+    const quote = l.postQuote(alice, 'ASK', 25, 10);
+
+    const result = l.takeQuote(bob, quote.id);
+
+    expect(result.quote.status).toBe('FILLED');
+    expect(l.balanceOf(alice.account)).toBe(90);
+    expect(l.balanceOf(bob.account)).toBe(60);
+    expect(l.view(alice, alice).usd_cents).toBe(250);
+    expect(l.view(bob, bob).usd_cents).toBe(750);
+    expect(l.balanced()).toBe(true);
+  });
+
+  it('refuses a trade when the dollar buyer cannot pay', () => {
+    const { l, alice, bob } = household();
+    const quote = l.postQuote(alice, 'ASK', 25, 10);
+    expect(() => l.takeQuote(bob, quote.id)).toThrow(DemoError);
+    expect(quote.status).toBe('OPEN');
+    expect(l.balanceOf(alice.account)).toBe(100);
+    expect(l.balanceOf(bob.account)).toBe(50);
+  });
+});
+
 describe('the seeded household', () => {
   it('produces a history worth showing', () => {
     const l = new DemoLedger();
@@ -232,6 +258,13 @@ describe('the seeded household', () => {
     for (const u of l.allUsers(l.userByName('nana')!)) {
       expect(u.balance ?? 0).toBeGreaterThanOrEqual(0);
     }
+  });
+
+  it('gives Nana a 1,000-coin central-bank warchest', () => {
+    const l = new DemoLedger();
+    seed(l);
+    const nana = l.userByName('nana')!;
+    expect(l.balanceOf(nana.account)).toBe(1_000);
   });
 
   it('leaves an offer waiting for a decision', () => {
