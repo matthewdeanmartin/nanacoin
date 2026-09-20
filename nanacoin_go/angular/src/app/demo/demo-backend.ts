@@ -179,7 +179,6 @@ function handle(req: HttpRequest<unknown>): unknown {
   }
 
   if (path === '/transactions' && method === 'GET') {
-    if (me.role !== 'nana') throw new DemoError(403, 'forbidden', 'The full ledger is Nana\'s.');
     return demoLedger.ledger(Number(query.get('limit') ?? 100));
   }
 
@@ -234,6 +233,9 @@ function handle(req: HttpRequest<unknown>): unknown {
 
   if (path === '/listings' && method === 'GET') {
     return { listings: demoLedger.allListings() };
+  }
+  if (path === '/things' && method === 'GET') {
+    return { things: demoLedger.allThings() };
   }
 
   if (path === '/listings' && method === 'POST') {

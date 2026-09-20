@@ -33,6 +33,7 @@ import {
   QuoteSide,
   Role,
   Status,
+  Thing,
   TradeResult,
   Transaction,
   TransactionKind,
@@ -573,6 +574,23 @@ export class DemoLedger {
     return out.sort((a, b) => b.created_at - a.created_at);
   }
 
+  allThings(): Thing[] {
+    const things = new Map<string, Thing>();
+    for (const listing of this.listings) {
+      if (!listing.thing || !listing.economic_kind || !listing.unit) continue;
+      const previous = things.get(listing.thing);
+      things.set(listing.thing, {
+        id: listing.thing,
+        name: listing.title,
+        economic_kind: listing.economic_kind,
+        unit: listing.unit,
+        standard: Boolean(previous?.standard || listing.standard),
+        updated_at: Math.max(previous?.updated_at ?? 0, listing.updated_at),
+      });
+    }
+    return [...things.values()].sort((a, b) => b.updated_at - a.updated_at);
+  }
+
   listingById(id: string): Listing {
     const l = this.listings.find((x) => x.id === id);
     if (!l) throw new DemoError(404, 'not_found', 'No such listing.');
@@ -813,7 +831,7 @@ export class DemoLedger {
    * believable order, and several landing in the same second is exactly the
    * case that made the economy charts collapse onto one point.
    */
-  private clock = Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 60;
+  private clock = Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 65;
   private now(): number {
     return (this.clock += 1);
   }

@@ -20,6 +20,7 @@ import { ToastList } from './ui/toast-list';
 import { Toasts } from './ui/toasts';
 import { SiteMenu } from './ui/site-menu';
 import { KeyboardHelp } from './ui/keyboard-help';
+import { MastodonConnect } from './ui/mastodon-connect';
 
 type Phase = 'loading' | 'connect' | 'setup' | 'login' | 'app' | 'logs';
 
@@ -29,6 +30,7 @@ type Phase = 'loading' | 'connect' | 'setup' | 'login' | 'app' | 'logs';
     RouterOutlet,
     SiteMenu,
     KeyboardHelp,
+    MastodonConnect,
     ConnectForm,
     LoginForm,
     LogsPage,

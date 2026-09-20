@@ -64,6 +64,11 @@ export const routes: Routes = [
     canActivate: [nanaOnly],
   },
   {
+    path: 'invite',
+    loadComponent: () => import('./pages/invite').then((m) => m.InvitePage),
+    title: 'Invite — NanaCoin',
+  },
+  {
     path: 'diagnostics',
     loadComponent: () => IS_DEMO
       ? import('./pages/browser-health').then(m => m.BrowserHealth)

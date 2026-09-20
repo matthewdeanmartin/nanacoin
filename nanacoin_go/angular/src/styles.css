@@ -110,6 +110,14 @@ label.checkbox {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  width: max-content;
+  max-width: 100%;
+  white-space: nowrap;
+}
+
+label.checkbox input[type="checkbox"] {
+  width: auto;
+  flex: 0 0 auto;
 }
 
 input,
@@ -127,6 +135,7 @@ select {
 
 input:focus-visible,
 select:focus-visible,
+textarea:focus-visible,
 .btn:focus-visible,
 .tab:focus-visible,
 summary:focus-visible {
@@ -212,6 +221,18 @@ summary {
 .topbar__actions {
   display: flex;
   gap: 0.5rem;
+}
+
+textarea {
+  font: inherit;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 16px;
+  width: 100%;
+  resize: vertical;
 }
 
 /* Session actions belong in one menu. This keeps the top bar stable as more

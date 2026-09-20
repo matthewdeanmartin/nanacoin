@@ -66,11 +66,18 @@ export function seed(ledger: DemoLedger): void {
     for (const parent of [dad, mom]) {
       ledger.advance(DAY);
       for (const child of [sam, ivy]) {
+        const description = chores[chore++ % chores.length];
         ledger.transfer(
           parent,
           child.account,
           5 + ((week + chore) % 3) * 2,
-          chores[chore++ % chores.length],
+          description,
+          {
+            economic_kind: 'LABOR',
+            thing: `thing-demo-${description.toLocaleLowerCase().replaceAll(' ', '-')}`,
+            quantity_milli: 1000,
+            unit: 'TASK',
+          },
         );
         ledger.advance(3600 * 6);
       }
@@ -82,13 +89,23 @@ export function seed(ledger: DemoLedger): void {
       // sawtooth balance, and one who never spends has a straight line.
       if ((week + child.username.length) % 3 === 0) continue;
       const to = week % 2 === 0 ? dad : mom;
-      ledger.transfer(child, to.account, 3 + (treat % 4) * 3, treats[treat++ % treats.length]);
+      const description = treats[treat++ % treats.length];
+      const good = description.includes('cookies') || description.includes('ice cream');
+      ledger.transfer(child, to.account, 3 + (treat % 4) * 3, description, {
+        economic_kind: good ? 'GOOD' : 'OTHER',
+        thing: `thing-demo-${description.toLocaleLowerCase().replaceAll(' ', '-')}`,
+        quantity_milli: 1000,
+        unit: good && description.includes('cookies') ? 'BATCH' : 'EACH',
+      });
       ledger.advance(DAY);
     }
 
     if (week === 3) {
       ledger.advance(DAY);
       ledger.issue(nanaUser, sam.account, 30, 'Birthday');
+      ledger.transfer(dad, sam.account, 12, 'Birthday gift', {
+        economic_kind: 'GIFT', quantity_milli: 1000, unit: 'EACH',
+      });
     }
     ledger.advance(DAY);
   }
@@ -96,7 +113,9 @@ export function seed(ledger: DemoLedger): void {
   // A mistake and its correction, because the audit trail is one of the
   // things worth showing: the original stays, and a mirror transaction undoes
   // it, rather than the record being edited.
-  const wrong = ledger.transfer(dad, ivy.account, 40, 'Meant to send 4');
+  const wrong = ledger.transfer(dad, ivy.account, 40, 'Meant to send 4', {
+    economic_kind: 'OTHER', quantity_milli: 1000, unit: 'EACH',
+  });
   ledger.advance(600);
   ledger.reverse(nanaUser, wrong.id, 'Wrong amount - meant 4, not 40');
 
@@ -106,11 +125,13 @@ export function seed(ledger: DemoLedger): void {
     title: 'One hour of Switch time',
     description: 'Uninterrupted, and I will not ask for it back',
     price: 12,
+    economic_kind: 'OTHER', quantity_milli: 1000, unit: 'HOUR', standard: true,
   });
   ledger.createListing(ivy, {
     title: 'Old LEGO set',
     description: 'All the pieces, mostly',
     price: 30,
+    economic_kind: 'GOOD', quantity_milli: 1000, unit: 'EACH', standard: true,
   });
   ledger.createListing(dad, {
     title: '$5 of real cash',
@@ -119,6 +140,7 @@ export function seed(ledger: DemoLedger): void {
     kind: 'currency',
     currency: 'USD',
     minor_units: 500,
+    economic_kind: 'OTHER', quantity_milli: 1000, unit: 'EACH', standard: true,
   });
 
   // A want-ad: the thing the marketplace could not do before offers existed.
@@ -128,20 +150,41 @@ export function seed(ledger: DemoLedger): void {
     description: 'A whole batch, by Saturday',
     price: 25,
     side: 'BUY',
+    economic_kind: 'GOOD', thing: 'thing-demo-peanut-butter-cookies',
+    quantity_milli: 1000, unit: 'BATCH', standard: true,
   });
   ledger.createListing(nanaUser, {
     title: 'Wash the car',
     description: 'Inside and out, before Sunday',
     price: 40,
     side: 'BUY',
+    economic_kind: 'LABOR', quantity_milli: 1000, unit: 'TASK', standard: true,
   });
 
-  // Something already sold, so the market has history rather than only stock.
+  // Repeat sales at different prices make the inflation display demonstrate
+  // real observations instead of an empty-state lecture.
+  ledger.advance(DAY);
+  const firstCookies = ledger.createListing(mom, {
+    title: 'Peanut butter cookies', description: 'One batch', price: 6,
+    economic_kind: 'GOOD', thing: 'thing-demo-peanut-butter-cookies',
+    quantity_milli: 1000, unit: 'BATCH', standard: true,
+  });
+  ledger.purchase(sam, firstCookies.id);
+  ledger.advance(DAY);
+  const secondCookies = ledger.createListing(mom, {
+    title: 'Peanut butter cookies', description: 'One batch', price: 9,
+    economic_kind: 'GOOD', thing: 'thing-demo-peanut-butter-cookies',
+    quantity_milli: 1000, unit: 'BATCH', standard: true,
+  });
+  ledger.purchase(ivy, secondCookies.id);
+
+  // Something else already sold, so the market has varied history.
   ledger.advance(DAY);
   const sold = ledger.createListing(ivy, {
     title: 'A friendship bracelet',
     description: 'Made it myself',
     price: 8,
+    economic_kind: 'GOOD', quantity_milli: 1000, unit: 'EACH', standard: false,
   });
   ledger.purchase(sam, sold.id);
 
@@ -158,5 +201,15 @@ export function seed(ledger: DemoLedger): void {
   ledger.postQuote(dad, 'BID', 20, 10);
   ledger.postQuote(sam, 'ASK', 30, 8);
 
+  // Keep current-week employment visible after the historical seed and the
+  // market examples have advanced the demo clock.
   ledger.advance(DAY);
+  ledger.transfer(dad, sam.account, 11, 'Tidy the pantry', {
+    economic_kind: 'LABOR', thing: 'thing-demo-tidy-the-pantry',
+    quantity_milli: 1000, unit: 'TASK',
+  });
+  ledger.transfer(mom, ivy.account, 13, 'Organize the bookshelf', {
+    economic_kind: 'LABOR', thing: 'thing-demo-organize-the-bookshelf',
+    quantity_milli: 1000, unit: 'TASK',
+  });
 }

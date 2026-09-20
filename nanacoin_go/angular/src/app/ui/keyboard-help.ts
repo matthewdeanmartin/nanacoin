@@ -27,7 +27,7 @@ export function isEditing(target: EventTarget | null): boolean {
      <dt><kbd>?</kbd></dt><dd>Open this help</dd>
      <dt><kbd>g</kbd> then <kbd>h</kbd></dt><dd>Home: Market (or sign-in screen)</dd>
      <dt><kbd>g</kbd> then <kbd>e</kbd></dt><dd>Explore: Market</dd>
-     <dt><kbd>g</kbd> then <kbd>l</kbd></dt><dd>The notebook: public fictional ledger in the demo; existing permissions on a real board</dd>
+     <dt><kbd>g</kbd> then <kbd>l</kbd></dt><dd>The notebook: the household ledger is public; private descriptions are on the roadmap</dd>
    </dl>
    <h3>Lists and composing</h3><dl>
      <dt><kbd>j</kbd> / <kbd>k</kbd></dt><dd>Focus next / previous listing or transaction</dd>

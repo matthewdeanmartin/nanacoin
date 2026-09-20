@@ -15,7 +15,7 @@ export interface DemoPerson {
 export const IS_DEMO = true;
 
 export const DEMO_USERS: readonly DemoPerson[] = [
-  { username: 'nana', label: 'Nana', hint: 'issues coins, corrects mistakes, sees everything' },
+  { username: 'nana', label: 'Nana', hint: 'issues coins, corrects mistakes, and runs the household' },
   { username: 'dad', label: 'Dad', hint: 'an ordinary member, with a household float' },
   { username: 'mom', label: 'Mom', hint: 'posted a want-ad and has an offer waiting' },
   { username: 'sam', label: 'Sam', hint: 'a child, with chores to sell and an offer out' },

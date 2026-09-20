@@ -24,25 +24,6 @@ interface RecentSend {
   template: `
     <h1>Send</h1>
 
-    <section class="panel" aria-labelledby="mastodon-title">
-      <h2 id="mastodon-title">Private Mastodon messages</h2>
-      @if (mastodon.connected()) {
-        <p>Connected as <strong>{{ mastodon.account() }}</strong>.</p>
-        <button class="btn btn--quiet" type="button" (click)="disconnectMastodon()">Disconnect this browser</button>
-      } @else {
-        <p class="muted small">Your token stays in this browser. NanaCoin stores only your registered Mastodon ID.</p>
-        <form (ngSubmit)="connectMastodon()">
-          <label>
-            Your Mastodon server
-            <input name="mastodonServer" [(ngModel)]="mastodonServer" placeholder="mastodon.social" required />
-          </label>
-          <button class="btn btn--quiet" type="submit" [disabled]="connecting()">
-            {{ connecting() ? 'Connecting…' : 'Connect Mastodon' }}
-          </button>
-        </form>
-      }
-    </section>
-
     @if (session.recipients().length === 0) {
       <p class="muted">
         There is nobody else in the household yet. Nana adds members from the
@@ -116,20 +97,6 @@ interface RecentSend {
       </p>
     }
 
-    <section class="panel" aria-labelledby="share-title">
-      <h2 id="share-title">Tell friends and family</h2>
-      <label>
-        Post text
-        <input [ngModel]="shareText" (ngModelChange)="shareText = shareAllCaps ? $event.toLocaleUpperCase() : $event" maxlength="300" />
-      </label>
-      <label class="checkbox">
-        <input type="checkbox" [ngModel]="shareAllCaps" (ngModelChange)="setShareAllCaps($event)" />
-        ALL CAPS
-      </label>
-      <button class="btn btn--quiet" type="button" (click)="shareFacebook()">Share on Facebook</button>
-      <p class="muted small">The draft is copied, then Facebook opens its posting dialog. Other platform intents remain on the roadmap.</p>
-    </section>
-
     <section aria-labelledby="recent-sends-title">
       <h2 id="recent-sends-title">Recently sent</h2>
       @if (history.isLoading()) {
@@ -170,11 +137,6 @@ export class SendPage {
   protected unit: EconomicUnit = 'EACH';
   protected allCaps = false;
   private memoBeforeCaps = '';
-  protected mastodonServer = 'mastodon.social';
-  protected readonly connecting = signal(false);
-  protected shareText = "I'm using NanaCoin with my friends and family.";
-  protected shareAllCaps = false;
-  private shareBeforeCaps = '';
   protected readonly busy = signal(false);
   protected readonly history = resource({
     params: () => ({ account: this.session.me()?.account }),
@@ -315,42 +277,9 @@ export class SendPage {
     this.allCaps = on;
   }
 
-  protected setShareAllCaps(on: boolean): void {
-    const next = toggleCaps(this.shareText, this.shareAllCaps, on, this.shareBeforeCaps);
-    this.shareText = next.text;
-    this.shareBeforeCaps = next.saved;
-    this.shareAllCaps = on;
-  }
-
-  protected async connectMastodon(): Promise<void> {
-    if (this.connecting()) return;
-    this.connecting.set(true);
-    try { await this.mastodon.connect(this.mastodonServer); }
-    catch (e) { this.connecting.set(false); this.toasts.error(e instanceof Error ? e.message : 'Could not connect Mastodon.'); }
-  }
-
   private async finishMastodon(code: string, state: string): Promise<void> {
-    this.connecting.set(true);
     try { this.toasts.ok(`Connected Mastodon as ${await this.mastodon.finish(code, state)}.`); }
     catch (e) { this.toasts.error(e instanceof Error ? e.message : 'Could not finish Mastodon sign-in.'); }
-    finally { this.connecting.set(false); }
-  }
-
-  protected disconnectMastodon(): void { this.mastodon.disconnect(); this.toasts.ok('Mastodon disconnected from this browser.'); }
-
-  protected shareFacebook(): void {
-    const textarea = document.createElement('textarea');
-    textarea.value = this.shareText.trim();
-    textarea.style.position = 'fixed';
-    textarea.style.opacity = '0';
-    document.body.appendChild(textarea);
-    textarea.select();
-    document.execCommand('copy');
-    textarea.remove();
-    const params = new URLSearchParams({
-      u: 'https://github.com/matthewdeanmartin/nanacoin', quote: this.shareText.trim(),
-    });
-    window.open(`https://www.facebook.com/sharer/sharer.php?${params}`, '_blank', 'noopener,noreferrer');
   }
 
   protected when(unixSeconds: number): string {

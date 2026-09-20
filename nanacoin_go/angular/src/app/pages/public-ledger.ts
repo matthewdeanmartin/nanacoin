@@ -11,7 +11,7 @@ import { Notebook } from '../ui/notebook';
 @Component({
  selector: 'app-public-ledger', imports: [Notebook, RouterLink, DatePipe],
  template: `<h1>The Notebook</h1><p class="notebook-treat"><a routerLink="/recipes">Vegetarian and vegan recipes</a> are available to everyone; eating is optional.</p>
- <p>{{ demo ? 'Public fictional ledger: the latest 100 entries in this browser tab. No household information is published.' : 'The household ledger is public: anyone can audit every transaction.' }}</p>
+ <p>{{ demo ? 'Public fictional household ledger: everyone can audit the latest 100 entries in this browser tab. Private descriptions are on the roadmap.' : 'The household ledger is public: anyone can audit every transaction. Private descriptions are on the roadmap.' }}</p>
  @if (data.isLoading()) { <p>Opening the notebook…</p> }
  @else if (data.error()) { <p role="alert">Could not open the ledger. <button class="btn" title="Try loading the notebook again" (click)="data.reload()">Retry</button></p> }
  @else { <app-notebook><div class="ledger">
