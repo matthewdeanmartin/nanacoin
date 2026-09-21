@@ -10,6 +10,7 @@ import { Toasts } from '../ui/toasts';
 import { Dialogs } from '../ui/dialog';
 import { toggleCaps } from './message-caps';
 import { validQuantity } from '../catalog/economics';
+import { advanceDue, Allowance, AllowanceCadence, loadAllowances, saveAllowances, today } from './allowances';
 
 interface RecentSend {
   id: string;
@@ -26,6 +27,12 @@ interface RecentSend {
   template: `
     <h1>Send</h1>
 
+    <div class="tabs" role="tablist" aria-label="Send sections">
+      <button class="tab" type="button" role="tab" [attr.aria-selected]="activeTab() === 'money'" (click)="activeTab.set('money')">Send Money</button>
+      <button class="tab" type="button" role="tab" [attr.aria-selected]="activeTab() === 'allowance'" (click)="activeTab.set('allowance')">Setup Allowance</button>
+    </div>
+
+    @if (activeTab() === 'money') {
     @if (session.recipients().length === 0) {
       <p class="muted">
         There is nobody else in the household yet. Nana adds members from the
@@ -122,6 +129,29 @@ interface RecentSend {
         </div>
       }
     </section>
+    } @else {
+      <section class="panel">
+        <h2>Setup Allowance</h2>
+        <p class="muted small">Schedules live in this browser. NanaCoin sends nothing in the background; use Check allowances whenever the app is open to catch up every due weekly or monthly payment.</p>
+        <label>To <select name="allowanceTo" [ngModel]="allowanceTo" (ngModelChange)="allowanceTo = $event"><option value="" disabled>Choose someone</option>@for (u of session.recipients(); track u.id) { <option [value]="u.account">{{ u.display_name }}</option> }</select></label>
+        <label>Amount <input name="allowanceAmount" type="number" min="1" step="1" [ngModel]="allowanceAmount" (ngModelChange)="allowanceAmount = $event"></label>
+        <label>Frequency <select name="allowanceCadence" [ngModel]="allowanceCadence" (ngModelChange)="allowanceCadence = $event"><option value="WEEKLY">Weekly</option><option value="MONTHLY">Monthly</option></select></label>
+        <label>First payment date <input name="allowanceFirstDue" type="date" [ngModel]="allowanceFirstDue" (ngModelChange)="allowanceFirstDue = $event"></label>
+        <label>Description <input name="allowanceMemo" maxlength="140" [ngModel]="allowanceMemo" (ngModelChange)="allowanceMemo = $event"></label>
+        <button class="btn" type="button" (click)="saveAllowance()">Save allowance</button>
+      </section>
+
+      <p><button class="btn" type="button" [disabled]="checkingAllowances()" (click)="checkAllowances()">{{ checkingAllowances() ? 'Checking…' : 'Check allowances' }}</button></p>
+      <p role="status">{{ allowanceMessage() }}</p>
+      <section><h2>My allowances</h2>
+        @for (allowance of myAllowances(); track allowance.id) {
+          <article class="card allowance-row">
+            <div><strong>{{ allowance.amount }} NC to {{ allowance.recipientName }}</strong><p class="muted small">{{ allowance.cadence.toLocaleLowerCase() }} · next due {{ allowance.nextDue }} · {{ allowance.memo }}</p></div>
+            <button class="btn btn--quiet btn--small" type="button" (click)="removeAllowance(allowance.id)">Remove</button>
+          </article>
+        } @empty { <p class="muted">No allowances set up in this browser.</p> }
+      </section>
+    }
   `,
 })
 export class SendPage {
@@ -141,6 +171,16 @@ export class SendPage {
   protected allCaps = false;
   private memoBeforeCaps = '';
   protected readonly busy = signal(false);
+  protected readonly activeTab = signal<'money' | 'allowance'>('money');
+  private readonly allowanceStore = signal<Allowance[]>(loadAllowances());
+  protected readonly checkingAllowances = signal(false);
+  protected readonly allowanceMessage = signal('');
+  protected allowanceTo = '';
+  protected allowanceAmount: number | null = null;
+  protected allowanceCadence: AllowanceCadence = 'WEEKLY';
+  protected allowanceFirstDue = today();
+  protected allowanceMemo = 'Allowance';
+  protected readonly myAllowances = computed(() => this.allowanceStore().filter((item) => item.ownerId === this.session.me()?.id));
   protected readonly history = resource({
     params: () => ({ account: this.session.me()?.account }),
     loader: ({ params }) => params.account
@@ -287,6 +327,69 @@ export class SendPage {
     } finally {
       this.busy.set(false);
     }
+  }
+
+  protected saveAllowance(): void {
+    const amount = Number(this.allowanceAmount);
+    const recipient = this.session.recipients().find((user) => user.account === this.allowanceTo);
+    if (!recipient) { this.toasts.error('Choose who receives the allowance.'); return; }
+    if (!Number.isSafeInteger(amount) || amount <= 0) { this.toasts.error('Enter a positive whole number of coins.'); return; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(this.allowanceFirstDue)) { this.toasts.error('Choose the first payment date.'); return; }
+    const ownerId = this.session.me()?.id;
+    if (!ownerId) return;
+    const item: Allowance = {
+      id: `allowance:${newIdempotencyKey()}`, ownerId, recipientAccount: recipient.account,
+      recipientName: recipient.display_name, amount, cadence: this.allowanceCadence,
+      nextDue: this.allowanceFirstDue, memo: this.allowanceMemo.trim() || 'Allowance',
+    };
+    const items = [item, ...this.allowanceStore()];
+    saveAllowances(items); this.allowanceStore.set(items);
+    this.allowanceAmount = null;
+    this.allowanceMessage.set(`Saved ${item.cadence.toLocaleLowerCase()} allowance for ${item.recipientName}.`);
+  }
+
+  protected removeAllowance(id: string): void {
+    const items = this.allowanceStore().filter((item) => item.id !== id || item.ownerId !== this.session.me()?.id);
+    saveAllowances(items); this.allowanceStore.set(items);
+  }
+
+  protected async checkAllowances(): Promise<void> {
+    if (this.checkingAllowances()) return;
+    this.checkingAllowances.set(true); this.allowanceMessage.set('');
+    let sent = 0;
+    let moreDue = false;
+    try {
+      const dueThrough = today();
+      for (const original of this.myAllowances()) {
+        let item = original;
+        let installments = 0;
+        while (item.nextDue <= dueThrough && installments++ < 120) {
+          if (!item.pendingKey) {
+            item = { ...item, pendingKey: newIdempotencyKey() };
+            this.replaceAllowance(item);
+          }
+          await this.api.transfer(item.recipientAccount, item.amount, `${item.memo} (${item.nextDue})`, item.pendingKey!, {
+            economic_kind: 'GIFT', quantity: '1', unit: 'EACH',
+          });
+          sent++;
+          item = { ...item, nextDue: advanceDue(item.nextDue, item.cadence), pendingKey: undefined };
+          this.replaceAllowance(item);
+        }
+        if (item.nextDue <= dueThrough) moreDue = true;
+      }
+      await this.session.refresh(); this.history.reload();
+      this.allowanceMessage.set(moreDue
+        ? `Sent ${sent} due payments. More remain; check allowances again to continue.`
+        : sent ? `Sent ${sent} due allowance ${sent === 1 ? 'payment' : 'payments'}.` : 'All allowances are up to date.');
+    } catch (e) {
+      this.toasts.fromError(e);
+      this.allowanceMessage.set(sent ? `Sent ${sent} payment${sent === 1 ? '' : 's'} before stopping. The remaining due payments were left scheduled.` : 'No payments were sent.');
+    } finally { this.checkingAllowances.set(false); }
+  }
+
+  private replaceAllowance(updated: Allowance): void {
+    const items = this.allowanceStore().map((item) => item.id === updated.id ? updated : item);
+    saveAllowances(items); this.allowanceStore.set(items);
   }
 
   private recipient(): User | undefined {

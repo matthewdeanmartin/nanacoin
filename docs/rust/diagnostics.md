@@ -82,7 +82,7 @@ routes; hosts without a static provider return 404 for `/diag/static`.
 
 ## Browser and measurement limits
 
-[The Angular page](https://github.com/matthewdeanmartin/nanacoin/blob/main/nanacoin_go/angular/src/app/pages/diagnostics.ts)
+[The Angular page](https://github.com/matthewdeanmartin/nanacoin/blob/main/nanacoin_ui/src/app/pages/diagnostics.ts)
 keeps at most 120 samples, polls without overlapping requests, pauses in hidden
 tabs and aborts requests on teardown. Missing values do not create zero-valued
 graph points. Rust's stale-sampler warning detects a snapshot that stops

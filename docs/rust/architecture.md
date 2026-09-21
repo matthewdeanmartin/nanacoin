@@ -76,7 +76,7 @@ The server exposes its current generation in status/responses. After retirement,
 an unknown old-generation key is rejected rather than interpreted as a new
 payment. The Angular interceptor tracks generation, but does not re-key an
 uncertain previous operation automatically. See
-[client service](https://github.com/matthewdeanmartin/nanacoin/blob/main/nanacoin_go/angular/src/app/api/nanacoin.service.ts)
+[client service](https://github.com/matthewdeanmartin/nanacoin/blob/main/nanacoin_ui/src/app/api/nanacoin.service.ts)
 and [API contract](https://github.com/matthewdeanmartin/nanacoin/blob/main/nanacoin_rs/API.md).
 
 Timed offer actions require a valid server wall clock. Uptime is not an expiry

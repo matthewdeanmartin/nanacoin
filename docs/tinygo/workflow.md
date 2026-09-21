@@ -11,7 +11,7 @@ go run ./cmd/nanacoin -web ""
 In a second terminal, start the browser application:
 
 ```powershell
-cd nanacoin_go/angular
+cd nanacoin_ui
 npm install
 npm start
 ```

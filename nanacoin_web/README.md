@@ -3,9 +3,9 @@
 ## Public static showcase
 
 The existing GitHub Pages demo is built from the same client at
-`../nanacoin_go/angular` using its `demo` configuration. This folder is the legacy
+`../nanacoin_ui` using its `demo` configuration. This folder is the legacy
 MicroPython static-file host, not a separate frontend implementation. See
-[showcase build and capability parity](../nanacoin_go/angular/SHOWCASE_PARITY.md).
+[showcase build and capability parity](../nanacoin_ui/SHOWCASE_PARITY.md).
 About, lemon-bar recipes and notebook styling are shared. The static demo uses
 fictional financial data and real browser health; it never needs a live board.
 Nana-nickles are currently a labelled browser prototype, not a Rust/TinyGo API.
@@ -115,7 +115,7 @@ when switching back to the TinyGo firmware.
 
 ## Administrator machine health
 
-The Angular source is in `../nanacoin_go/angular`. Sign in as Nana and open
+The Angular source is in `../nanacoin_ui`. Sign in as Nana and open
 **Machine health** (`#/diagnostics`) to see the Rust API board's internal
 RAM/fragmentation, PSRAM, temperature, Wi-Fi, clock, task/stack headroom,
 server counters, NVS storage and flash partition map. The displayed board
@@ -124,7 +124,7 @@ browser. Hidden tabs stop polling, requests do not overlap, and leaving the
 page cancels pending requests. Old Rust firmware can show basic heap
 counters; unsupported firmware reports its limitations.
 
-Building with `npm run build` in `nanacoin_go/angular` only produces local
+Building with `npm run build` in `nanacoin_ui` only produces local
 assets. Deploy scripts write to the web board; do not run them until a
 board update is intended. This diagnostics change does not require or
 perform a flash/deployment as part of local validation.

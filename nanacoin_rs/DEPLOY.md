@@ -32,7 +32,7 @@ recovery procedure.
 The build computer needs:
 
 - the repository's existing Espressif Rust/ESP-IDF environment;
-- Node dependencies in `../nanacoin_go/angular/node_modules` (run `npm ci` there
+- Node dependencies in `../nanacoin_ui/node_modules` (run `npm ci` there
   once if they are absent);
 - ignored Wi-Fi configuration supported by `build.rs`;
 - the existing ignored CA and server certificate under `.local/ca` and `certs`;

@@ -6,7 +6,7 @@ import { gzipSync } from 'node:zlib';
 import { createHash } from 'node:crypto';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const input = resolve(root, '../nanacoin_go/angular/dist/nanacoin-web/browser');
+const input = resolve(root, '../nanacoin_ui/dist/nanacoin-web/browser');
 const output = resolve(root, '.embuild/web');
 mkdirSync(output, { recursive: true });
 const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',

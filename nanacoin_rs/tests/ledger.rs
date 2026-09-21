@@ -75,6 +75,72 @@ fn ledger_survives_replay_and_keeps_double_entry_balances() {
 }
 
 #[test]
+fn recipient_can_refund_but_payer_cannot_reverse_their_own_payment() {
+    let (mut s, _) = household();
+    execute(
+        &mut s,
+        1,
+        Command::AddMember {
+            name: Name::try_from("Bob").unwrap(),
+            token_hash: [3; 32],
+        },
+    )
+    .unwrap();
+    execute(
+        &mut s,
+        1,
+        Command::Issue {
+            to: MemberId(2),
+            amount: 30,
+            memo: Memo::new(),
+        },
+    )
+    .unwrap();
+    let payment = execute(
+        &mut s,
+        2,
+        Command::ClassifiedTransfer {
+            to: MemberId(3),
+            amount: 20,
+            memo: Memo::try_from("Mow lawn").unwrap(),
+            economic: EconomicDetails {
+                kind: EconomicKind::Labor,
+                quantity_milli: 1000,
+                unit: Unit::Task,
+                ..EconomicDetails::default()
+            },
+        },
+    )
+    .unwrap()
+    .sequence;
+    assert_eq!(
+        execute(
+            &mut s,
+            2,
+            Command::Reverse {
+                transaction: payment,
+                memo: Memo::new()
+            },
+        ),
+        Err(Error::Forbidden)
+    );
+    execute(
+        &mut s,
+        3,
+        Command::Reverse {
+            transaction: payment,
+            memo: Memo::try_from("Refund").unwrap(),
+        },
+    )
+    .unwrap();
+    let refund = s.state().history.back().unwrap();
+    assert_eq!(refund.reverses, Some(payment));
+    assert_eq!(refund.economic.kind, EconomicKind::Labor);
+    assert_eq!(s.state().member(MemberId(2)).unwrap().balance, 30);
+    assert_eq!(s.state().member(MemberId(3)).unwrap().balance, 0);
+}
+
+#[test]
 fn authorization_and_input_fail_without_writes() {
     let (mut s, memory) = household();
     for (actor, command, error) in [
@@ -198,7 +264,10 @@ fn classified_exchange_reuses_things_and_keeps_nana_out_of_labor() {
 
     assert_eq!(s.state().things.len(), 1);
     assert!(s.state().things[0].standard);
-    assert_eq!(s.state().listings.last().unwrap().economic.thing, first.sequence);
+    assert_eq!(
+        s.state().listings.last().unwrap().economic.thing,
+        first.sequence
+    );
     let purchase = s
         .state()
         .history
@@ -210,7 +279,10 @@ fn classified_exchange_reuses_things_and_keeps_nana_out_of_labor() {
 
     let reopened = Service::open(memory).unwrap();
     assert_eq!(reopened.state().things.len(), 1);
-    assert_eq!(reopened.state().things[0].name.as_str(), "Mexican wedding cookies");
+    assert_eq!(
+        reopened.state().things[0].name.as_str(),
+        "Mexican wedding cookies"
+    );
 }
 
 #[test]

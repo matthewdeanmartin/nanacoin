@@ -33,7 +33,7 @@ smoke test. `make run` starts the desktop HTTP API. The desktop adapter persists
 to files; it does not emulate NVS's physical flash layout. Use disposable test
 data for load generators, which create real economic activity.
 
-From `nanacoin_go/angular`, `npm run build` builds the shared client and
+From `nanacoin_ui`, `npm run build` builds the shared client and
 `npm test -- --watch=false` runs its tests. Its connection discovery probes
 configured/current candidates, `nanacoin.local`, legacy `nanacoin-rs.local`, `nanacoin-api.local`, and
 the configured known IP candidates, trying HTTPS and HTTP from an HTTP page.

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "note": "The standard things a household trades. One source of truth: gen.py emits internal/catalog/catalog.go for the board and angular/src/app/catalog/catalog.ts for the client, so a code can never mean two different things. Codes are permanent - never renumber or reuse one, because a code is what the ledger stores. Retire an entry by setting \"retired\": true instead of deleting it, or old records become unreadable.",
+  "note": "The standard things a household trades. One source of truth: gen.py emits internal/catalog/catalog.go for the board and ../nanacoin_ui/src/app/catalog/catalog.ts for the client, so a code can never mean two different things. Codes are permanent - never renumber or reuse one, because a code is what the ledger stores. Retire an entry by setting \"retired\": true instead of deleting it, or old records become unreadable.",
   "categories": [
     { "id": 1, "slug": "chores", "name": "Chores" },
     { "id": 2, "slug": "kitchen", "name": "Kitchen & food" },

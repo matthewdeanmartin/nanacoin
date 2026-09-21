@@ -6,8 +6,9 @@ The TinyGo firmware is in deep freeze pending supported upstream compiler/runtim
 support for more of this board, especially PSRAM. See `PSRAM_EPIC.md`. Do not
 maintain a compiler fork or fix upstream runtime PRs. The owner's explicitly
 requested machine-diagnostics compatibility work is the exception; further Go
-firmware work requires a new request. The shared Angular client remains active
-for Rust and is not frozen by this firmware policy.
+firmware work requires a new request. The shared Angular client in
+`../nanacoin_ui` remains active for Rust and is not frozen by this firmware
+policy.
 
 This is an experimental development application, not a production service.
 Do not flash an older firmware, reset the household, or do recovery deployments

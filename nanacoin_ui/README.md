@@ -3,25 +3,25 @@
 The household-facing site. A static Angular app that talks to the NanaCoin
 HTTP API, wherever that happens to be running.
 
-This is the client meant for daily use. `../web/` holds an earlier vanilla
-TypeScript client with the same design; it is kept because it is small enough
-to serve off the board itself, which this one is not intended for.
+This is the client meant for daily use. `../nanacoin_go/web/` holds an earlier
+vanilla TypeScript client with the same design; it is kept because it is small
+enough to serve off the TinyGo board itself.
 
 ## Run it
 
-Two processes: the Go API, and the dev server.
+Two processes: the Rust API, and the dev server.
 
 ```powershell
 # terminal 1 - the API
-cd ..
-go run ./cmd/nanacoin -web ""
+cd ../nanacoin_rs
+make run
 
 # terminal 2 - this site
 npm install     # once
 npm start
 ```
 
-Then open <http://localhost:4200/?api=> to use the local Go API through the dev
+Then open <http://localhost:4200/?api=> to use the local Rust API through the dev
 proxy. Without that parameter, the default is the TinyGo board at
 `http://nanacoin-api.local`. With the API running you land on the setup
 screen, which asks you to create the household and become Nana. Without it you
@@ -38,7 +38,7 @@ npm test          # unit tests, vitest
 ## Pointing it at the board
 
 The site does not have to be served by the thing it talks to — that is the
-whole point of the CORS configuration in the Go server.
+whole point of the API server's CORS configuration.
 
 **The default is `nanacoin-api.local`.** No address needs to be entered when
 the TinyGo board is reachable by mDNS on the same LAN. A previously saved
@@ -76,12 +76,14 @@ Precedence is query parameter, then remembered choice, then meta tag, then
 same-origin if the meta tag is empty or absent.
 
 Whichever you use, the server's allowed origins must include wherever this site
-is served from, or the browser blocks the request before it is sent. That list
-is `allowedOrigins` in `../cmd/nanacoin-esp32/main.go` for the board, or the
-`-origins` flag for the desktop server:
+is served from, or the browser blocks the request before it is sent. The Rust
+desktop server uses `NANACOIN_ORIGINS`; its defaults already include the local
+Angular development origin. For example:
 
 ```powershell
-go run ./cmd/nanacoin -web "" -origins "http://localhost:4200"
+$env:NANACOIN_ORIGINS = "http://localhost:4200"
+cd ../nanacoin_rs
+make run
 ```
 
 ## How it is put together
@@ -89,7 +91,7 @@ go run ./cmd/nanacoin -web "" -origins "http://localhost:4200"
 ```text
 src/app/
     api/
-        models.ts             wire types, mirroring internal/api/views.go
+        models.ts             wire types for the server JSON API
         nanacoin.service.ts   the HTTP client, PKCE, idempotency keys
         api-base.ts           which NanaCoin to talk to, and remembering it
         session.ts            who is logged in, and the derived state
@@ -113,7 +115,7 @@ Angular 22, standalone components, signals throughout, and
 are lazy, so Nana's admin screens (the largest part, and the part most
 household members never open) are not in the initial download.
 
-Around 89 kB transferred for the initial load.
+Around 123 kB transferred for the initial load.
 
 ### Things worth knowing
 
@@ -142,7 +144,7 @@ server (which rejects it again).
 
 **A gateway error is reported as unreachable.** A 502/503/504 comes from a
 proxy answering on NanaCoin's behalf because it could not reach it — the dev
-server does exactly this when the Go server is not running. "Bad Gateway" tells
+server does exactly this when the API server is not running. "Bad Gateway" tells
 a household member nothing, so those statuses and a status of 0 are all
 reported as "could not reach NanaCoin at <host>", which is both true and
 actionable.

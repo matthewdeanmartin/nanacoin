@@ -29,10 +29,10 @@ target
 config.py
 .env
 
-# Angular client (nanacoin_go/angular): dependencies and build output.
+# Angular client (nanacoin_ui): dependencies and build output.
 node_modules/
-/nanacoin_go/angular/dist/
-/nanacoin_go/angular/.angular/
+/nanacoin_ui/dist/
+/nanacoin_ui/.angular/
 
 # Python
 __pycache__/

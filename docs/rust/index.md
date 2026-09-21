@@ -1,7 +1,7 @@
 # Rust and NanaCoin
 
 `nanacoin_rs` is the Rust implementation of the household currency and
-marketplace. It shares the Angular client in `nanacoin_go/angular` with TinyGo;
+marketplace. It uses the shared Angular client in `nanacoin_ui`;
 `nanacoin_web` can still host that client separately. Rust firmware now embeds
 the production client at `https://nanacoin.local/`, alongside `/api/v1`.
 Do not run the legacy UI board with the same hostname simultaneously. The Rust API board

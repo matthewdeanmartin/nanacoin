@@ -4,6 +4,7 @@
 
 import { DemoError, DemoLedger, SYSTEM_ISSUANCE } from './ledger';
 import { seed } from './seed';
+import { employmentSnapshot, gdpSeries } from '../economy/series';
 
 function household() {
   const l = new DemoLedger();
@@ -100,6 +101,21 @@ describe('the demo ledger', () => {
     expect(l.balanceOf(alice.account)).toBe(100);
     expect(l.balanceOf(bob.account)).toBe(50);
     expect(l.balanced()).toBe(true);
+  });
+
+  it('lets the recipient refund a classified payment and removes its economic effect', () => {
+    const { l, alice, bob } = household();
+    const txn = l.transfer(alice, bob.account, 20, 'Mow lawn', {
+      economic_kind: 'LABOR', thing: 'mow', quantity_milli: 1000, unit: 'TASK',
+    });
+    const refund = l.reverse(bob, txn.id, 'Refund: Mow lawn');
+    expect(refund.kind).toBe('REVERSAL');
+    expect(refund.economic_kind).toBe('LABOR');
+    expect(l.balanceOf(alice.account)).toBe(100);
+    expect(l.balanceOf(bob.account)).toBe(50);
+    const transactions = l.ledger(100).transactions;
+    expect(gdpSeries(transactions, 'year').points.reduce((sum, point) => sum + point.value, 0)).toBe(0);
+    expect(employmentSnapshot(transactions, [bob.account], refund.created_at).employed).toBe(0);
   });
 
   it('reverses even when the money has been spent', () => {

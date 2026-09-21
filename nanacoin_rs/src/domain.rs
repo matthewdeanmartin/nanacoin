@@ -808,16 +808,25 @@ impl State {
                 self.posting(from, to, l.price)?;
             }
             Command::Reverse { transaction, .. } => {
-                self.admin(actor)?;
                 let tx = self
                     .history
                     .iter()
                     .find(|t| t.id == *transaction)
                     .ok_or(Error::NotFound)?;
+                let nana = self.member(actor)?.role == Role::Nana;
+                // Nana may correct any ordinary ledger error. A member may
+                // only refund money they received, and never issuance, USD,
+                // or a Forex leg. That makes Refund safe to expose beside a
+                // public ledger row without turning it into arbitrary spend.
+                if !nana
+                    && (tx.to != actor || tx.from == MemberId(0) || tx.usd || tx.quote.is_some())
+                {
+                    return Err(Error::Forbidden);
+                }
                 if tx.reversed || tx.reverses.is_some() {
                     return Err(Error::Conflict);
                 }
-                self.validate_currency_posting(tx.to, tx.from, tx.amount, true, tx.usd)?;
+                self.validate_currency_posting(tx.to, tx.from, tx.amount, nana, tx.usd)?;
             }
             Command::IssueUsd { .. }
             | Command::PostQuote { .. }

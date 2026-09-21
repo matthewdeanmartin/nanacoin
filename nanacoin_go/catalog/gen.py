@@ -4,7 +4,7 @@
 
 Writes:
     internal/catalog/catalog.go                     the board and desktop server
-    angular/src/app/catalog/catalog.ts              the client
+    ../nanacoin_ui/src/app/catalog/catalog.ts       the client
 
 # Why generated rather than hand-written twice
 
@@ -28,9 +28,10 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
+REPO_ROOT = os.path.dirname(ROOT)
 
 GO_OUT = os.path.join(ROOT, "internal", "catalog", "catalog.go")
-TS_OUT = os.path.join(ROOT, "angular", "src", "app", "catalog", "catalog.ts")
+TS_OUT = os.path.join(REPO_ROOT, "nanacoin_ui", "src", "app", "catalog", "catalog.ts")
 
 
 def load():

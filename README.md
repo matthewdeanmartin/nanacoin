@@ -79,7 +79,8 @@ see [`nanacoin_go/PSRAM_EPIC.md`](nanacoin_go/PSRAM_EPIC.md).
 | Directory | What it is |
 |---|---|
 | [`nanacoin_rs/`](nanacoin_rs/) | **The active implementation.** The ledger and JSON API in Rust, for desktop and ESP32-S3. |
-| [`nanacoin_go/`](nanacoin_go/) | The original TinyGo implementation, plus the shared Angular client in `angular/`. Firmware is frozen; the client is current. |
+| [`nanacoin_ui/`](nanacoin_ui/) | **The active browser UI.** One Angular client for the Rust API, firmware bundle and static demo. |
+| [`nanacoin_go/`](nanacoin_go/) | The original TinyGo implementation. Firmware is frozen pending upstream PSRAM support. |
 | [`nanacoin_web/`](nanacoin_web/) | MicroPython static host that serves the Angular bundle from an ESP32-S2. |
 | [`nanacoin_load/`](nanacoin_load/) | Load lab: Python 3.14 and Locust, with HTML reports. Answers "does the board fall over?" |
 
@@ -109,7 +110,7 @@ make run                      # http://127.0.0.1:8080
 Then the client, in another terminal:
 
 ```bash
-cd nanacoin_go/angular
+cd nanacoin_ui
 npm ci                        # first time only
 npm start                     # http://localhost:4200
 ```

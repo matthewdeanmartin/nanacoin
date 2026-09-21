@@ -47,7 +47,7 @@ only record of real obligations on it.
 
 ## Where the code lives
 
-| Directory in `nanacoin_go/` | Responsibility |
+| Directory | Responsibility |
 |---|---|
 | `cmd/nanacoin` | Desktop executable and file journal |
 | `cmd/nanacoin-esp32` | Board startup, WiFi, connection pool and runtime diagnostics |
@@ -58,7 +58,7 @@ only record of real obligations on it.
 | `internal/auth` | Password checking, PKCE, sessions and login throttling |
 | `internal/storage` | Journal contract and backend implementations |
 | `internal/eventlog` | Bounded diagnostic history |
-| `angular` | Main browser application |
+| [`nanacoin_ui`](../../nanacoin_ui/) | Main browser application (shared with Rust) |
 | `patches` | Dependency fixes needed by the board build |
 
 The separate [nanacoin_load project](https://github.com/matthewdeanmartin/nanacoin/tree/main/nanacoin_load)

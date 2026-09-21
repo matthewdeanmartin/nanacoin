@@ -2,7 +2,8 @@
 
 **TinyGo firmware is frozen** pending supported upstream board/PSRAM support;
 see [PSRAM_EPIC.md](PSRAM_EPIC.md). Machine-diagnostics compatibility is the
-explicit exception. The shared Angular client remains active for the Rust API.
+explicit exception. The shared Angular client in `../nanacoin_ui` remains active
+for the Rust API.
 The [Rust guide](../docs/rust/index.md) explains the active implementation.
 
 A household currency and marketplace, administered by a trusted household
@@ -51,7 +52,7 @@ rather than silently rewriting the original transaction.
 |---|---|
 | Ledger, marketplace, auth, HTTP API | Implemented, with Go unit and regression tests |
 | Desktop server (`go`) | Done, file-backed journal, crash-safe |
-| Angular client (`angular/`) | Implemented — **the one to use** |
+| Angular client ([`../nanacoin_ui/`](../nanacoin_ui/)) | Implemented — **the one to use** |
 | Vanilla client (`web/`) | Done, small enough to serve off the board |
 | Board firmware (`tinygo`, ESP32-S3) | Runs on hardware, WiFi and all |
 | Board HTTP | httphi with bounded worker buffers and reusable adapter objects; some allocations remain |
@@ -74,7 +75,7 @@ Two processes: the API, and the Angular site.
 go run ./cmd/nanacoin -web ""
 
 # terminal 2 - the site
-cd angular
+cd ../nanacoin_ui
 npm install     # once
 npm start
 ```
@@ -167,7 +168,7 @@ internal/
         memory/        RAM, for tests
         flashlog/      append-only file, for desktop and as the flash template
 
-angular/               the household site: Angular 22, signals, lazy routes
+../nanacoin_ui/         the household site: Angular 22, signals, lazy routes
 web/                   the earlier vanilla client, small enough for the board
 patches/               the espradio retry patches and a script to apply them
 ```

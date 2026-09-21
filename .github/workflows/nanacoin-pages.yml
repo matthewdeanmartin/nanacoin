@@ -16,7 +16,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'nanacoin_go/angular/**'
+      - 'nanacoin_ui/**'
       - '.github/workflows/nanacoin-pages.yml'
 
 # One deployment at a time. A second run while the first is publishing would
@@ -53,25 +53,25 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: nanacoin_go/angular/package-lock.json
+          cache-dependency-path: nanacoin_ui/package-lock.json
 
       - name: Install dependencies
-        working-directory: nanacoin_go/angular
+        working-directory: nanacoin_ui
         run: npm ci
 
       # The demo has to pass its own tests before it is shown to anyone: the
       # in-memory ledger enforces the same economic rules the Go server does,
       # and a demo that gets those wrong is worse than no demo.
       - name: Test
-        working-directory: nanacoin_go/angular
+        working-directory: nanacoin_ui
         run: npm test -- --watch=false
 
       - name: Build the demo
-        working-directory: nanacoin_go/angular
+        working-directory: nanacoin_ui
         run: npx ng build --configuration demo --base-href "$BASE_HREF"
 
       - name: Test the actual static site in a browser
-        working-directory: nanacoin_go/angular
+        working-directory: nanacoin_ui
         run: |
           python -m pip install playwright==1.63.0
           python -m playwright install --with-deps chromium
@@ -81,16 +81,16 @@ jobs:
       # strictly needed - but a mistyped path should land on the app rather
       # than on GitHub's own 404 page.
       - name: Add SPA fallback
-        run: cp nanacoin_go/angular/dist/nanacoin-web/browser/index.html
-             nanacoin_go/angular/dist/nanacoin-web/browser/404.html
+        run: cp nanacoin_ui/dist/nanacoin-web/browser/index.html
+             nanacoin_ui/dist/nanacoin-web/browser/404.html
 
       # Jekyll would otherwise ignore files beginning with an underscore.
       - name: Disable Jekyll
-        run: touch nanacoin_go/angular/dist/nanacoin-web/browser/.nojekyll
+        run: touch nanacoin_ui/dist/nanacoin-web/browser/.nojekyll
 
       - name: Verify the built demo
         run: |
-          cd nanacoin_go/angular/dist/nanacoin-web/browser
+          cd nanacoin_ui/dist/nanacoin-web/browser
           test -f index.html
           test -f 404.html
           grep --fixed-strings '<base href="/nanacoin/">' index.html
@@ -107,7 +107,7 @@ jobs:
       - name: Assemble the Pages site
         run: |
           mkdir -p .pages-site
-          cp -r nanacoin_go/angular/dist/nanacoin-web/browser/. .pages-site/
+          cp -r nanacoin_ui/dist/nanacoin-web/browser/. .pages-site/
           touch .pages-site/.nojekyll
 
       - name: Upload Pages artifact

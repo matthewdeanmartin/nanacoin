@@ -54,7 +54,7 @@ def main():
             for secret in ['/rootCA-key.pem', '/certs/nanacoin-ca-signed.key', '/.local/ca/rootCA-key.pem']:
                 assert get(secret)[0] == 404
             assert b'name="nanacoin-api" content=""' in html
-            assets = ROOT.parent / 'nanacoin_go/angular/dist/nanacoin-web/browser'
+            assets = ROOT.parent / 'nanacoin_ui/dist/nanacoin-web/browser'
             for path in assets.rglob('*'):
                 if not path.is_file():
                     continue

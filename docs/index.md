@@ -34,7 +34,7 @@ records survive a power cut in NVS, and what the diagnostics endpoint reports.
 [TinyGo and NanaCoin](tinygo/index.md) is where the project started. The
 firmware is frozen pending upstream PSRAM support, but the write-up is the more
 detailed one on memory budgets and on load-testing a board until it falls over —
-and the Angular client documented there is still the one in use.
+and the shared Angular client is now maintained in [`nanacoin_ui`](../nanacoin_ui/).
 
 ## The shape of it
 

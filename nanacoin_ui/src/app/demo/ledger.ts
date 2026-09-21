@@ -504,12 +504,17 @@ export class DemoLedger {
    * as the permanent record.
    */
   reverse(actor: DemoUser, id: string, reason: string): Transaction {
-    this.requireNana(actor);
     const original = this.transactions.find((t) => t.id === id);
     if (original?.reference?.startsWith('nickle:')) {
       throw new DemoError(409, 'voucher_transaction', 'Bearer voucher transfers cannot be reversed independently of their voucher.');
     }
     if (!original) throw new DemoError(404, 'not_found', 'No such transaction.');
+    const received = original.postings.find((posting) => posting.amount > 0)?.account;
+    const paid = original.postings.find((posting) => posting.amount < 0)?.account;
+    const memberRefund = actor.role !== 'nana';
+    if (memberRefund && (received !== actor.account || paid === SYSTEM_ISSUANCE || original.reference?.startsWith('quote-'))) {
+      throw new DemoError(403, 'forbidden', 'You can only refund money you received.');
+    }
     if (this.transactions.some((t) => t.reverses === id)) {
       throw new DemoError(409, 'already_reversed', 'That has already been reversed.');
     }
@@ -523,7 +528,7 @@ export class DemoLedger {
       reason,
       original.postings.map((p) => ({ ...p, amount: -p.amount })),
       {
-        allowOverdraft: true,
+        allowOverdraft: !memberRefund,
         reverses: id,
         economic_kind: original.economic_kind,
         thing: original.thing,

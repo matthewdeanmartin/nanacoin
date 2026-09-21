@@ -1142,6 +1142,18 @@ a.tab {
   margin: 1rem 0;
 }
 
+.ledger-refund { margin-top: 0.65rem; }
+
+.allowance-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.allowance-row p { margin: 0.25rem 0 0; }
+
 @media (max-width: 640px) {
   .ledger-filters { grid-template-columns: 1fr; }
 }

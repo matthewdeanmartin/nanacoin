@@ -96,7 +96,7 @@ For the copy-paste upgrade runbook, including port discovery, stop conditions,
 and required live-board checks, see [DEPLOY.md](DEPLOY.md).
 
 ```bash
-(cd ../nanacoin_go/angular && npm ci) # one-time dependencies, if needed
+(cd ../nanacoin_ui && npm ci)       # one-time dependencies, if needed
 make run-bundle                   # local UI + API on http://127.0.0.1:8080
 make web-check                    # Rust, HTTP assets and deployment safety tests
 make firmware                     # Angular + gzip manifest + ELF + checked .bin
@@ -106,7 +106,7 @@ make probe-board ADDRESS=192.168.1.158 # strict post-flash TLS/API/site check
 ```
 
 `make deploy` builds both halves of the single-board application: the current
-shared client from `../nanacoin_go/angular` and the Rust API firmware that
+shared client from `../nanacoin_ui` and the Rust API firmware that
 embeds it. Do not run `nanacoin_web/deploy.ps1` as a second step unless you are
 deliberately restoring the legacy two-board arrangement.
 
