@@ -59,7 +59,7 @@ def main():
                 group = None
                 if label == 'Economy' or (label == 'The Notebook' and nav.get_by_text('Accounting', exact=True).count()):
                     group = 'Accounting'
-                elif label in ('Market', 'Offers', 'Exchange', 'Nana-nickles'):
+                elif label in ('Market', 'Offers', 'Forex', 'Nana-nickles'):
                     group = 'Buy/Sell'
                 elif label in ('Browser Log', 'Browser Health', 'Board Health', 'Server Log'):
                     group = 'System Info'
@@ -128,7 +128,7 @@ def main():
             expect(page.get_by_role('dialog', name='Keyboard shortcuts')).not_to_be_visible()
             page.locator('app-market input[name="title"]').fill('')
             page.locator('app-market h1').first.click()
-            for label in ['My Account', 'Exchange', 'Offers', 'Economy', 'Market']:
+            for label in ['My Account', 'Forex', 'Offers', 'Economy', 'Market']:
                 navigate(label)
                 expect(page.locator('main h1').first).to_be_visible()
             page.evaluate("location.hash = '#/nickles'")
