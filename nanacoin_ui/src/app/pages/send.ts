@@ -1,3 +1,5 @@
+import { Money, MoneyPipe } from '../api/money';
+import { inject as moneyInject } from '@angular/core';
 import { Component, computed, inject, resource, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
@@ -23,7 +25,7 @@ interface RecentSend {
 
 @Component({
   selector: 'app-send',
-  imports: [FormsModule],
+  imports: [MoneyPipe, FormsModule],
   template: `
     <h1>Send</h1>
 
@@ -51,7 +53,7 @@ interface RecentSend {
         </label>
         <label>
           Amount
-          <input name="amount" type="number" min="1" step="1" [(ngModel)]="amount"
+          <input name="amount" type="text" inputmode="decimal" [(ngModel)]="amount"
                  placeholder="Optional for a message" />
         </label>
         <label>
@@ -102,7 +104,7 @@ interface RecentSend {
       </form>
 
       <p class="muted small">
-        You have {{ session.balance() }} {{ session.balance() === 1 ? 'coin' : 'coins' }}.
+        You have {{ session.balance() | nc }} NC.
       </p>
     }
 
@@ -121,7 +123,7 @@ interface RecentSend {
                 <span class="txn__who">to {{ sent.recipient }}</span>
               </div>
               <div class="txn__side">
-                <span class="txn__amount">−{{ sent.amount }}</span>
+                <span class="txn__amount">−{{ sent.amount | nc }}</span>
                 <time class="txn__when" [attr.datetime]="isoTime(sent.createdAt)">{{ when(sent.createdAt) }}</time>
               </div>
             </article>
@@ -134,7 +136,7 @@ interface RecentSend {
         <h2>Setup Allowance</h2>
         <p class="muted small">Schedules live in this browser. NanaCoin sends nothing in the background; use Check allowances whenever the app is open to catch up every due weekly or monthly payment.</p>
         <label>To <select name="allowanceTo" [ngModel]="allowanceTo" (ngModelChange)="allowanceTo = $event"><option value="" disabled>Choose someone</option>@for (u of session.recipients(); track u.id) { <option [value]="u.account">{{ u.display_name }}</option> }</select></label>
-        <label>Amount <input name="allowanceAmount" type="number" min="1" step="1" [ngModel]="allowanceAmount" (ngModelChange)="allowanceAmount = $event"></label>
+        <label>Amount <input name="allowanceAmount" type="text" inputmode="decimal" [ngModel]="allowanceAmount" (ngModelChange)="allowanceAmount = $event"></label>
         <label>Frequency <select name="allowanceCadence" [ngModel]="allowanceCadence" (ngModelChange)="allowanceCadence = $event"><option value="WEEKLY">Weekly</option><option value="MONTHLY">Monthly</option></select></label>
         <label>First payment date <input name="allowanceFirstDue" type="date" [ngModel]="allowanceFirstDue" (ngModelChange)="allowanceFirstDue = $event"></label>
         <label>Description <input name="allowanceMemo" maxlength="140" [ngModel]="allowanceMemo" (ngModelChange)="allowanceMemo = $event"></label>
@@ -146,7 +148,7 @@ interface RecentSend {
       <section><h2>My allowances</h2>
         @for (allowance of myAllowances(); track allowance.id) {
           <article class="card allowance-row">
-            <div><strong>{{ allowance.amount }} NC to {{ allowance.recipientName }}</strong><p class="muted small">{{ allowance.cadence.toLocaleLowerCase() }} · next due {{ allowance.nextDue }} · {{ allowance.memo }}</p></div>
+            <div><strong>{{ allowance.amount | nc }} NC to {{ allowance.recipientName }}</strong><p class="muted small">{{ allowance.cadence.toLocaleLowerCase() }} · next due {{ allowance.nextDue }} · {{ allowance.memo }}</p></div>
             <button class="btn btn--quiet btn--small" type="button" (click)="removeAllowance(allowance.id)">Remove</button>
           </article>
         } @empty { <p class="muted">No allowances set up in this browser.</p> }
@@ -155,6 +157,7 @@ interface RecentSend {
   `,
 })
 export class SendPage {
+  protected readonly money = moneyInject(Money);
   private readonly api = inject(NanacoinService);
   private readonly toasts = inject(Toasts);
   private readonly dialogs = inject(Dialogs);
@@ -162,7 +165,7 @@ export class SendPage {
   protected readonly mastodon = inject(Mastodon);
 
   protected to = '';
-  protected amount: number | null = null;
+  protected amount: string | number | null = null;
   protected memo = '';
   protected sendDm = false;
   protected economicKind: EconomicKind | '' = '';
@@ -176,7 +179,7 @@ export class SendPage {
   protected readonly checkingAllowances = signal(false);
   protected readonly allowanceMessage = signal('');
   protected allowanceTo = '';
-  protected allowanceAmount: number | null = null;
+  protected allowanceAmount: string | number | null = null;
   protected allowanceCadence: AllowanceCadence = 'WEEKLY';
   protected allowanceFirstDue = today();
   protected allowanceMemo = 'Allowance';
@@ -229,8 +232,8 @@ export class SendPage {
     // that is not in the list and submit an account the server refuses.
     if (to && this.session.recipients().some((u) => u.account === to)) this.to = to;
 
-    const amount = Number(q.get('amount'));
-    if (Number.isInteger(amount) && amount > 0) this.amount = amount;
+    const amount = q.get('amount');
+    if (amount) this.amount = amount;
 
     this.memo = q.get('memo') ?? '';
     const code = q.get('mastodon_code');
@@ -250,9 +253,10 @@ export class SendPage {
       this.toasts.error('Choose who the coins are for.');
       return;
     }
-    const amount = this.amount === null ? null : Number(this.amount);
+    let amount: number | null;
+    try { amount = this.amount === null || this.amount === '' ? null : this.money.parse(this.amount); } catch (e) { this.toasts.fromError(e); return; }
     if (amount !== null && (!Number.isInteger(amount) || amount <= 0)) {
-      this.toasts.error('Enter a whole number of coins, or leave the amount empty for a message.');
+      this.toasts.error('Enter a positive amount in NC, or leave it empty for a message.');
       return;
     }
     if (amount !== null && !this.economicKind) {
@@ -281,7 +285,7 @@ export class SendPage {
           title: 'Send the same payment again?',
           message: 'This matches a recent transaction. Continue only if you mean to pay twice.',
           detail: [
-            `${amount} ${amount === 1 ? 'coin' : 'coins'} to ${duplicate.recipient}`,
+            `${this.money.format(amount)} NC to ${duplicate.recipient}`,
             this.memo.trim() || 'No description',
           ],
           confirmLabel: 'Send again',
@@ -330,16 +334,17 @@ export class SendPage {
   }
 
   protected saveAllowance(): void {
-    const amount = Number(this.allowanceAmount);
+    let amount: number;
+    try { amount = this.money.parse(this.allowanceAmount ?? ''); } catch (e) { this.toasts.fromError(e); return; }
     const recipient = this.session.recipients().find((user) => user.account === this.allowanceTo);
     if (!recipient) { this.toasts.error('Choose who receives the allowance.'); return; }
-    if (!Number.isSafeInteger(amount) || amount <= 0) { this.toasts.error('Enter a positive whole number of coins.'); return; }
+    if (!Number.isSafeInteger(amount) || amount <= 0) { this.toasts.error('Enter a positive amount in NC.'); return; }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(this.allowanceFirstDue)) { this.toasts.error('Choose the first payment date.'); return; }
     const ownerId = this.session.me()?.id;
     if (!ownerId) return;
     const item: Allowance = {
       id: `allowance:${newIdempotencyKey()}`, ownerId, recipientAccount: recipient.account,
-      recipientName: recipient.display_name, amount, cadence: this.allowanceCadence,
+      recipientName: recipient.display_name, amount, moneyEpoch: this.money.epoch(), cadence: this.allowanceCadence,
       nextDue: this.allowanceFirstDue, memo: this.allowanceMemo.trim() || 'Allowance',
     };
     const items = [item, ...this.allowanceStore()];
@@ -361,6 +366,7 @@ export class SendPage {
     try {
       const dueThrough = today();
       for (const original of this.myAllowances()) {
+        if (original.moneyEpoch !== this.money.epoch()) throw new Error('An allowance uses an earlier currency unit. Delete it and recreate it with the reformed amount.');
         let item = original;
         let installments = 0;
         while (item.nextDue <= dueThrough && installments++ < 120) {

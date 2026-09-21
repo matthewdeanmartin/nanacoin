@@ -1,3 +1,5 @@
+import { Money, MoneyPipe } from '../api/money';
+import { inject as moneyInject } from '@angular/core';
 // Nana's page: the household, the full ledger, and the privileged actions.
 //
 // Every control here is also enforced server-side. Hiding this tab from
@@ -6,6 +8,7 @@
 import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ConnectionSecurity } from './connection-security';
+import { CurrencyReform } from './currency-reform';
 import { Notebook } from '../ui/notebook';
 import { IS_DEMO } from '../demo/demo';
 
@@ -18,10 +21,11 @@ import { Toasts } from '../ui/toasts';
 
 @Component({
   selector: 'app-nana',
-  imports: [FormsModule, ConnectionSecurity, Notebook],
+  imports: [MoneyPipe, FormsModule, ConnectionSecurity, Notebook, CurrencyReform],
   templateUrl: './nana.html',
 })
 export class NanaPage {
+  protected readonly money = moneyInject(Money);
   protected readonly isDemo = IS_DEMO;
   private readonly api = inject(NanacoinService);
   private readonly toasts = inject(Toasts);
@@ -45,7 +49,7 @@ export class NanaPage {
 
   // Issue coins.
   protected issueTo = '';
-  protected issueAmount: number | null = null;
+  protected issueAmount: string | number | null = null;
   protected issueReason = '';
   protected readonly issuing = signal(false);
 
@@ -149,9 +153,10 @@ export class NanaPage {
       this.toasts.error('Choose who the coins are for.');
       return;
     }
-    const amount = Number(this.issueAmount);
+    let amount: number;
+    try { amount = this.money.parse(this.issueAmount ?? ''); } catch (e) { this.toasts.fromError(e); return; }
     if (!Number.isInteger(amount) || amount <= 0) {
-      this.toasts.error('Enter a whole number of coins.');
+      this.toasts.error('Enter a positive amount in NC.');
       return;
     }
 

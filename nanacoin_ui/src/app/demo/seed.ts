@@ -15,6 +15,8 @@ import { DemoLedger } from './ledger';
 const DAY = 86_400;
 
 export function seed(ledger: DemoLedger): void {
+  // Seed readable whole-NC examples, then convert the entire fixture exactly.
+  ledger.decimals = 0;
   const nana = ledger.provision('nana', 'Nana', 'demo', 'The Demo House');
   const nanaUser = ledger.userByName('nana')!;
 
@@ -218,4 +220,9 @@ export function seed(ledger: DemoLedger): void {
     economic_kind: 'LABOR', thing: 'thing-demo-organize-the-bookshelf',
     quantity_milli: 1000, unit: 'TASK',
   });
+  ledger.reform(nanaUser, {decimals:4,power:0,expected_epoch:ledger.moneyEpoch,expected_sequence:ledger.revision,preview:false});
+  ledger.startLive();
+  const now = Math.floor(Date.now()/1000);
+  ledger.lending.offer(nanaUser,{borrower:sam.account,amount:200000,rate_bps:500,rate_days:7,payment_days:7,installment:50000,credit:false,memo:'A little help for your next project'},now);
+  ledger.lending.offer(mom,{borrower:ivy.account,amount:150000,rate_bps:0,rate_days:365,payment_days:7,installment:30000,credit:true,memo:'An interest-free cushion at zero'},now);
 }

@@ -18,7 +18,7 @@
      never make Nana hunt for the economy's current state. -->
 <div class="stats" aria-label="Household summary">
   <div class="stat">
-    <span>{{ session.status()?.circulation ?? 0 }}</span>
+    <span>{{ (session.status()?.circulation ?? 0) | nc }}</span>
     <span class="stat__label">in circulation</span>
   </div>
   <div class="stat">
@@ -43,6 +43,8 @@
   <a href="#demo-data">Demo data</a>
   <a href="#full-ledger">Full ledger</a>
 </nav>
+
+<app-currency-reform />
 
 @if (session.status() && !session.status()!.ledger_balanced) {
   <p class="warning">
@@ -82,7 +84,7 @@
     <div class="member">
       <span class="member__name">{{ u.display_name }}</span>
       <span class="member__balance">
-        {{ u.balance === undefined ? '—' : u.balance + ' coins' }}
+        {{ u.balance === undefined ? '—' : money.format(u.balance) + ' NC' }}
       </span>
       @if (u.role === 'nana') {
         <span class="tag">nana</span>
@@ -163,7 +165,7 @@
     </label>
     <label>
       Amount
-      <input name="amount" type="number" min="1" step="1" [(ngModel)]="issueAmount" required />
+      <input name="amount" type="text" inputmode="decimal" [(ngModel)]="issueAmount" required />
     </label>
     <label>
       Reason
@@ -280,7 +282,7 @@
               [class.posting--credit]="p.amount >= 0"
               [class.posting--debit]="p.amount < 0"
             >
-              {{ p.name }} {{ p.amount >= 0 ? '+' : '' }}{{ p.amount }}
+              {{ p.name }} {{ p.amount >= 0 ? '+' : '' }}{{ p.account.endsWith('-usd') || p.account === 'account:usd-issuance' ? (p.amount / 100).toFixed(2) + ' USD' : money.format(p.amount) + ' NC' }}
             </span>
           }
         </div>

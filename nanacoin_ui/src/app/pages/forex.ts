@@ -1,3 +1,5 @@
+import { Money, MoneyPipe } from '../api/money';
+import { inject as moneyInject } from '@angular/core';
 // Foreign exchange: trading NanaCoin for dollars at a stated rate.
 //
 // # Why a book rather than a rate
@@ -36,7 +38,7 @@ import { Mastodon } from '../api/mastodon';
 
 @Component({
   selector: 'app-forex',
-  imports: [FormsModule],
+  imports: [MoneyPipe, FormsModule],
   template: `
     <h1>Forex</h1>
 
@@ -74,8 +76,8 @@ import { Mastodon } from '../api/mastodon';
       <!-- What you are holding, in both currencies, side by side. -->
       <div class="stats">
         <div class="stat">
-          <span>{{ session.balance() }}</span>
-          <span class="stat__label">{{ session.balance() === 1 ? 'coin' : 'coins' }}</span>
+          <span>{{ session.balance() | nc }}</span>
+          <span class="stat__label">NC</span>
         </div>
         <div class="stat">
           <span>{{ dollars(myCents()) }}</span>
@@ -104,13 +106,13 @@ import { Mastodon } from '../api/mastodon';
         <div class="cards">
           @for (q of asks(); track q.id) {
             <article class="card">
-              <h3>{{ q.coins }} {{ q.coins === 1 ? 'coin' : 'coins' }}</h3>
+              <h3>{{ q.coins | nc }} {{ q.coins === 1 ? 'coin' : 'coins' }}</h3>
               <p class="card__meta">
                 <strong>{{ cents(q.cents_per_coin) }} each</strong>
                 · {{ dollars(q.cents) }} in total
               </p>
               <p class="card__desc">
-                {{ q.maker_name }} will sell {{ q.coins }}
+                {{ q.maker_name }} will sell {{ q.coins | nc }}
                 {{ q.coins === 1 ? 'coin' : 'coins' }} for {{ dollars(q.cents) }}.
               </p>
               @if (q.expires_at) {
@@ -139,13 +141,13 @@ import { Mastodon } from '../api/mastodon';
         <div class="cards">
           @for (q of bids(); track q.id) {
             <article class="card">
-              <h3>{{ q.coins }} {{ q.coins === 1 ? 'coin' : 'coins' }}</h3>
+              <h3>{{ q.coins | nc }} {{ q.coins === 1 ? 'coin' : 'coins' }}</h3>
               <p class="card__meta">
                 <strong>{{ cents(q.cents_per_coin) }} each</strong>
                 · {{ dollars(q.cents) }} in total
               </p>
               <p class="card__desc">
-                {{ q.maker_name }} will pay {{ dollars(q.cents) }} for {{ q.coins }}
+                {{ q.maker_name }} will pay {{ dollars(q.cents) }} for {{ q.coins | nc }}
                 {{ q.coins === 1 ? 'coin' : 'coins' }}.
               </p>
               @if (q.expires_at) {
@@ -179,7 +181,7 @@ import { Mastodon } from '../api/mastodon';
           </label>
           <label>
             How many coins
-            <input name="coins" type="number" min="1" step="1" [(ngModel)]="coins" required />
+            <input name="coins" type="text" inputmode="decimal" [(ngModel)]="coins" required />
           </label>
           <label>
             Cents per coin
@@ -208,7 +210,7 @@ import { Mastodon } from '../api/mastodon';
           <div class="cards">
             @for (q of settled(); track q.id) {
               <article class="card card--sold">
-                <h3>{{ q.coins }} at {{ cents(q.cents_per_coin) }}</h3>
+                <h3>{{ q.coins | nc }} at {{ cents(q.cents_per_coin) }}</h3>
                 <p class="card__meta">
                   {{ q.side === 'ASK' ? 'sale' : 'purchase' }} ·
                   <span class="tag">{{ q.status.toLowerCase() }}</span>
@@ -225,6 +227,7 @@ import { Mastodon } from '../api/mastodon';
   `,
 })
 export class ForexPage {
+  protected readonly money = moneyInject(Money);
   private readonly api = inject(NanacoinService);
   private readonly toasts = inject(Toasts);
   private readonly dialogs = inject(Dialogs);
@@ -242,7 +245,7 @@ export class ForexPage {
   protected readonly busy = signal<string | null>(null);
 
   protected side: QuoteSide = 'ASK';
-  protected coins: number | null = null;
+  protected coins: string | number | null = null;
   protected rate: number | null = null;
   protected notifyTrade = false;
   protected notificationAllCaps = false;
@@ -298,15 +301,18 @@ export class ForexPage {
    * line would have frozen on whatever it said first while the person typed.
    */
   protected preview(): string | null {
-    const coins = Number(this.coins);
+    let coins: number;
+    try { coins = this.money.parse(this.coins ?? ''); } catch { return null; }
     const rate = Number(this.rate);
     if (!Number.isInteger(coins) || coins <= 0) return null;
-    if (!Number.isInteger(rate) || rate <= 0) return null;
-    const total = this.dollars(coins * rate);
-    const unit = coins === 1 ? 'coin' : 'coins';
+    if (!Number.isSafeInteger(rate) || rate <= 0) return null;
+    const product = BigInt(coins) * BigInt(rate), scale = 10n ** BigInt(this.money.decimals());
+    if (product % scale !== 0n || product / scale > 1_000_000_000_000_000n) return 'Choose an amount whose USD total is an exact, supported number of cents.';
+    const total = this.dollars(Number(product / scale));
+    const unit = 'NC';
     return this.side === 'ASK'
-      ? `You give ${coins} ${unit}, you get ${total}.`
-      : `You pay ${total}, you get ${coins} ${unit}.`;
+      ? `You give ${this.money.format(coins)} ${unit}, you get ${total}.`
+      : `You pay ${total}, you get ${this.money.format(coins)} ${unit}.`;
   }
 
   constructor() {
@@ -353,21 +359,26 @@ export class ForexPage {
   protected async post(): Promise<void> {
     if (this.posting()) return;
 
-    const coins = Number(this.coins);
+    let coins: number;
+    try { coins = this.money.parse(this.coins ?? ''); } catch (e) { this.toasts.fromError(e); return; }
     const rate = Number(this.rate);
     if (!Number.isInteger(coins) || coins <= 0) {
-      this.toasts.error('Enter a whole number of coins.');
+      this.toasts.error('Enter a positive amount in NC.');
       return;
     }
-    if (!Number.isInteger(rate) || rate <= 0) {
+    if (!Number.isSafeInteger(rate) || rate <= 0 || rate > 1_000_000_000_000_000) {
       this.toasts.error('Enter a rate in whole cents.');
       return;
+    }
+    const product = BigInt(coins) * BigInt(rate), scale = 10n ** BigInt(this.money.decimals());
+    if (product % scale !== 0n || product / scale <= 0n || product / scale > 1_000_000_000_000_000n) {
+      this.toasts.error('Choose an amount whose USD total is an exact, supported number of cents.'); return;
     }
     // Checked here as a courtesy, not as the rule: the server refuses an
     // overdraft either way, and it is the one that knows the real balance.
     // Catching it here just saves a round trip and gives a clearer sentence.
     if (this.side === 'ASK' && coins > this.session.balance()) {
-      this.toasts.error(`You only have ${this.session.balance()} coins to sell.`);
+      this.toasts.error(`You only have ${this.money.format(this.session.balance())} coins to sell.`);
       return;
     }
 
@@ -405,11 +416,11 @@ export class ForexPage {
       detail: buying
         ? [
             `You pay ${this.dollars(q.cents)}`,
-            `You get ${q.coins} ${unit}`,
+            `You get ${this.money.format(q.coins)} ${unit}`,
             `From ${q.maker_name}`,
           ]
         : [
-            `You give ${q.coins} ${unit}`,
+            `You give ${this.money.format(q.coins)} ${unit}`,
             `You get ${this.dollars(q.cents)}`,
             `To ${q.maker_name}`,
           ],
@@ -426,7 +437,7 @@ export class ForexPage {
         if (!recipient?.mastodon_id) {
           this.toasts.error(`${q.maker_name} has no registered Mastodon ID; the exchange still completed.`);
         } else {
-          let message = `Your NanaCoin exchange for ${q.coins} ${unit} at ${this.cents(q.cents_per_coin)} each was accepted.`;
+          let message = `Your NanaCoin exchange for ${this.money.format(q.coins)} ${unit} at ${this.cents(q.cents_per_coin)} each was accepted.`;
           if (this.notificationAllCaps) message = message.toLocaleUpperCase();
           try { await this.mastodon.sendDirect(recipient, message); }
           catch (e) { this.toasts.error(`Exchange completed, but the private message failed: ${e instanceof Error ? e.message : 'Mastodon error'}`); }

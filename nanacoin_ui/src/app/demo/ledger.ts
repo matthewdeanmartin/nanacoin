@@ -40,6 +40,9 @@ import {
   User,
 } from '../api/models';
 import { sha256 } from '../api/sha256';
+import { DemoLending } from './lending';
+import { MAX_MONEY } from '../api/money';
+import { ReformInput, ReformResult } from '../api/models';
 
 /** The one account allowed to go negative; see ledger.SystemIssuance. */
 export const SYSTEM_ISSUANCE = 'account:system-issuance';
@@ -62,6 +65,45 @@ interface DemoUser extends User {
 }
 
 export class DemoLedger {
+  decimals = 4;
+  moneyEpoch = 0;
+  revision = 0;
+  private liveClock = false;
+  readonly lending = new DemoLending({
+    balance: account => this.balanceOf(account),
+    user: account => this.userByAccount(account)!,
+    post: (from,to,amount,loan,interest) => {
+      this.append('TRANSFER', 'system', interest ? 'Loan interest' : 'Loan principal', [
+        {account: from,name:'',amount:-amount}, {account:to,name:'',amount}],
+        {reference:`loan-${loan}`,economic_kind:interest?'INTEREST':'LOAN_PRINCIPAL'});
+    },
+  });
+  startLive(): void { this.liveClock = true; }
+  tickLoans(): void { this.revision += this.lending.tick(Math.floor(Date.now()/1000)); }
+  reform(actor: User, input: ReformInput): ReformResult {
+    if (actor.role !== 'nana' || actor.status !== 'ACTIVE') throw new DemoError(403,'forbidden','Only Nana can reform currency.');
+    if (input.expected_epoch !== this.moneyEpoch || input.expected_sequence !== this.revision) throw new DemoError(409,'conflict','The ledger changed. Preview again.');
+    if (!Number.isInteger(input.decimals) || input.decimals<0 || input.decimals>8 || !Number.isInteger(input.power) || Math.abs(input.power)>12 || (input.decimals===this.decimals && input.power===0)) throw new Error('Invalid reform.');
+    const exponent = input.decimals-this.decimals-input.power;
+    const convert = (value: number, exp = exponent, limit = Number.MAX_SAFE_INTEGER) => {
+      const factor = 10n ** BigInt(Math.abs(exp)), n = BigInt(value);
+      if (exp<0 && n%factor) throw new DemoError(409,'inexact_reform','The reform would lose fractions.');
+      const v = exp<0 ? n/factor : n*factor;
+      if (v>BigInt(limit) || v< -BigInt(limit)) throw new Error('Reform exceeds amount limit.');
+      return Number(v);
+    };
+    const changes: (()=>void)[] = [];
+    for (const t of this.transactions) for (const p of t.postings) { const v = convert(p.amount,exponent,MAX_MONEY); changes.push(()=>{p.amount=v;}); }
+    for (const l of this.listings) { const v=convert(l.price,exponent,MAX_MONEY); changes.push(()=>{l.price=v;}); }
+    for (const o of this.offers) { const v=convert(o.amount,exponent,MAX_MONEY); changes.push(()=>{o.amount=v;}); }
+    for (const q of this.quotes) { const coins=convert(q.coins,exponent,MAX_MONEY),rate=convert(q.cents_per_coin,input.power,MAX_MONEY); changes.push(()=>{q.coins=coins;q.cents_per_coin=rate;}); }
+    for (const v of this.nickles.values()) { const amount=convert(v.amount,exponent,MAX_MONEY);changes.push(()=>{v.amount=amount;}); }
+    for (const user of this.users) convert(this.balanceOf(user.account));
+    const circulation=convert(-this.balanceOf(SYSTEM_ISSUANCE));
+    const loans = this.lending.reform(exponent);
+    if (!input.preview) { for (const change of changes) change(); loans();this.decimals=input.decimals;this.moneyEpoch++;this.revision++; }
+    return {decimals:input.decimals,money_epoch:this.moneyEpoch,sequence:this.revision,circulation,preview:input.preview};
+  }
   private users: DemoUser[] = [];
   private listings: Listing[] = [];
   private offers: Offer[] = [];
@@ -129,6 +171,7 @@ export class DemoLedger {
 
   status(): Status {
     return {
+      decimals: this.decimals, money_epoch: this.moneyEpoch, sequence: this.revision, lending_enabled: true,
       provisioned: this.provisioned,
       household: this.household,
       currency: 'NanaCoin',
@@ -340,6 +383,8 @@ export class DemoLedger {
       postings,
     };
     this.transactions.push(txn);
+    this.revision++;
+    this.lending.cashChanged(postings.map(p=>p.account), opts.reference?.startsWith('loan-') ?? false);
     return txn;
   }
 
@@ -420,8 +465,8 @@ export class DemoLedger {
     this.requireActive(actor);
     this.requireAmount(centsPerCoin);
     this.requireAmount(coins);
-    if ((side !== 'ASK' && side !== 'BID') || centsPerCoin > 10_000 || coins > 100_000
-      || !Number.isSafeInteger(centsPerCoin * coins)) {
+    const total = BigInt(centsPerCoin) * BigInt(coins), scale = 10n ** BigInt(this.decimals);
+    if ((side !== 'ASK' && side !== 'BID') || total % scale !== 0n || total / scale <= 0n || total / scale > BigInt(MAX_MONEY)) {
       throw new DemoError(400, 'bad_request', 'That exchange rate or quantity is invalid.');
     }
     const created = this.now();
@@ -432,7 +477,7 @@ export class DemoLedger {
       side,
       cents_per_coin: centsPerCoin,
       coins,
-      cents: centsPerCoin * coins,
+      cents: Number(total / scale),
       status: 'OPEN',
       created_at: created,
       updated_at: created,
@@ -505,7 +550,7 @@ export class DemoLedger {
    */
   reverse(actor: DemoUser, id: string, reason: string): Transaction {
     const original = this.transactions.find((t) => t.id === id);
-    if (original?.reference?.startsWith('nickle:')) {
+    if (original?.reference?.startsWith('nickle:') || original?.reference?.startsWith('loan-')) {
       throw new DemoError(409, 'voucher_transaction', 'Bearer voucher transfers cannot be reversed independently of their voucher.');
     }
     if (!original) throw new DemoError(404, 'not_found', 'No such transaction.');
@@ -831,11 +876,11 @@ export class DemoLedger {
   }
 
   private requireAmount(n: number): void {
-    if (!Number.isInteger(n) || n <= 0) {
-      throw new DemoError(400, 'bad_request', 'Amounts are whole coins, greater than zero.');
+    if (!Number.isSafeInteger(n) || n <= 0) {
+      throw new DemoError(400, 'bad_request', 'Amounts must be positive integer minor units.');
     }
-    if (n > 1_000_000_000) {
-      throw new DemoError(400, 'bad_request', 'That amount is implausibly large.');
+    if (n > MAX_MONEY) {
+      throw new DemoError(400, 'bad_request', 'That amount exceeds the transaction limit.');
     }
   }
 
@@ -859,6 +904,7 @@ export class DemoLedger {
    */
   private clock = Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 395;
   private now(): number {
+    if (this.liveClock) return Math.floor(Date.now()/1000);
     return (this.clock += 1);
   }
 

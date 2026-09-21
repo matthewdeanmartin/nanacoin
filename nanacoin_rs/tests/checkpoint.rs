@@ -177,7 +177,7 @@ fn checkpoint_preserves_passwords_balances_open_deals_deadlines_and_retries() {
         2,
         Command::PostQuote {
             side: nanacoin::forex::QuoteSide::ASK,
-            cents_per_coin: 10,
+            cents_per_coin: 100000,
             coins: 2,
             expires_at: now() + 3600,
         },

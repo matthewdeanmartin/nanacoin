@@ -1,3 +1,5 @@
+import { Money, MoneyPipe } from '../api/money';
+import { inject as moneyInject } from '@angular/core';
 // The marketplace: what is for sale, and the form for offering something.
 
 import { Component, inject, resource, signal } from '@angular/core';
@@ -14,10 +16,11 @@ import { catalogEconomics, formatQuantity, validQuantity } from '../catalog/econ
 
 @Component({
   selector: 'app-market',
-  imports: [FormsModule, RouterLink],
+  imports: [MoneyPipe, FormsModule, RouterLink],
   templateUrl: './market.html',
 })
 export class MarketPage {
+  protected readonly money = moneyInject(Money);
   private readonly api = inject(NanacoinService);
   private readonly toasts = inject(Toasts);
   private readonly dialogs = inject(Dialogs);
@@ -27,7 +30,7 @@ export class MarketPage {
 
   protected title = '';
   protected description = '';
-  protected price: number | null = null;
+  protected price: string | number | null = null;
   protected economicKind: EconomicKind | '' = '';
   protected quantity = '1';
   protected unit: EconomicUnit = 'EACH';
@@ -112,7 +115,7 @@ export class MarketPage {
       message: this.wanted(l)
         ? `${l.seller_name} is offering ${l.price} for this. Name your price - they still have to accept.`
         : `${l.seller_name} is asking ${l.price}. Offer what you like - they still have to accept.`,
-      initial: String(l.price),
+      initial: this.money.input(l.price),
       confirmLabel: 'Send offer',
     });
     if (answer === null) return;
@@ -147,14 +150,15 @@ export class MarketPage {
   }
 
   protected async post(): Promise<void> {
-    const price = Number(this.price);
+    let price: number;
+    try { price = this.money.parse(this.price ?? ''); } catch (e) { this.toasts.fromError(e); return; }
     if (price < 0) {
       this.toasts.error("Can't do negative prices.");
       return;
     }
     if (!Number.isInteger(price) || price <= 0) {
-      // Coins are whole numbers; there is no fractional NanaCoin.
-      this.toasts.error('Enter a whole number of coins.');
+      // Amounts are integer minor units after parsing.
+      this.toasts.error('Enter a positive amount in NC.');
       return;
     }
     if (!this.economicKind) {
@@ -256,7 +260,7 @@ export class MarketPage {
   private prefill(l: Listing): void {
     this.title = l.title;
     this.description = l.description;
-    this.price = l.price;
+    this.price = this.money.input(l.price);
     this.side = l.side ?? 'SELL';
     this.economicKind = l.economic_kind ?? 'OTHER';
     this.quantity = formatQuantity(l.quantity_milli);
@@ -280,7 +284,7 @@ export class MarketPage {
     const key = newIdempotencyKey();
     try {
       const res = await this.api.purchase(l.id, key);
-      this.toasts.ok(`Bought ${res.listing.title} for ${res.listing.price} coins.`);
+      this.toasts.ok(`Bought ${res.listing.title} for ${this.money.format(res.listing.price)} coins.`);
       await this.session.refresh();
     } catch (e) {
       this.toasts.fromError(e);

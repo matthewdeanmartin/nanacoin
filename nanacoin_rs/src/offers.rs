@@ -240,6 +240,7 @@ impl State {
                     listing: Some(l.id),
                     usd: false,
                     quote: None,
+                    loan: None,
                     economic: l.economic,
                 };
                 let listing_id = l.id;
@@ -278,6 +279,7 @@ impl State {
                     listing: Some(o.listing),
                     usd: false,
                     quote: None,
+                    loan: None,
                     economic: self
                         .history
                         .iter()

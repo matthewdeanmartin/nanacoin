@@ -73,7 +73,7 @@ export function gdpSeries(txns: Transaction[], bucket: Bucket): Series {
 
   for (const txn of txns) {
     let value = 0;
-    const included = !txn.quantity_milli || txn.economic_kind === 'LABOR' || txn.economic_kind === 'GOOD';
+    const included = txn.economic_kind === 'LABOR' || txn.economic_kind === 'GOOD';
     if (included && (txn.kind === 'TRANSFER' || txn.kind === 'PURCHASE')) {
       value = positiveSum(txn);
     } else if (included && txn.kind === 'REVERSAL') {
@@ -89,6 +89,25 @@ export function gdpSeries(txns: Transaction[], bucket: Bucket): Series {
   }
 
   return { name: 'GDP', points: sorted(totals) };
+}
+
+/** Cash interest income/expense per account in the retained ledger window.
+ * Postings already give reversals their correct sign; don't discard originals.
+ * Household net interest is zero, since one person's expense is another's income.
+ */
+export function interestSeries(txns: Transaction[], bucket: Bucket, account?: string): Series {
+  const totals = new Map<number, number>();
+  for (const txn of txns) {
+    if (txn.economic_kind !== 'INTEREST') continue;
+    if (txn.kind !== 'TRANSFER' && txn.kind !== 'REVERSAL') continue;
+    const value = account
+      ? txn.postings.filter((posting) => posting.account === account).reduce((sum, posting) => sum + posting.amount, 0)
+      : (txn.kind === 'REVERSAL' ? -1 : 1) * positiveSum(txn);
+    if (!value) continue;
+    const at = bucketStart(txn.created_at, bucket);
+    totals.set(at, (totals.get(at) ?? 0) + value);
+  }
+  return { name: account ? 'Net interest income' : 'Interest paid', points: sorted(totals) };
 }
 
 export interface EmploymentSnapshot {

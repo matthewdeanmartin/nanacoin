@@ -1,3 +1,5 @@
+import { Money, MoneyPipe } from './api/money';
+import { inject as moneyInject } from '@angular/core';
 // The shell. Decides which of the three states the app is in - unprovisioned,
 // logged out, or running - and renders the frame around the routed page.
 
@@ -27,7 +29,7 @@ type Phase = 'loading' | 'connect' | 'setup' | 'login' | 'app' | 'logs';
 
 @Component({
   selector: 'app-root',
-  imports: [
+  imports: [MoneyPipe,
     RouterOutlet,
     SiteMenu,
     KeyboardHelp,
@@ -43,6 +45,8 @@ type Phase = 'loading' | 'connect' | 'setup' | 'login' | 'app' | 'logs';
   styleUrl: './app.css',
 })
 export class App {
+  protected reloadCurrency(): void { window.location.reload(); }
+  protected readonly money = moneyInject(Money);
   protected readonly publicPage = signal(false);
   protected readonly aboutPage = signal(false);
   private readonly router = inject(Router);

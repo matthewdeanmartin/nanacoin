@@ -22,7 +22,7 @@
         }
 
         <p class="card__meta">
-          <strong>{{ l.price }} {{ l.price === 1 ? 'coin' : 'coins' }}</strong>
+          <strong>{{ l.price | nc }} NC</strong>
           · {{ l.seller_name }}
         </p>
         @if (l.quantity_milli) {
@@ -49,7 +49,7 @@
             @if (buying() === l.id) {
               Buying…
             } @else {
-              Buy for {{ l.price }}
+              Buy for {{ l.price | nc }}
             }
           </button>
 
@@ -141,7 +141,7 @@
     </label>
     <label>
       {{ side === 'BUY' ? 'How many coins are you offering?' : 'Price in coins' }}
-      <input name="price" type="number" min="1" step="1" [(ngModel)]="price" required />
+      <input name="price" type="text" inputmode="decimal" [(ngModel)]="price" required />
     </label>
     <button class="btn" title="Publish this listing to the household market" type="submit" [disabled]="posting()">
       {{ posting() ? 'Listing…' : 'List it' }}
@@ -158,7 +158,7 @@
         <article class="card card--closed" data-keyboard-row tabindex="-1">
           <h3>{{ l.title }}</h3>
           <p class="card__meta">
-            <strong>{{ l.price }} coins</strong> · {{ l.seller_name }}
+            <strong>{{ l.price | nc }} coins</strong> · {{ l.seller_name }}
           </p>
           <p class="card__status">
             @if (l.status === 'SOLD') {

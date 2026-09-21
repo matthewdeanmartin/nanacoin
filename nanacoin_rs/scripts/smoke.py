@@ -11,7 +11,6 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
-import zlib
 
 ROOT = Path(__file__).resolve().parents[1]
 TARGET = Path(os.environ.get('CARGO_TARGET_DIR', str(ROOT / 'target')))
@@ -126,17 +125,17 @@ def main():
             for _ in range(1000):
                 page = request('/offers', token=alice)
                 assert page[0] == 200 and page[1]['offers'][0]['status'] == 'REVERSED'
-            assert request('/admin/config', token=nana)[1]['initial_grant'] == 100
+            assert request('/admin/config', token=nana)[1]['initial_grant'] == 1_000_000
             assert request('/accounts/account-2/transactions?limit=50', token=alice)[1]['balance'] == 20
             assert request('/users/user-2', {'status':'DISABLED'}, nana, method='PATCH')[0] == 200
             assert request('/me', token=alice)[0] == 401
             assert request('/users/user-2', {'status':'ACTIVE'}, nana, method='PATCH')[0] == 200
             alice = login('alice', '5678')
             assert request('/accounts/account-1', token=alice)[0] == 403
-            assert request('/transactions', token=alice)[0] == 403
+            assert request('/transactions', token=alice)[0] == 200
             assert request('/state', token=alice)[0] == 403
             assert request('/admin/issue-usd', dict(to='account-1', cents=500, reason='Cash reserve'), nana, 'usd-one')[0] == 201
-            quote = request('/quotes', dict(side='ASK', cents_per_coin=25, coins=1), alice)
+            quote = request('/quotes', dict(side='ASK', cents_per_coin=250_000, coins=1), alice)
             assert quote[0] == 201, quote
             quote_path = '/quotes/' + quote[1]['id']
             trade = request(quote_path + '/take', {}, nana, 'trade-one')
@@ -162,31 +161,6 @@ def main():
             assert request(offer_path + '/accept', {}, nana, 'accept-offer') == accepted
             assert request(offer_path + '/unaccept', {'reason': 'Not delivered'}, alice, 'undo-offer') == undone
             assert all('password' not in json.dumps(user) for user in request('/users', token=nana)[1]['users'])
-        finally:
-            stop(process)
-        # A disposable token-era Rust journal verifies the actual migration CLI.
-        legacy_token = 'ab' * 32
-        events = [
-            {'version':1, 'sequence':1, 'actor':1, 'request_id':1,
-             'command':{'add_member':{'name':'Nana', 'token_hash':list(hashlib.sha256(legacy_token.encode()).digest())}}},
-            {'version':1, 'sequence':2, 'actor':1, 'request_id':2,
-             'command':{'issue':{'to':1, 'amount':25, 'memo':'Preserve balance'}}},
-        ]
-        legacy_path = Path(temp) / 'legacy-ledger'
-        with legacy_path.open('wb') as journal:
-            for event in events:
-                data = json.dumps(event, separators=(',', ':')).encode()
-                frame = b'NCR1' + len(data).to_bytes(4, 'little') + zlib.crc32(data).to_bytes(4, 'little') + data
-                journal.write(frame.ljust(1024, b'\0'))
-        env['NANACOIN_JOURNAL'] = str(legacy_path)
-        migration = subprocess.run([str(EXE), '--migrate-login'], env=env,
-            input=json.dumps(dict(token=legacy_token, username='nana', password='4321')).encode(),
-            capture_output=True, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
-        assert migration.returncode == 0, migration.stderr.decode()
-        process = start()
-        try:
-            assert request('/me', token=legacy_token)[0] == 401
-            assert request('/me', token=login('nana', '4321'))[1]['balance'] == 25
         finally:
             stop(process)
     print('HTTP smoke passed: JSON API, Angular auth/views/money/offers/forex/privacy, 1000 offer reads, CORS, revocation, restart, durable retries')

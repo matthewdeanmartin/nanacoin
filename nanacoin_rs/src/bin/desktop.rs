@@ -28,6 +28,9 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         std::env::var("NANACOIN_ORIGINS").unwrap_or_else(|_| api::DEFAULT_ORIGINS.into())
     );
     loop {
+        if let Err(error) = service.tick() {
+            eprintln!("scheduled payments: {error:?}");
+        }
         let Some(request) = server.recv_timeout(Duration::from_secs(1))? else {
             continue;
         };

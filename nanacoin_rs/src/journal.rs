@@ -219,6 +219,9 @@ impl<J: Journal> Service<J> {
         request_id: u64,
         command: Command,
     ) -> Result<Receipt, Error> {
+        if actor == MemberId(0) || matches!(command, Command::RunLoan { .. }) {
+            return Err(Error::Forbidden);
+        }
         self.commit(actor, request_id, command, None)
     }
 
@@ -259,6 +262,18 @@ impl<J: Journal> Service<J> {
         if epoch.unwrap_or(0) != self.generation() {
             return Err(Error::StaleRequest);
         }
+        let money_epoch = key
+            .split(':')
+            .nth(1)
+            .and_then(|s| s.strip_prefix('m'))
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(0);
+        if money_epoch != self.state.money_epoch {
+            return Err(Error::StaleRequest);
+        }
+        if actor == MemberId(0) || matches!(command, Command::RunLoan { .. }) {
+            return Err(Error::Forbidden);
+        }
         let request_id = self.state.member(actor)?.last_request + 1;
         self.commit(actor, request_id, command, Some(digest))
     }
@@ -273,8 +288,10 @@ impl<J: Journal> Service<J> {
         if self.storage_failed {
             return Err(Error::Storage);
         }
-        if let Some(receipt) = self.state.retry(actor, request_id, &command)? {
-            return Ok(receipt);
+        if actor != MemberId(0) {
+            if let Some(receipt) = self.state.retry(actor, request_id, &command)? {
+                return Ok(receipt);
+            }
         }
         let now = self.now();
         self.state.validate_at(actor, &command, now)?;
@@ -288,7 +305,7 @@ impl<J: Journal> Service<J> {
         let event = Event {
             timestamp: now.max(self.state.last_timestamp),
             client_key,
-            version: 1,
+            version: 2,
             sequence,
             actor,
             request_id,
@@ -329,6 +346,52 @@ impl<J: Journal> Service<J> {
             sequence,
             replayed: false,
         })
+    }
+
+    /// Background work shares the financial owner. At most four bounded events
+    /// per tick; no allocation, logged-in user, HTTP request, or timer per loan.
+    pub fn tick(&mut self) -> Result<usize, Error> {
+        if self.storage_failed {
+            return Err(Error::Storage);
+        }
+        let now = self.now();
+        if !(crate::offers::MIN_CLOCK..=crate::domain::MAX_SEQUENCE).contains(&now) {
+            return Ok(0);
+        }
+        let mut ready = heapless::Vec::<(u64, u64), { crate::loans::LOANS }>::new();
+        for l in &self.state.loans {
+            if self.state.loan_ready(l, now) {
+                ready
+                    .push((
+                        if l.status == crate::loans::LoanStatus::Armed {
+                            l.updated_at
+                        } else {
+                            l.next_due_at
+                        },
+                        l.id,
+                    ))
+                    .unwrap();
+            }
+        }
+        ready.sort_unstable();
+        let mut completed = 0;
+        // Validate all bounded candidates so an overflowing agreement cannot
+        // permanently starve later loans. Failed arithmetic never writes.
+        for (_, id) in ready {
+            if completed == 4 {
+                break;
+            }
+            let command = Command::RunLoan {
+                loan: id,
+                expected_updated_at: self.state.loan(id)?.updated_at,
+            };
+            if self.state.validate_at(MemberId(0), &command, now).is_err() {
+                continue;
+            }
+            self.commit(MemberId(0), self.state.sequence + 1, command, None)?;
+            completed += 1;
+        }
+        Ok(completed)
     }
 }
 

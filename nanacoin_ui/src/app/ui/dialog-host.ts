@@ -1,3 +1,5 @@
+import { Money } from '../api/money';
+import { inject as moneyInject } from '@angular/core';
 // Renders whichever dialog is open. Mounted once, beside the toasts.
 //
 // Uses the platform <dialog> element rather than a div with a z-index: the
@@ -101,6 +103,7 @@ import { Dialogs } from './dialog';
   `,
 })
 export class DialogHost {
+  protected readonly money = moneyInject(Money);
   private readonly dialogs = inject(Dialogs);
 
   protected readonly req = computed(() => this.dialogs.current());
@@ -144,13 +147,14 @@ export class DialogHost {
     }
 
     if (r.kind === 'offer') {
-      const amount = Number(this.value.trim());
+      let amount: number;
+      try { amount = this.money.parse(this.value.trim()); } catch (e) { this.error.set(e instanceof Error ? e.message : String(e)); return; }
       if (amount < 0) {
         this.error.set("Can't do negative prices.");
         return;
       }
       if (!Number.isInteger(amount) || amount === 0) {
-        this.error.set('Enter a whole number of coins.');
+        this.error.set('Enter a positive amount in NC.');
         return;
       }
       this.dialogs.settle(JSON.stringify({ amount, message: this.note.trim() }));

@@ -16,8 +16,8 @@ describe('public demo economic data', () => {
     expect(repeatPriceChanges(transactions)).toContainEqual({
       thing: 'Peanut butter cookies',
       unit: 'BATCH',
-      previous: 6,
-      latest: 9,
+      previous: 60_000,
+      latest: 90_000,
       percent: 0.5,
     });
     expect(inflationSeries(transactions, 'month').points.length).toBeGreaterThan(2);

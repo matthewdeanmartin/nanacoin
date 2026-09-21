@@ -284,6 +284,18 @@ pub fn handle_keyed<J: Journal>(
             .strip_prefix("Bearer ")
             .ok_or(Error::Unauthorized)?;
         let actor = service.auth.lookup(&service.state, token, now)?;
+        // After a reform an old screen cannot submit amounts in the old unit.
+        // Keyed commands also check this after durable retry receipt lookup.
+        if method != "GET" && service.state.money_epoch > 0 && path != "/api/v1/admin/reform" {
+            let epoch = idempotency_key
+                .split(':')
+                .nth(1)
+                .and_then(|s| s.strip_prefix('m'))
+                .and_then(|s| s.parse::<u64>().ok());
+            if epoch != Some(service.state.money_epoch) {
+                return Err(Error::StaleRequest);
+            }
+        }
         if path == "/api/v1/admin/transport" && method == "POST" {
             #[derive(Deserialize)]
             #[serde(deny_unknown_fields)]

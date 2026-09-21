@@ -60,7 +60,8 @@ describe('series against a captured ledger', () => {
         .reduce((a, p) => a + p.amount, 0), 0);
 
     const total = gdp.points.reduce((a, p) => a + p.value, 0);
-    expect(total).toBe(transferred);
+    // Unclassified payments do not establish that production occurred.
+    expect(total).toBe(0);
     expect(total).toBeLessThan(transferred + issued);
   });
 

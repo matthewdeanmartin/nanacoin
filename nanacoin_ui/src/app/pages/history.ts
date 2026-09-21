@@ -1,3 +1,5 @@
+import { Money, MoneyPipe } from '../api/money';
+import { inject as moneyInject } from '@angular/core';
 // Your own transactions, newest first.
 
 import { Component, computed, inject, resource, signal } from '@angular/core';
@@ -38,7 +40,7 @@ interface Row {
 
 @Component({
   selector: 'app-history',
-  imports: [RouterLink, Notebook],
+  imports: [MoneyPipe, RouterLink, Notebook],
   template: `
     <h1>My Account</h1>
     <p class="lede">Your activity, offers, exchange bids, and transaction history.</p>
@@ -65,7 +67,7 @@ interface Row {
           @for (o of myOffers().slice(0, 4); track o.id) {
             <a routerLink="/offers">
               <span>{{ o.listing_title || 'Offer' }}</span>
-              <span>{{ o.amount }} coins · {{ o.status.toLowerCase() }}</span>
+              <span>{{ o.amount | nc }} coins · {{ o.status.toLowerCase() }}</span>
             </a>
           }
         </div>
@@ -87,7 +89,7 @@ interface Row {
         <div class="account-summary-list">
           @for (q of myBids().slice(0, 4); track q.id) {
             <a routerLink="/forex">
-              <span>{{ q.coins }} coins at {{ q.cents_per_coin }}¢ each</span>
+              <span>{{ q.coins | nc }} coins at {{ q.cents_per_coin }}¢ each</span>
               <span>{{ q.status.toLowerCase() }}</span>
             </a>
           }
@@ -125,7 +127,7 @@ interface Row {
             </div>
 
             <div class="txn__side">
-              <span class="txn__amount">{{ r.delta >= 0 ? '+' : '' }}{{ r.delta }}</span>
+              <span class="txn__amount">{{ r.delta >= 0 ? '+' : '' }}{{ r.delta | nc }}</span>
               <span class="txn__when">{{ when(r.txn.created_at) }}</span>
             </div>
 
@@ -142,7 +144,7 @@ interface Row {
                   class="btn btn--quiet btn--small"
                   title="Start another transfer with the same recipient, amount, and memo"
                   routerLink="/send"
-                  [queryParams]="{ to: r.otherAccount, amount: -r.delta, memo: r.txn.description }"
+                  [queryParams]="{ to: r.otherAccount, amount: money.input(-r.delta), memo: r.txn.description }"
                 >Repeat</a>
               }
 
@@ -171,6 +173,7 @@ interface Row {
   `,
 })
 export class HistoryPage {
+  protected readonly money = moneyInject(Money);
   private readonly api = inject(NanacoinService);
   private readonly toasts = inject(Toasts);
   private readonly dialogs = inject(Dialogs);

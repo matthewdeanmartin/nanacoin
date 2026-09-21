@@ -11,7 +11,25 @@ export type TransactionId = string;
 export type ListingId = string;
 export type ThingId = string;
 
-export type EconomicKind = 'LABOR' | 'GOOD' | 'GIFT' | 'OTHER';
+export type EconomicKind = 'LABOR' | 'GOOD' | 'GIFT' | 'OTHER' | 'LOAN_PRINCIPAL' | 'INTEREST';
+
+export interface Loan {
+  id: number; lender: AccountId; lender_name: string; borrower: AccountId; borrower_name: string;
+  amount: number; rate_bps: number; rate_days: number; payment_days: number; installment: number;
+  credit: boolean; memo: string; status: 'OFFERED' | 'ARMED' | 'ACTIVE' | 'PAID' | 'DECLINED' | 'CANCELLED';
+  principal: number; interest: number; overdue: number; next_due_at: number;
+  created_at: number; updated_at: number; waiting_reason: string;
+}
+export interface LoanBook {
+  loans: Loan[]; decimals: number; money_epoch: number; sequence: number;
+  summary: { outstanding: string; overdue: string; weighted_annual_percent: number | null; active: number };
+}
+export interface LoanOfferInput {
+  borrower: AccountId; amount: number; rate_bps: number; rate_days: number;
+  payment_days: number; installment: number; credit: boolean; memo: string;
+}
+export interface ReformInput { decimals: number; power: number; expected_epoch: number; expected_sequence: number; preview: boolean }
+export interface ReformResult { decimals: number; money_epoch: number; sequence: number; circulation: number; preview: boolean }
 export type EconomicUnit =
   | 'EACH' | 'BATCH' | 'TASK' | 'MINUTE' | 'HOUR'
   | 'GRAM' | 'KILOGRAM' | 'MILLILITER' | 'LITER' | 'LOAD' | 'OTHER';
@@ -166,6 +184,10 @@ export type OfferId = string;
 export type OfferStatus = 'OPEN' | 'ACCEPTED' | 'SETTLED' | 'REVERSED' | 'DECLINED' | 'NOT_SELECTED' | 'WITHDRAWN';
 
 export interface Status {
+  decimals?: number;
+  money_epoch?: number;
+  sequence?: number;
+  lending_enabled?: boolean;
   provisioned: boolean;
   household: string;
   currency: string;

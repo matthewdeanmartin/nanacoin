@@ -21,7 +21,9 @@
 }
 
 <app-site-menu />
-@if (publicPage()) {
+@if (money.changed()) {
+  <main id="main-content" class="screen"><h1>The currency has been reformed</h1><p>Reload to use the new unit. Open forms and unsent amounts must be reviewed again.</p><button class="btn" (click)="reloadCurrency()">Reload currency & balances</button></main>
+} @else if (publicPage()) {
   <main id="main-content" class="screen" [class.screen--about]="aboutPage()" tabindex="-1"><router-outlet /></main>
 } @else {
 @switch (phase()) {
@@ -85,9 +87,9 @@
           }
         </div>
 
-        <div class="topbar__balance" [attr.aria-label]="session.balance() + ' coins'">
-          {{ session.balance() }}
-          <span class="topbar__unit">{{ session.balance() === 1 ? 'coin' : 'coins' }}</span>
+        <div class="topbar__balance" [attr.aria-label]="money.format(session.balance()) + ' NanaCoin'">
+          {{ session.balance() | nc }}
+          <span class="topbar__unit">NC</span>
         </div>
 
         <div class="topbar__actions">

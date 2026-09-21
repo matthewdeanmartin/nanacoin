@@ -236,7 +236,7 @@ describe('the demo exchange', () => {
   it('settles the coin and dollar legs together', () => {
     const { l, nana, alice, bob } = household();
     l.issueUSD(nana, bob.account, 1_000, 'Cash float');
-    const quote = l.postQuote(alice, 'ASK', 25, 10);
+    const quote = l.postQuote(alice, 'ASK', 250_000, 10);
 
     const result = l.takeQuote(bob, quote.id);
 
@@ -250,7 +250,7 @@ describe('the demo exchange', () => {
 
   it('refuses a trade when the dollar buyer cannot pay', () => {
     const { l, alice, bob } = household();
-    const quote = l.postQuote(alice, 'ASK', 25, 10);
+    const quote = l.postQuote(alice, 'ASK', 250_000, 10);
     expect(() => l.takeQuote(bob, quote.id)).toThrow(DemoError);
     expect(quote.status).toBe('OPEN');
     expect(l.balanceOf(alice.account)).toBe(100);
@@ -294,7 +294,7 @@ describe('the seeded household', () => {
     const l = new DemoLedger();
     seed(l);
     const nana = l.userByName('nana')!;
-    expect(l.balanceOf(nana.account)).toBe(1_000);
+    expect(l.balanceOf(nana.account)).toBe(10_000_000);
   });
 
   it('leaves an offer waiting for a decision', () => {

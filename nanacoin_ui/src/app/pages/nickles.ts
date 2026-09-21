@@ -1,3 +1,5 @@
+import { Money, MoneyPipe } from '../api/money';
+import { inject as moneyInject } from '@angular/core';
 import { Component, computed, inject, resource, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -20,19 +22,19 @@ export function redemptionUrl(token: string, pageUrl = location.href): string {
 }
 
 @Component({
- selector: 'app-nickles', imports: [FormsModule],
+ selector: 'app-nickles', imports: [MoneyPipe, FormsModule],
  template: `<h1>Nana-nickles</h1>
  <p>Bearer vouchers: whoever presents the secret first can redeem it. Showing or printing a second copy does not create more money.</p>
  @if (!demo) { <p>This is a browser-demo prototype, not implemented by this live server. Do not use it for real money.</p> }
  @else {
  <section class="panel"><h2>Package coins for someone else</h2>
  <p>Any member can move existing coins into the voucher reserve. Only Nana can issue new money. A lost secret leaves its coins reserved until this demo is reset.</p>
- <label>Whole NanaCoins <input type="number" min="1" step="1" [(ngModel)]="amount"></label>
+ <label>NanaCoins <input type="text" inputmode="decimal" [(ngModel)]="amount"></label>
  @if (session.isNana()) { <label><input type="checkbox" [(ngModel)]="fresh"> Nana: issue new money instead of using my balance</label> }
  <button class="btn voucher-create" title="Move coins into a new single-use bearer voucher" [disabled]="busy() || !session.signedIn()" (click)="create()">Create voucher</button>
  </section>
  @if (voucher(); as v) {
- <section class="panel printable-voucher"><h2>DEMO nana-nickle · {{ v.amount }} NC</h2><p>Serial {{ v.serial }} · One redemption only · Same tab only</p>
+ <section class="panel printable-voucher"><h2>DEMO nana-nickle · {{ v.amount | nc }} NC</h2><p>Serial {{ v.serial }} · One redemption only · Same tab only</p>
  <p>This code is the money. Anyone who copies it can redeem it first.</p><code class="voucher-secret">{{ v.token }}</code>
  @if (qrCode()) {
    <figure class="voucher-qr"><img [src]="qrCode()" width="256" height="256" alt="QR code linking to the Nana-nickle redemption page"><figcaption>Scan to open NanaCoin’s redemption page with this voucher ready.</figcaption></figure>
@@ -50,7 +52,7 @@ export function redemptionUrl(token: string, pageUrl = location.href): string {
  @else { <div class="account-summary-list">
    @for (item of visibleIssued(); track item.serial) {
      <div class="voucher-history-row">
-       <span><strong>{{ item.serial }}</strong> · {{ item.amount }} NC · {{ item.issuerName }}</span>
+       <span><strong>{{ item.serial }}</strong> · {{ item.amount | nc }} NC · {{ item.issuerName }}</span>
        <span>
          <span class="tag" [class.tag--warn]="!redeemed(item)">{{ redeemed(item) ? 'redeemed' : 'outstanding' }}</span>
          @if (item.issuerId === session.me()?.id && !redeemed(item)) { <button class="btn btn--quiet btn--small" type="button" (click)="showSaved(item)">Show</button> }
@@ -62,12 +64,13 @@ export function redemptionUrl(token: string, pageUrl = location.href): string {
 
  <section class="panel"><h2>{{ session.isNana() ? 'All voucher redemptions' : 'My voucher redemptions' }}</h2>
  @for (txn of visibleRedemptions(); track txn.id) {
-   <p class="voucher-history-row"><span>{{ txn.description }} · {{ redemptionAmount(txn) }} NC</span><span>{{ when(txn.created_at) }}</span></p>
+   <p class="voucher-history-row"><span>{{ txn.description }} · {{ redemptionAmount(txn) | nc }} NC</span><span>{{ when(txn.created_at) }}</span></p>
  } @empty { <p class="muted">No redemptions yet.</p> }
  </section>
  }`,
 })
 export class NicklesPage {
+  protected readonly money = moneyInject(Money);
  readonly demo = IS_DEMO; readonly session = inject(Session);
  private readonly api = inject(NanacoinService);
  private readonly route = inject(ActivatedRoute);
@@ -87,7 +90,7 @@ export class NicklesPage {
    txn.reference?.startsWith('nickle:')
    && txn.description.startsWith('Redeem nana-nickle')
    && (this.session.isNana() || txn.actor === this.session.me()?.id)));
- amount = 5; fresh = false; token = '';
+ amount: string | number = '5'; fresh = false; token = '';
  constructor() {
    const scannedToken = this.route.snapshot.queryParamMap.get('token')?.trim();
    if (scannedToken) {
@@ -100,10 +103,12 @@ export class NicklesPage {
  }
  async create(): Promise<void> {
    if (!IS_DEMO || this.busy()) return;
-   if (!Number.isSafeInteger(this.amount) || this.amount <= 0) { this.message.set('Enter a positive whole number.'); return; }
+   let amount: number;
+   try { amount = this.money.parse(this.amount); if (amount <= 0) throw new Error('Enter a positive amount.'); }
+   catch (e) { this.message.set(e instanceof Error ? e.message : String(e)); return; }
    this.busy.set(true);
    try {
-     const voucher = await this.api.createNickle(this.amount, this.session.isNana() && this.fresh);
+     const voucher = await this.api.createNickle(amount, this.session.isNana() && this.fresh);
      this.voucher.set(voucher);
      const me = this.session.me()!;
      this.issued.set(saveNickle({

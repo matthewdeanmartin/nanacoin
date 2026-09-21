@@ -1,3 +1,5 @@
+import { Money, MoneyPipe } from '../api/money';
+import { inject as moneyInject } from '@angular/core';
 // The household economy: what the money supply has done, what changed hands,
 // and how each person's balance moved.
 //
@@ -12,6 +14,7 @@ import { NanacoinService } from '../api/nanacoin.service';
 import { Session } from '../api/session';
 import { Quote } from '../api/models';
 import { LineChart } from '../economy/line-chart';
+import { EconomyStat } from '../ui/economy-stat';
 import {
   Bucket,
   Series,
@@ -23,6 +26,7 @@ import {
   giftsThisWeek,
   repeatPriceChanges,
   inflationSeries,
+  interestSeries,
 } from '../economy/series';
 
 /** How many transactions to ask for. The server caps this itself. */
@@ -30,7 +34,7 @@ const LEDGER_LIMIT = 365;
 
 @Component({
   selector: 'app-economy',
-  imports: [LineChart],
+  imports: [MoneyPipe, LineChart, EconomyStat],
   template: `
     <h1>Economy</h1>
 
@@ -52,13 +56,28 @@ const LEDGER_LIMIT = 365;
         </p>
       }
 
-      <div class="stats economy-stats">
-        <div class="stat"><span>{{ (yearEmployment() * 100).toFixed(0) }}%</span><span class="stat__label">employment · last year/data available</span></div>
-        <div class="stat"><span>{{ yearInflation() >= 0 ? '+' : '' }}{{ (yearInflation() * 100).toFixed(1) }}%</span><span class="stat__label">inflation · last year/data available</span></div>
-        <div class="stat"><span>{{ yearGdp() }} NC</span><span class="stat__label">GDP · last year/data available</span></div>
-        <div class="stat"><span>{{ data.value()?.circulation ?? 0 }} NC</span><span class="stat__label">money supply</span></div>
-        <div class="stat"><span>{{ currentRateLabel() }}</span><span class="stat__label">exchange rate</span></div>
+      <div class="stats economy-stats" aria-label="Economic indicators">
+        <app-economy-stat id="employment-help" label="employment"
+          [value]="(yearEmployment() * 100).toFixed(0) + '%'"
+          help="Share of currently active member accounts other than Nana that received a payment classified as labor. Uses up to 365 days ending at the latest retained transaction; available history may be shorter. Accounts currently have no pet or labor-eligibility classification." />
+        <app-economy-stat id="inflation-help" label="inflation" [value]="inflationLabel()"
+          help="Average price change for goods with repeat sales in up to 365 days ending at the latest retained transaction. Available history may be shorter. This is a household repeat-sale measure, not a consumer price index. A dash means there are no comparable sales." />
+        <app-economy-stat id="gdp-help" label="GDP" [value]="money.chart(yearGdp()).toLocaleString() + ' NC'"
+          help="Recorded goods and labor payments in up to 365 days ending at the latest retained transaction; available history may be shorter. Reversals subtract production. Gifts, issuance, loan principal, pure interest, and unclassified transfers are excluded." />
+        <app-economy-stat id="supply-help" label="money supply" [value]="money.format(data.value()?.circulation ?? 0) + ' NC'"
+          help="Current NanaCoin in circulation across all accounts, including Nana. Issuing and retiring coins change the supply; transfers and lending move existing coins." />
+        <app-economy-stat id="exchange-help" label="exchange rate" [value]="currentRateLabel()"
+          help="Rate from the most recently completed exchange retained by the board, or the average of live quotes when no completed exchange is available. Change the display direction below the charts." />
+        <app-economy-stat id="interest-help" label="interest rate" [value]="interestLabel()"
+          help="Current simple interest rate weighted by outstanding loan principal, including zero-rate loans. Each loan's rate is normalized to 365 days. This is not a compounded yield or an inflation forecast. Undrawn credit and unaccepted offers are excluded." />
       </div>
+
+      <section class="panel">
+        <h2>Lending</h2>
+        @if (data.value()?.loanSummary; as loans) {
+          <p>Outstanding principal: <strong>{{loans.outstanding | nc}} NC</strong> · Overdue: {{loans.overdue | nc}} NC</p>
+        } @else { <p>Lending statistics are unavailable.</p> }
+      </section>
 
       <div class="chart-controls">
           <label>
@@ -76,11 +95,11 @@ const LEDGER_LIMIT = 365;
         <article class="card">
           <h3>Employment this week</h3>
           <p class="card__meta"><strong>{{ employment().employed }} of {{ employment().laborPool }}</strong> people · {{ (employment().rate * 100).toFixed(0) }}%</p>
-          <p class="muted small">{{ employment().laborPayments }} coins paid for labor; {{ employment().averagePayment.toFixed(1) }} per labor payment. Nana is not in the labor pool.</p>
+          <p class="muted small">{{ money.chart(employment().laborPayments).toLocaleString() }} NC paid for labor; {{ money.chart(employment().averagePayment).toLocaleString() }} per labor payment. Nana is not in the labor pool.</p>
         </article>
         <article class="card">
           <h3>Gifts this week</h3>
-          <p class="card__meta"><strong>{{ gifts() }} coins</strong></p>
+          <p class="card__meta"><strong>{{ money.chart(gifts()).toLocaleString() }} NC</strong></p>
           <p class="muted small">Gifts are tracked separately and do not count as production.</p>
         </article>
       </div>
@@ -91,7 +110,7 @@ const LEDGER_LIMIT = 365;
           <p class="muted">A good needs two completed sales before its price can be compared.</p>
         } @else {
           @for (change of priceChanges(); track change.thing) {
-            <p><strong>{{ change.thing }}</strong>: {{ change.previous.toFixed(2) }} → {{ change.latest.toFixed(2) }} coins per {{ change.unit.toLocaleLowerCase() }} ({{ change.percent >= 0 ? '+' : '' }}{{ (change.percent * 100).toFixed(1) }}%)</p>
+            <p><strong>{{ change.thing }}</strong>: {{ money.chart(change.previous).toLocaleString() }} → {{ money.chart(change.latest).toLocaleString() }} NC per {{ change.unit.toLocaleLowerCase() }} ({{ change.percent >= 0 ? '+' : '' }}{{ (change.percent * 100).toFixed(1) }}%)</p>
           }
         }
       </section>
@@ -121,6 +140,12 @@ const LEDGER_LIMIT = 365;
         />
 
         <app-line-chart
+          title="Interest paid"
+          subtitle="Recorded interest payments in the available history. The lender earns what the borrower pays; principal and pure interest are excluded from GDP."
+          [series]="interest()"
+        />
+
+        <app-line-chart
           title="Balances"
           subtitle="What each person holds over time."
           [series]="balances()"
@@ -145,6 +170,7 @@ const LEDGER_LIMIT = 365;
   `,
 })
 export class EconomyPage {
+  protected readonly money = moneyInject(Money);
   private readonly api = inject(NanacoinService);
   protected readonly session = inject(Session);
 
@@ -160,18 +186,20 @@ export class EconomyPage {
     }),
     loader: async ({ params }) => {
       if (params.account) {
-        const [page, quotes] = await Promise.all([
+        const [page, quotes, lending] = await Promise.all([
           this.api.ledger(LEDGER_LIMIT),
           this.api.quotes().then((result) => result.quotes).catch(() => [] as Quote[]),
+          this.api.loans().catch(() => null),
         ]);
         return {
           transactions: page.transactions,
           circulation: page.circulation,
           quotes,
           balance: 0,
+          loanSummary: lending?.summary ?? null,
         };
       }
-      return { transactions: [], circulation: 0, quotes: [] as Quote[], balance: 0 };
+      return { transactions: [], circulation: 0, quotes: [] as Quote[], balance: 0, loanSummary: null };
     },
   });
 
@@ -198,6 +226,16 @@ export class EconomyPage {
     return changes.length ? changes.reduce((sum, change) => sum + change.percent, 0) / changes.length : 0;
   });
   protected readonly yearGdp = computed(() => gdpSeries(this.yearTxns(), 'year').points.reduce((sum, point) => sum + point.value, 0));
+  protected inflationLabel(): string {
+    if (!repeatPriceChanges(this.yearTxns()).length) return '—';
+    return `${this.yearInflation() >= 0 ? '+' : ''}${(this.yearInflation() * 100).toFixed(1)}%`;
+  }
+  protected interestLabel(): string {
+    const loans = this.data.value()?.loanSummary;
+    if (!loans) return 'Unavailable';
+    const rate = loans.weighted_annual_percent;
+    return rate === null ? 'No loans' : `${rate.toLocaleString(undefined, { maximumFractionDigits: 4 })}%/yr`;
+  }
 
   private readonly currentRate = computed(() => {
     const filled = this.quotes().filter((quote) => quote.status === 'FILLED').sort((a, b) => b.updated_at - a.updated_at)[0];
@@ -241,16 +279,20 @@ export class EconomyPage {
   });
 
   protected readonly supply = computed<Series[]>(() => [
-    moneySupplySeries(this.txns(), this.data.value()?.circulation ?? 0),
+    this.moneySeries(moneySupplySeries(this.txns(), this.data.value()?.circulation ?? 0)),
   ]);
 
   protected readonly gdp = computed<Series[]>(() => [
-    gdpSeries(this.txns(), this.bucket()),
+    this.moneySeries(gdpSeries(this.txns(), this.bucket())),
+  ]);
+
+  protected readonly interest = computed<Series[]>(() => [
+    this.moneySeries(interestSeries(this.txns(), this.bucket())),
   ]);
 
   protected readonly gdpSubtitle = computed(
     () =>
-      `Labor and goods produced per ${this.bucket()}. Gifts, other transfers, and coin issuance are excluded.`,
+      `Labor and goods produced per ${this.bucket()}. Loan principal, pure interest, gifts, unclassified transfers, and coin issuance are excluded.`,
   );
 
   protected readonly employment = computed(() => employmentSnapshot(
@@ -290,11 +332,12 @@ export class EconomyPage {
 
     return people
       .map(({ user }) =>
-        balanceSeries(txns, user.account, user.balance ?? 0, user.display_name),
+        this.moneySeries(balanceSeries(txns, user.account, user.balance ?? 0, user.display_name)),
       )
       .filter((s) => s.points.length > 0);
   });
 
+  private moneySeries(series: Series): Series { return { ...series, points: series.points.map(p => ({ ...p, value: this.money.chart(p.value) })) }; }
 }
 
 function trimNumber(value: number): string {

@@ -16,6 +16,7 @@ pub enum QuoteStatus {
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Quote {
+    pub nc_scale: i64,
     pub id: u64,
     pub maker: MemberId,
     pub side: QuoteSide,
@@ -36,7 +37,7 @@ impl Quote {
             && (self.expires_at == 0 || now < self.expires_at)
     }
     pub fn cents(&self) -> i64 {
-        self.coins * self.cents_per_coin
+        (self.coins as i128 * self.cents_per_coin as i128 / self.nc_scale as i128) as i64
     }
     fn parties(&self, taker: MemberId) -> (MemberId, MemberId) {
         match self.side {
@@ -107,8 +108,12 @@ impl State {
                 if !(MIN_CLOCK..=MAX_SEQUENCE).contains(&now) {
                     return Err(Error::Unavailable);
                 }
-                if !(1..=10_000).contains(cents_per_coin)
-                    || !(1..=100_000).contains(coins)
+                let total = *coins as i128 * *cents_per_coin as i128;
+                let scale = crate::money::scale(self.decimals) as i128;
+                if !(1..=MAX_AMOUNT).contains(cents_per_coin)
+                    || !(1..=MAX_AMOUNT).contains(coins)
+                    || total % scale != 0
+                    || !(1..=MAX_AMOUNT as i128).contains(&(total / scale))
                     || (*expires_at != 0 && *expires_at <= now)
                     || *expires_at > MAX_SEQUENCE
                 {
@@ -161,6 +166,7 @@ impl State {
                 listing: None,
                 usd: true,
                 quote: None,
+                loan: None,
                 economic: EconomicDetails::default(),
             }),
             Command::PostQuote {
@@ -182,6 +188,7 @@ impl State {
                 }
                 self.quotes
                     .push(Quote {
+                        nc_scale: crate::money::scale(self.decimals),
                         id: event.sequence,
                         maker: event.actor,
                         side: *side,
@@ -225,6 +232,7 @@ impl State {
                     listing: None,
                     usd: false,
                     quote: Some(q.id),
+                    loan: None,
                     economic: EconomicDetails::default(),
                 };
                 let cash = Transaction {

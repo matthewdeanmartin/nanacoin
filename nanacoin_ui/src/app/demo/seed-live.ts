@@ -150,7 +150,7 @@ export class LiveSeeder {
 
   /** Nana issues a float, so the transfers below cannot run out of money. */
   private async fund(members: { account: string }[], opts: SeedOptions) {
-    const float = opts.weeks * opts.perWeek * 3;
+    const float = opts.weeks * opts.perWeek * 3 * 10 ** (this.session.status()?.decimals ?? 4);
     for (let i = 0; i < members.length; i++) {
       this.step('Issuing the opening float', i, members.length);
       await this.write(() =>
@@ -179,7 +179,7 @@ export class LiveSeeder {
           this.api.createListing({
             title: item.name,
             description: categoryName(item.cat),
-            price: 3 + ((i * 5) % 28),
+            price: (3 + ((i * 5) % 28)) * 10 ** (this.session.status()?.decimals ?? 4),
             ...(side ? { side } : {}),
           }),
         );
@@ -240,7 +240,7 @@ export class LiveSeeder {
       await this.write(() =>
         this.api.transfer(
           to.account,
-          1 + (i % 9),
+          (1 + (i % 9)) * 10 ** (this.session.status()?.decimals ?? 4),
           chores[i % chores.length],
           newIdempotencyKey(),
         ),

@@ -54,6 +54,49 @@ fn execute(s: &mut Service<Memory>, actor: u8, command: Command) -> Result<Recei
 }
 
 #[test]
+fn financial_classifications_survive_replay_and_corrections_without_issuance() {
+    let (mut s, memory) = household();
+    execute(&mut s, 1, issue(100)).unwrap();
+    let mut payments = Vec::new();
+    for kind in [EconomicKind::LoanPrincipal, EconomicKind::Interest] {
+        let receipt = execute(
+            &mut s,
+            2,
+            Command::ClassifiedTransfer {
+                to: MemberId(1),
+                amount: 10,
+                memo: Memo::new(),
+                economic: EconomicDetails {
+                    kind,
+                    quantity_milli: 1000,
+                    ..EconomicDetails::default()
+                },
+            },
+        )
+        .unwrap();
+        payments.push((receipt.sequence, kind));
+    }
+    let mut replay = Service::open(memory).unwrap();
+    for (id, kind) in payments {
+        let original = replay.state().history.iter().find(|t| t.id == id).unwrap();
+        assert_eq!(original.economic.kind, kind);
+        execute(
+            &mut replay,
+            1,
+            Command::Reverse {
+                transaction: id,
+                memo: Memo::new(),
+            },
+        )
+        .unwrap();
+        assert_eq!(replay.state().history.back().unwrap().economic.kind, kind);
+    }
+    assert_eq!(replay.state().issuance_balance, -100);
+    assert_eq!(replay.state().member(MemberId(2)).unwrap().balance, 100);
+    replay.state().check_invariants().unwrap();
+}
+
+#[test]
 fn ledger_survives_replay_and_keeps_double_entry_balances() {
     let (mut s, memory) = household();
     execute(&mut s, 1, issue(100)).unwrap();
@@ -656,14 +699,22 @@ fn full_state_with_worst_case_json_escaping_fits_response_budget() {
         )
         .unwrap();
     }
-    for _ in 0..HISTORY {
+    for index in 0..HISTORY {
         execute(
             &mut s,
             1,
-            Command::Issue {
-                to: MemberId(2),
-                amount: MAX_AMOUNT,
-                memo: Memo::try_from("\u{1}".repeat(96).as_str()).unwrap(),
+            if index % 2 == 0 {
+                Command::Issue {
+                    to: MemberId(2),
+                    amount: MAX_AMOUNT,
+                    memo: Memo::try_from("\u{1}".repeat(96).as_str()).unwrap(),
+                }
+            } else {
+                Command::Retire {
+                    from: MemberId(2),
+                    amount: MAX_AMOUNT,
+                    memo: Memo::try_from("\u{1}".repeat(96).as_str()).unwrap(),
+                }
             },
         )
         .unwrap();

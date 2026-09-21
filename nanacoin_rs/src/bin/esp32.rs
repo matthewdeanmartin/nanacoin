@@ -319,6 +319,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     .set()?;
     let _sampler = std::thread::Builder::new().spawn(move || sampler.run())?;
+    // Independent of HTTP traffic and potentially blocking Wi-Fi reconnection.
+    let scheduler = Arc::clone(&shared);
+    ThreadSpawnConfiguration {
+        name: Some(c"nanacoin-loans"),
+        stack_size: 24 * 1024,
+        pin_to_core: Some(Core::Core1),
+        ..Default::default()
+    }
+    .set()?;
+    let _scheduler = std::thread::Builder::new().spawn(move || loop {
+        std::thread::sleep(Duration::from_secs(1));
+        if let Err(error) = scheduler.lock().unwrap().tick() {
+            log::warn!("Scheduled payments: {error:?}");
+        }
+    })?;
     ThreadSpawnConfiguration::default().set()?;
     // SAFETY: monotonic timer query has no pointer arguments.
     diagnostics.boot_ready_ms.store(

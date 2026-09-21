@@ -6,6 +6,7 @@ export interface Allowance {
   recipientAccount: string;
   recipientName: string;
   amount: number;
+  moneyEpoch?: number;
   cadence: AllowanceCadence;
   nextDue: string;
   memo: string;

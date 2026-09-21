@@ -214,7 +214,7 @@ fn forex_recycling_and_repeated_http_trades_do_not_allocate() {
                     } else {
                         QuoteSide::BID
                     },
-                    cents_per_coin: 25,
+                    cents_per_coin: 250000,
                     coins: 1,
                     expires_at: 0,
                 },

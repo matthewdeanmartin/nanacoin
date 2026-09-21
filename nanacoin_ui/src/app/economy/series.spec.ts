@@ -15,6 +15,7 @@ import {
   moneySupplySeries,
   inflationSeries,
   repeatPriceChanges,
+  interestSeries,
 } from './series';
 
 const DAY = 86_400;
@@ -26,6 +27,8 @@ function txn(partial: Partial<Transaction> & { postings: Transaction['postings']
     created_at: 0,
     actor: 'user-1',
     description: '',
+    economic_kind: 'GOOD',
+    quantity_milli: 1000,
     ...partial,
   };
 }
@@ -101,6 +104,48 @@ describe('gdpSeries', () => {
   it('excludes classified gifts and other transfers', () => {
     const gift = { ...transfer(0, 12), economic_kind: 'GIFT' as const, quantity_milli: 1000 };
     expect(gdpSeries([gift], 'day').points).toEqual([]);
+  });
+
+  it('excludes loan principal, interest and their reversals even without quantities', () => {
+    for (const economic_kind of ['LOAN_PRINCIPAL', 'INTEREST', 'GIFT'] as const) {
+      for (const quantity_milli of [undefined, 0, 1000]) {
+        const flow = { ...transfer(0, 12), economic_kind, quantity_milli };
+        const undo = { ...flow, kind: 'REVERSAL' as const, created_at: DAY };
+        expect(gdpSeries([flow, undo], 'day').points).toEqual([]);
+      }
+    }
+  });
+
+  it('excludes OTHER transfers regardless of quantity metadata', () => {
+    const legacy = { ...transfer(0, 12), economic_kind: 'OTHER' as const, quantity_milli: 0 };
+    expect(gdpSeries([legacy], 'day').points).toEqual([]);
+    expect(gdpSeries([{ ...legacy, quantity_milli: 1000 }], 'day').points).toEqual([]);
+  });
+});
+
+describe('interestSeries', () => {
+  const paid = { ...transfer(0, 3, 'borrower', 'lender'), economic_kind: 'INTEREST' as const };
+
+  it('reports the same payment as lender income and borrower expense, once in household totals', () => {
+    expect(interestSeries([paid], 'day').points[0].value).toBe(3);
+    expect(interestSeries([paid], 'day', 'lender').points[0].value).toBe(3);
+    expect(interestSeries([paid], 'day', 'borrower').points[0].value).toBe(-3);
+    expect(interestSeries([paid], 'day', 'someone-else').points).toEqual([]);
+  });
+
+  it('keeps corrections in their actual payment periods, including after original eviction', () => {
+    const undo = { ...transfer(DAY, 3, 'lender', 'borrower'), kind: 'REVERSAL' as const,
+      economic_kind: 'INTEREST' as const, reverses: paid.id };
+    expect(interestSeries([{ ...paid, reversed_by: 'txn-2' }, undo], 'day').points.map((p) => p.value)).toEqual([3, -3]);
+    expect(interestSeries([undo], 'day', 'borrower').points[0].value).toBe(3);
+    expect(interestSeries([undo], 'day', 'lender').points[0].value).toBe(-3);
+    expect(gdpSeries([undo], 'day').points).toEqual([]);
+  });
+
+  it('excludes principal and does not change the money supply', () => {
+    const principal = { ...transfer(0, 100), economic_kind: 'LOAN_PRINCIPAL' as const };
+    expect(interestSeries([principal], 'day').points).toEqual([]);
+    expect(moneySupplySeries([issue(0, 100), principal, paid], 100).points.map((p) => p.value)).toEqual([0, 100]);
   });
 });
 

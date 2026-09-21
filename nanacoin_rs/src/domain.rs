@@ -11,7 +11,7 @@ pub const MEMBERS: usize = 16;
 pub const LISTINGS: usize = 48;
 pub const HISTORY: usize = 365;
 pub const THINGS: usize = 64;
-pub const MAX_AMOUNT: i64 = 1_000_000_000;
+pub const MAX_AMOUNT: i64 = 1_000_000_000_000_000;
 pub const MAX_SEQUENCE: u64 = 9_007_199_254_740_991;
 /// Preserve legacy cash-leg IDs (event + 4096), reserving alternating blocks
 /// for cash legs as the event journal grows beyond its original capacity.
@@ -58,6 +58,30 @@ pub enum Error {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum Command {
+    OfferLoan {
+        terms: crate::loans::LoanTerms,
+    },
+    AcceptLoan {
+        loan: u64,
+    },
+    CloseLoan {
+        loan: u64,
+    },
+    RepayLoan {
+        loan: u64,
+        amount: i64,
+    },
+    /// Internal only. HTTP actors can never submit scheduler occurrences.
+    RunLoan {
+        loan: u64,
+        expected_updated_at: u64,
+    },
+    ReformCurrency {
+        decimals: u8,
+        power: i8,
+        expected_epoch: u64,
+        expected_sequence: u64,
+    },
     /// Historical journal format only. Never accepted by the HTTP API.
     AddMember {
         name: Name,
@@ -223,6 +247,9 @@ pub enum EconomicKind {
     Labor,
     Good,
     Gift,
+    /// Lending cash flows are financial transfers, not household production.
+    LoanPrincipal,
+    Interest,
     #[default]
     Other,
 }
@@ -335,11 +362,19 @@ pub struct Transaction {
     pub usd: bool,
     pub quote: Option<u64>,
     #[serde(default)]
+    pub loan: Option<u64>,
+    #[serde(default)]
     pub economic: EconomicDetails,
 }
 
 #[derive(Debug, Serialize)]
 pub struct State {
+    pub decimals: u8,
+    pub money_epoch: u64,
+    /// Debt payments cannot immediately cause more automatic borrowing.
+    pub(crate) credit_blocked: u16,
+    #[serde(skip)]
+    pub loans: Vec<crate::loans::Loan, { crate::loans::LOANS }>,
     pub household_name: Name,
     pub initial_grant: i64,
     pub currency: Name,
@@ -391,8 +426,12 @@ pub fn token_hash(token: &str) -> Result<TokenHash, Error> {
 impl Default for State {
     fn default() -> Self {
         Self {
+            decimals: 4,
+            money_epoch: 0,
+            credit_blocked: 0,
+            loans: Vec::new(),
             household_name: Name::new(),
-            initial_grant: 100,
+            initial_grant: 1_000_000,
             currency: Name::try_from("NanaCoin").unwrap(),
             offer_settles_after: DEFAULT_SETTLEMENT,
             offers: Vec::new(),
@@ -413,8 +452,12 @@ impl Default for State {
 impl State {
     /// Reset in place: retain fixed capacities and avoid a large stack copy.
     pub(crate) fn clear_economy(&mut self) {
+        self.decimals = 4;
+        self.money_epoch = 0;
+        self.credit_blocked = 0;
+        self.loans.clear();
         self.household_name.clear();
-        self.initial_grant = 100;
+        self.initial_grant = 1_000_000;
         self.currency = Name::try_from("NanaCoin").unwrap();
         self.offer_settles_after = DEFAULT_SETTLEMENT;
         self.last_timestamp = 0;
@@ -521,6 +564,9 @@ impl State {
         command: &Command,
         now: u64,
     ) -> Result<(), Error> {
+        if matches!(command, Command::RunLoan { .. }) {
+            return self.validate_loan(actor, command, now);
+        }
         if !self.members.is_empty() {
             if self.member(actor)?.disabled {
                 return Err(Error::Disabled);
@@ -534,6 +580,23 @@ impl State {
             return Err(Error::Forbidden);
         }
         match command {
+            Command::OfferLoan { .. }
+            | Command::AcceptLoan { .. }
+            | Command::CloseLoan { .. }
+            | Command::RepayLoan { .. }
+            | Command::RunLoan { .. } => self.validate_loan(actor, command, now)?,
+            Command::ReformCurrency {
+                decimals,
+                power,
+                expected_epoch,
+                expected_sequence,
+            } => {
+                self.admin(actor)?;
+                if *expected_epoch != self.money_epoch || *expected_sequence != self.sequence {
+                    return Err(Error::Conflict);
+                }
+                self.validate_reform(*decimals, *power)?;
+            }
             Command::Provision {
                 household_name,
                 username,
@@ -814,6 +877,9 @@ impl State {
                     .find(|t| t.id == *transaction)
                     .ok_or(Error::NotFound)?;
                 let nana = self.member(actor)?.role == Role::Nana;
+                if tx.loan.is_some() {
+                    return Err(Error::Forbidden);
+                }
                 // Nana may correct any ordinary ledger error. A member may
                 // only refund money they received, and never issuance, USD,
                 // or a Forex leg. That makes Refund safe to expose beside a
@@ -868,7 +934,7 @@ impl State {
     /// Replay and live commits use the same validation. Mutation is private and
     /// infallible after validation, so failed storage never changes RAM.
     pub fn replay(&mut self, event: &Event) -> Result<(), Error> {
-        if event.version != 1
+        if event.version != 2
             || Some(event.sequence) != next_sequence(self.sequence)
             || event.sequence > MAX_SEQUENCE
             || event.request_id == 0
@@ -876,7 +942,10 @@ impl State {
         {
             return Err(Error::CorruptJournal);
         }
-        if !self.members.is_empty() && event.request_id <= self.member(event.actor)?.last_request {
+        if event.actor != MemberId(0)
+            && !self.members.is_empty()
+            && event.request_id <= self.member(event.actor)?.last_request
+        {
             return Err(Error::CorruptJournal);
         }
         if event.timestamp < self.last_timestamp {
@@ -921,6 +990,14 @@ impl State {
         let mut posting_economic = EconomicDetails::default();
         let mut usd = false;
         match &event.command {
+            Command::OfferLoan { .. }
+            | Command::AcceptLoan { .. }
+            | Command::CloseLoan { .. }
+            | Command::RepayLoan { .. }
+            | Command::RunLoan { .. } => self.apply_loan(event),
+            Command::ReformCurrency {
+                decimals, power, ..
+            } => self.apply_reform(*decimals, *power),
             Command::Provision {
                 household_name,
                 username,
@@ -1261,11 +1338,15 @@ impl State {
                 listing,
                 usd,
                 quote: None,
+                loan: None,
                 economic: posting_economic,
             });
         }
         self.last_timestamp = event.timestamp;
         self.sequence = event.sequence;
+        if actor == MemberId(0) {
+            return;
+        }
         let m = self.members.iter_mut().find(|m| m.id == actor).unwrap();
         m.last_request = event.request_id;
         m.last_command = fingerprint(&event.command);
@@ -1273,6 +1354,18 @@ impl State {
     }
 
     pub(crate) fn record_transaction(&mut self, tx: Transaction) {
+        if !tx.usd {
+            for id in [tx.from, tx.to] {
+                if id != MemberId(0) {
+                    let bit = 1u16 << (id.0 - 1);
+                    if tx.loan.is_some() {
+                        self.credit_blocked |= bit;
+                    } else {
+                        self.credit_blocked &= !bit;
+                    }
+                }
+            }
+        }
         self.transactions += 1;
         for (id, delta) in [(tx.from, -tx.amount), (tx.to, tx.amount)] {
             if id == MemberId(0) {
@@ -1297,6 +1390,50 @@ impl State {
     }
 
     pub fn check_invariants(&self) -> Result<(), Error> {
+        if self.decimals > 8 || self.money_epoch > MAX_SEQUENCE {
+            return Err(Error::CorruptJournal);
+        }
+        for (index, l) in self.loans.iter().enumerate() {
+            if l.id == 0
+                || l.id > self.sequence
+                || self.loans[..index].iter().any(|other| other.id == l.id)
+                || l.lender == l.terms.borrower
+                || self.member(l.lender).is_err()
+                || self.member(l.terms.borrower).is_err()
+                || !(1..=MAX_AMOUNT).contains(&l.terms.amount)
+                || !(1..=l.terms.amount).contains(&l.terms.installment)
+                || ![1, 7, 30, 365].contains(&l.terms.rate_days)
+                || ![1, 7, 30].contains(&l.terms.payment_days)
+                || !(0..=l.terms.amount).contains(&l.principal)
+                || l.interest < 0
+                || l.principal
+                    .checked_add(l.interest)
+                    .is_none_or(|v| v > MAX_SEQUENCE as i64)
+                || !(0..=l.principal).contains(&l.principal_due)
+                || !(0..=l.interest).contains(&l.interest_due)
+                || l.remainder >= l.denominator()
+                || l.accrued_at > self.last_timestamp
+                || l.updated_at > self.last_timestamp
+                || (l.status == crate::loans::LoanStatus::Active
+                    && !(crate::offers::MIN_CLOCK..=MAX_SEQUENCE).contains(&l.next_due_at))
+            {
+                return Err(Error::CorruptJournal);
+            }
+        }
+        for q in &self.quotes {
+            if q.nc_scale != crate::money::scale(self.decimals)
+                || !(1..=MAX_AMOUNT).contains(&q.coins)
+                || !(1..=MAX_AMOUNT).contains(&q.cents_per_coin)
+            {
+                return Err(Error::CorruptJournal);
+            }
+            let product = q.coins as i128 * q.cents_per_coin as i128;
+            if product % q.nc_scale as i128 != 0
+                || !(1..=MAX_AMOUNT as i128).contains(&(product / q.nc_scale as i128))
+            {
+                return Err(Error::CorruptJournal);
+            }
+        }
         let sum = self
             .members
             .iter()

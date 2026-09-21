@@ -11,6 +11,7 @@ use serde::{ser::SerializeSeq, Deserialize, Serialize};
 
 type Id = String<32>;
 mod forex;
+mod loans;
 mod offers;
 fn id(prefix: &str, number: u64) -> Id {
     let mut out = Id::new();
@@ -175,7 +176,10 @@ fn transaction<'a>(state: &'a State, tx: &'a Transaction) -> TransactionView<'a>
             .iter()
             .find(|t| t.reverses == Some(tx.id))
             .map(|t| id("tx-", t.id)),
-        reference: tx.quote.map(|q| id("quote-", q)),
+        reference: tx
+            .loan
+            .map(|l| id("loan-", l))
+            .or_else(|| tx.quote.map(|q| id("quote-", q))),
         economic_kind: tx.economic.kind,
         thing: (tx.economic.thing != 0).then(|| id("thing-", tx.economic.thing)),
         thing_name: state
@@ -294,6 +298,10 @@ pub(crate) fn status(
 ) -> Result<usize, Error> {
     #[derive(Serialize)]
     struct Status<'a> {
+        decimals: u8,
+        money_epoch: u64,
+        sequence: u64,
+        lending_enabled: bool,
         provisioned: bool,
         household: &'a str,
         currency: &'a str,
@@ -315,6 +323,10 @@ pub(crate) fn status(
     }
     serialize(
         &Status {
+            decimals: state.decimals,
+            money_epoch: state.money_epoch,
+            sequence: state.sequence,
+            lending_enabled: true,
             provisioned: !state.members.is_empty(),
             household: if state.household_name.is_empty() {
                 "NanaCoin"
@@ -361,6 +373,9 @@ pub(crate) fn route<J: Journal>(
     output: &mut [u8],
 ) -> Result<usize, Error> {
     let (path, query) = uri.split_once('?').unwrap_or((uri, ""));
+    if let Some(result) = loans::route(s, actor, method, path, key, body, output) {
+        return result;
+    }
     if let Some(result) = offers::route(s, actor, method, path, key, body, output) {
         return result;
     }

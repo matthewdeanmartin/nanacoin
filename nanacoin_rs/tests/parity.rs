@@ -103,7 +103,7 @@ fn quote(s: &mut Service<Memory>, side: QuoteSide, expires_at: u64) -> u64 {
         2,
         Command::PostQuote {
             side,
-            cents_per_coin: 25,
+            cents_per_coin: 250000,
             coins: 10,
             expires_at,
         },
@@ -234,7 +234,7 @@ fn forex_bid_ask_contract_balances_and_durable_retries() {
             "/api/v1/quotes",
             &alice,
             "",
-            json!({"side":side,"cents_per_coin":25,"coins":10}),
+            json!({"side":side,"cents_per_coin":250000,"coins":10}),
         );
         assert_eq!(posted.0, 201, "{posted:?}");
         let path = format!("/api/v1/quotes/{}/take", posted.1["id"].as_str().unwrap());
@@ -352,7 +352,7 @@ fn quote_permissions_limits_funds_deadlines_and_recycling() {
         2,
         Command::PostQuote {
             side: QuoteSide::ASK,
-            cents_per_coin: 1000,
+            cents_per_coin: 10000000,
             coins: 10,
             expires_at: 0,
         },
@@ -378,7 +378,7 @@ fn quote_permissions_limits_funds_deadlines_and_recycling() {
             2,
             Command::PostQuote {
                 side: QuoteSide::ASK,
-                cents_per_coin: 1,
+                cents_per_coin: 10000,
                 coins: 1,
                 expires_at: 0
             }

@@ -16,6 +16,7 @@ import { Observable, delay, of, throwError } from 'rxjs';
 import { EconomicKind, EconomicUnit } from '../api/models';
 import { DemoError, DemoLedger } from './ledger';
 import { seed } from './seed';
+import { LoanOfferInput, ReformInput } from '../api/models';
 
 /** The one ledger this tab is showing. */
 export const demoLedger = new DemoLedger();
@@ -27,6 +28,7 @@ const sessions = new Map<string, string>();
 const codes = new Map<string, string>();
 
 let seeded = false;
+const receipts = new Map<string, { request: string; result: unknown }>();
 
 /**
  * A small delay on every response.
@@ -52,10 +54,29 @@ export function demoBackend(
   if (!seeded) {
     seed(demoLedger);
     seeded = true;
+    setInterval(() => demoLedger.tickLoans(), 1000);
   }
 
   try {
+    demoLedger.tickLoans();
+    const path = req.url.split('/api/v1')[1].split('?')[0];
+    const userId = sessions.get(bearer(req) ?? '');
+    const key = req.headers.get('Idempotency-Key');
+    const mutation = req.method !== 'GET' && userId && !path.startsWith('/auth/') && !(path === '/admin/reform' && (req.body as ReformInput)?.preview);
+    const identity = mutation && key ? `${userId}:${key}` : '';
+    const fingerprint = JSON.stringify([req.method, req.url, req.body]);
+    const prior = identity ? receipts.get(identity) : undefined;
+    if (prior) {
+      if (prior.request !== fingerprint) throw new DemoError(409,'conflict','This retry key belongs to another request.');
+      return of(new HttpResponse({ status:200, body:structuredClone(prior.result) })).pipe(delay(LATENCY_MS));
+    }
+    if (mutation && Number(key?.split(':')[1]?.slice(1)) !== demoLedger.moneyEpoch) throw new DemoError(409,'stale_request','The currency changed. Reload and review the amount.');
     const body = handle(req);
+    if (mutation) demoLedger.revision++;
+    if (identity) {
+      if (receipts.size === 4096) receipts.delete(receipts.keys().next().value!);
+      receipts.set(identity, { request:fingerprint, result:structuredClone(body) });
+    }
     return of(new HttpResponse({ status: 200, body })).pipe(delay(LATENCY_MS));
   } catch (e) {
     const err =
@@ -143,6 +164,15 @@ function handle(req: HttpRequest<unknown>): unknown {
   // --- everything below needs a session ---
 
   const me = current(req);
+  if (path === '/loans' && method === 'GET') return demoLedger.lending.book(me,demoLedger.decimals,demoLedger.moneyEpoch,demoLedger.revision,Math.floor(Date.now()/1000));
+  if (path === '/loans' && method === 'POST') return demoLedger.lending.offer(me,req.body as LoanOfferInput,Math.floor(Date.now()/1000));
+  if (path.startsWith('/loans/') && method === 'POST') {
+    const [, , rawId, action] = path.split('/'); const id=Number(rawId),now=Math.floor(Date.now()/1000);
+    if (action==='accept') return demoLedger.lending.accept(me,id,now);
+    if (action==='close') return demoLedger.lending.close(me,id,now);
+    if (action==='repay') return demoLedger.lending.repay(me,id,Number(body['amount']),now);
+  }
+  if (path === '/admin/reform' && method === 'POST') return demoLedger.reform(me,req.body as ReformInput);
   if (path === '/nickles' && method === 'POST') return demoLedger.createNickle(me, Number(body['amount']), (req.body as { fresh_money?: boolean }).fresh_money === true);
   if (path === '/nickles/redeem' && method === 'POST') return demoLedger.redeemNickle(me, String(body['token'] ?? ''));
 
@@ -161,7 +191,7 @@ function handle(req: HttpRequest<unknown>): unknown {
       'user',
     );
     if (body['grant']) {
-      demoLedger.issue(me, created.account, 20, 'Starting allocation');
+      demoLedger.issue(me, created.account, 20 * 10 ** demoLedger.decimals, 'Starting allocation');
     }
     return demoLedger.view(created, me);
   }
@@ -229,7 +259,7 @@ function handle(req: HttpRequest<unknown>): unknown {
   }
 
   if (path === '/admin/config') {
-    return { household_name: demoLedger.household, initial_grant: 20, currency: 'NanaCoin' };
+    return { household_name: demoLedger.household, initial_grant: 20 * 10 ** demoLedger.decimals, currency: 'NanaCoin' };
   }
 
   // --- marketplace ---

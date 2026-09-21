@@ -12,6 +12,8 @@ import { Accounts } from './accounts';
 import { Log } from './log';
 import { digestSha256, hasNativeDigest } from './sha256';
 import { ApiBase } from './api-base';
+import { Money } from './money';
+import { Loan, LoanBook, LoanOfferInput, ReformInput, ReformResult } from './models';
 import {
   AccountHistory,
   AccountId,
@@ -69,6 +71,7 @@ export interface StorageStatus {
 // A key captures its generation when created, not on each network retry.
 // Older Go servers omit the field and accept these keys as ordinary strings.
 let journalGeneration = 0;
+let moneyEpoch = 0;
 let journalSource = '';
 function rememberGeneration(source: string, value: number): void {
   if (!Number.isSafeInteger(value) || value < 0) return;
@@ -124,6 +127,7 @@ export class ApiError extends Error {
 
 @Injectable({ providedIn: 'root' })
 export class NanacoinService {
+  private readonly money = inject(Money);
   private readonly http = inject(HttpClient);
   private readonly apiBase = inject(ApiBase);
 
@@ -159,7 +163,11 @@ export class NanacoinService {
     return this.traced('GET', '/status', () => firstValueFrom(
       this.http.get<Status>(this.base + '/status').pipe(timeout(6000), this.mapError()),
     )).then((status) => {
-      if (target === this.base) rememberGeneration(target, status.journal_generation ?? 0);
+      if (target === this.base) {
+        rememberGeneration(target, status.journal_generation ?? 0);
+        moneyEpoch = status.money_epoch ?? 0;
+        this.money.update(status.decimals ?? 4, moneyEpoch, target);
+      }
       return status;
     });
   }
@@ -600,6 +608,17 @@ export class NanacoinService {
   }
 
   // --- config ---
+  async loans(): Promise<LoanBook> {
+    const source = this.base;
+    const result = await this.get<LoanBook>('/loans');
+    if (this.base === source) { moneyEpoch = result.money_epoch; this.money.update(result.decimals, result.money_epoch, source); }
+    return result;
+  }
+  offerLoan(input: LoanOfferInput, key: string): Promise<Loan> { return this.post('/loans', input, key); }
+  acceptLoan(id: number, key: string): Promise<Loan> { return this.post(`/loans/${id}/accept`, {}, key); }
+  closeLoan(id: number, key: string): Promise<Loan> { return this.post(`/loans/${id}/close`, {}, key); }
+  repayLoan(id: number, amount: number, key: string): Promise<Loan> { return this.post(`/loans/${id}/repay`, { amount }, key); }
+  reform(input: ReformInput, key: string): Promise<ReformResult> { return this.post('/admin/reform', input, key); }
 
   config(): Promise<Config> {
     return this.get<Config>('/admin/config');
@@ -614,7 +633,10 @@ export class NanacoinService {
   private headers(idempotencyKey?: string): HttpHeaders {
     let h = new HttpHeaders();
     if (this.token) h = h.set('Authorization', `Bearer ${this.token}`);
-    if (idempotencyKey) h = h.set('Idempotency-Key', idempotencyKey);
+    if (idempotencyKey) {
+      if (this.money.changed()) throw new Error('The currency was reformed. Reload before making changes.');
+      h = h.set('Idempotency-Key', idempotencyKey);
+    }
     return h;
   }
 
@@ -654,7 +676,7 @@ export class NanacoinService {
     );
   }
 
-  private post<T>(path: string, body: unknown, idempotencyKey?: string): Promise<T> {
+  private post<T>(path: string, body: unknown, idempotencyKey = newIdempotencyKey()): Promise<T> {
     return this.traced(
       'POST',
       path,
@@ -715,9 +737,10 @@ export class NanacoinService {
   }
 
   private patch<T>(path: string, body: unknown): Promise<T> {
+    const key = newIdempotencyKey();
     return firstValueFrom(
       this.http
-        .patch<T>(this.base + path, body, { headers: this.headers() })
+        .patch<T>(this.base + path, body, { headers: this.headers(key) })
         .pipe(this.mapError()),
     );
   }
@@ -861,7 +884,7 @@ async function challengeFor(verifier: string): Promise<string> {
 export function newIdempotencyKey(): string {
   const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
-  return `g${journalGeneration}:${base64url(bytes)}`;
+  return `g${journalGeneration}:m${moneyEpoch}:${base64url(bytes)}`;
 }
 
 

@@ -1,3 +1,5 @@
+import { Money, MoneyPipe } from '../api/money';
+import { inject as moneyInject } from '@angular/core';
 // Offers: proposing a deal, and deciding on the ones proposed to you.
 //
 // The marketplace could only ever do one thing before this - buy a listing at
@@ -29,7 +31,7 @@ import { Mastodon } from '../api/mastodon';
 
 @Component({
   selector: 'app-offers',
-  imports: [FormsModule],
+  imports: [MoneyPipe, FormsModule],
   template: `
     <h1>Offers Received</h1>
 
@@ -66,7 +68,7 @@ import { Mastodon } from '../api/mastodon';
             <article class="card">
               <h3>{{ o.listing_title }}</h3>
               <p class="card__meta">
-                <strong>{{ o.amount }} {{ o.amount === 1 ? 'coin' : 'coins' }}</strong>
+                <strong>{{ o.amount | nc }} NC</strong>
                 · from {{ o.offerer_name }}
               </p>
               @if (o.message) {
@@ -116,7 +118,7 @@ import { Mastodon } from '../api/mastodon';
             <article class="card">
               <h3>{{ o.listing_title }}</h3>
               <p class="card__meta">
-                <strong>{{ o.amount }} {{ o.amount === 1 ? 'coin' : 'coins' }}</strong>
+                <strong>{{ o.amount | nc }} NC</strong>
                 · <span class="tag">{{ o.status.toLowerCase() }}</span>
               </p>
               @if (o.message) {
@@ -145,7 +147,7 @@ import { Mastodon } from '../api/mastodon';
               <article class="card card--closed">
                 <h3>{{ o.listing_title }}</h3>
                 <p class="card__meta">
-                  <strong>{{ o.amount }} {{ o.amount === 1 ? 'coin' : 'coins' }}</strong>
+                  <strong>{{ o.amount | nc }} NC</strong>
                   · from {{ o.offerer_name }}
                 </p>
                 <p class="card__status">
@@ -167,6 +169,7 @@ import { Mastodon } from '../api/mastodon';
   `,
 })
 export class OffersPage {
+  protected readonly money = moneyInject(Money);
   private readonly api = inject(NanacoinService);
   private readonly toasts = inject(Toasts);
   private readonly dialogs = inject(Dialogs);
@@ -240,7 +243,7 @@ export class OffersPage {
       title: 'Accept this offer?',
       message: 'This moves the money now and closes the listing.',
       detail: [
-        `${offer.amount} ${offer.amount === 1 ? 'coin' : 'coins'} from ${offer.offerer_name}`,
+        `${this.money.format(offer.amount)} ${offer.amount === 1 ? 'coin' : 'coins'} from ${offer.offerer_name}`,
         offer.listing_title || 'a listing that no longer exists',
         ...(competing > 0
           ? [`This closes ${competing} competing ${competing === 1 ? 'offer' : 'offers'} as not selected.`]
@@ -262,7 +265,7 @@ export class OffersPage {
         if (!recipient?.mastodon_id) {
           this.toasts.error(`${offer.offerer_name} has no registered Mastodon ID; the offer was still accepted.`);
         } else {
-          let message = `Your NanaCoin offer for ${offer.listing_title} was accepted for ${offer.amount} coins.`;
+          let message = `Your NanaCoin offer for ${offer.listing_title} was accepted for ${this.money.format(offer.amount)} coins.`;
           if (this.notificationAllCaps) message = message.toLocaleUpperCase();
           try { await this.mastodon.sendDirect(recipient, message); }
           catch (e) { this.toasts.error(`Offer accepted, but the private message failed: ${e instanceof Error ? e.message : 'Mastodon error'}`); }

@@ -23,13 +23,13 @@ function quote(over: Partial<Quote> & { side: QuoteSide; cents_per_coin: number 
     id: over.id ?? `q-${over.side}-${over.cents_per_coin}`,
     maker: 'account:alice',
     maker_name: 'Alice',
-    coins,
     cents: coins * over.cents_per_coin,
     status: 'OPEN',
     created_at: 1_700_000_000,
     updated_at: 1_700_000_000,
     live: true,
     ...over,
+    coins: coins * 10_000,
   } as Quote;
 }
 
@@ -49,7 +49,7 @@ async function render(quotes: Quote[], me: Partial<{ account: string; balance: n
     display_name: 'Bob',
     role: 'user',
     status: 'ACTIVE',
-    balance: me.balance ?? 100,
+    balance: me.balance ?? 1_000_000,
     usd_cents: me.usd_cents ?? 5000,
   } as never);
 
@@ -161,10 +161,10 @@ describe('the exchange book', () => {
     page.rate = 25;
 
     page.side = 'ASK';
-    expect(page.preview()).toBe('You give 4 coins, you get $1.00.');
+    expect(page.preview()).toBe('You give 4 NC, you get $1.00.');
 
     page.side = 'BID';
-    expect(page.preview()).toBe('You pay $1.00, you get 4 coins.');
+    expect(page.preview()).toBe('You pay $1.00, you get 4 NC.');
   });
 
   it('reports an old board as unsupported rather than as an error', async () => {

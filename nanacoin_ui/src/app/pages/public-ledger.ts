@@ -1,3 +1,5 @@
+import { Money } from '../api/money';
+import { inject as moneyInject } from '@angular/core';
 import { Component, computed, inject, resource, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -32,12 +34,13 @@ import { Toasts } from '../ui/toasts';
  @for (t of filtered(); track t.id) {
  <article class="ledger-row" data-keyboard-row tabindex="-1"><p>{{ t.created_at * 1000 | date:'medium' }} · {{ t.id }} · {{ t.kind }}</p>
  <p>{{ t.description }}</p>
- @for (p of t.postings; track $index) { <span class="posting">{{ p.name }}: {{ p.amount >= 0 ? '+' : '' }}{{ p.amount }} NC </span> }
+ @for (p of t.postings; track $index) { <span class="posting">{{ p.name }}: {{ p.amount >= 0 ? '+' : '' }}{{ p.account.endsWith('-usd') || p.account === 'account:usd-issuance' ? (p.amount / 100).toFixed(2) + ' USD' : money.format(p.amount) + ' NC' }}</span> }
  @if (refundable(t)) { <button class="btn btn--quiet btn--small ledger-refund" type="button" [disabled]="refunding() === t.id" (click)="refund(t)">{{ refunding() === t.id ? 'Refunding…' : 'Refund' }}</button> }
  </article> } @empty { <p>No transactions yet.</p> }
  </div></app-notebook> }`,
 })
 export class PublicLedger {
+  protected readonly money = moneyInject(Money);
  readonly demo = IS_DEMO;
  private readonly http = inject(HttpClient);
  private readonly api = inject(NanacoinService);
@@ -84,7 +87,7 @@ export class PublicLedger {
    const amount = txn.postings.reduce((sum, posting) => sum + Math.max(0, posting.amount), 0);
    const answer = await this.dialogs.confirm({
      title: 'Refund this payment?',
-     message: `Return ${amount} ${amount === 1 ? 'coin' : 'coins'} to ${payer?.name || 'the payer'}?`,
+     message: `Return ${this.money.format(amount)} NC to ${payer?.name || 'the payer'}?`,
      detail: txn.economic_kind
        ? [`This also removes the original ${txn.economic_kind.toLocaleLowerCase()} transaction from the economy statistics.`]
        : ['This appends a linked refund; the original remains visible in the notebook.'],
