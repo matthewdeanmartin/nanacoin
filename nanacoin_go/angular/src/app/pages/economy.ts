@@ -18,8 +18,10 @@ import {
   gdpSeries,
   moneySupplySeries,
   employmentSnapshot,
+  employmentSeries,
   giftsThisWeek,
   repeatPriceChanges,
+  inflationSeries,
 } from '../economy/series';
 
 /** How many transactions to ask for. The server caps this itself. */
@@ -55,6 +57,8 @@ const LEDGER_LIMIT = 365;
             <select [value]="bucket()" (change)="bucket.set($any($event.target).value)">
               <option value="day">Day</option>
               <option value="week">Week</option>
+              <option value="month">Month</option>
+              <option value="year">Year</option>
             </select>
           </label>
       </div>
@@ -82,6 +86,18 @@ const LEDGER_LIMIT = 365;
           }
         }
       </section>
+
+        <app-line-chart
+          title="Employment rate"
+          [subtitle]="'Share of the labor pool paid for labor per ' + bucket() + '. Nana is excluded.'"
+          [series]="employmentChart()"
+        />
+
+        <app-line-chart
+          title="Repeat-sale inflation"
+          [subtitle]="'Average price change when the same good sells again, grouped by ' + bucket() + '. Sparse households may need Month or Year.'"
+          [series]="inflationChart()"
+        />
 
         <app-line-chart
           title="Money supply"
@@ -159,6 +175,14 @@ export class EconomyPage {
   ));
   protected readonly gifts = computed(() => giftsThisWeek(this.txns()));
   protected readonly priceChanges = computed(() => repeatPriceChanges(this.txns()));
+  protected readonly employmentChart = computed<Series[]>(() => [employmentSeries(
+    this.txns(),
+    this.session.household().filter((u) => u.status === 'ACTIVE' && u.role !== 'nana').map((u) => u.account),
+    this.bucket(),
+  )]);
+  protected readonly inflationChart = computed<Series[]>(() => [
+    inflationSeries(this.txns(), this.bucket()),
+  ]);
 
   /**
    * One line per household member.

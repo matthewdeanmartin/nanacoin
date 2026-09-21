@@ -140,6 +140,8 @@ export interface Offer {
   id: OfferId;
   listing: ListingId;
   listing_title: string;
+  /** Account that owns the listing and receives offers. */
+  listing_owner?: AccountId;
   /** Who made the offer. */
   offerer: AccountId;
   offerer_name: string;
@@ -161,7 +163,7 @@ export type OfferId = string;
  * the listing closed. DECLINED and WITHDRAWN are the two ways it ends without
  * a deal - by the owner and by the offerer respectively.
  */
-export type OfferStatus = 'OPEN' | 'ACCEPTED' | 'DECLINED' | 'WITHDRAWN';
+export type OfferStatus = 'OPEN' | 'ACCEPTED' | 'SETTLED' | 'REVERSED' | 'DECLINED' | 'NOT_SELECTED' | 'WITHDRAWN';
 
 export interface Status {
   provisioned: boolean;

@@ -1087,17 +1087,24 @@ a.tab {
   border-bottom: 1px solid var(--line);
 }
 
-.section-nav a {
+.section-nav a,
+.section-nav button {
   flex: 0 0 auto;
   padding: 0.7rem 0.1rem 0.55rem;
   color: var(--ink-soft);
+  background: none;
+  border: 0;
   border-bottom: 2px solid transparent;
   text-decoration: none;
+  font: inherit;
   font-size: 0.875rem;
+  cursor: pointer;
 }
 
 .section-nav a:hover,
-.section-nav a:focus-visible {
+.section-nav a:focus-visible,
+.section-nav button:hover,
+.section-nav button:focus-visible {
   color: var(--accent);
   border-bottom-color: var(--accent);
 }

@@ -145,7 +145,11 @@ export class DialogHost {
 
     if (r.kind === 'offer') {
       const amount = Number(this.value.trim());
-      if (!Number.isInteger(amount) || amount <= 0) {
+      if (amount < 0) {
+        this.error.set("Can't do negative prices.");
+        return;
+      }
+      if (!Number.isInteger(amount) || amount === 0) {
         this.error.set('Enter a whole number of coins.');
         return;
       }

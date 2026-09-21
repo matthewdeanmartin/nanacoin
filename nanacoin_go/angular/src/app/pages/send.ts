@@ -7,6 +7,7 @@ import { Mastodon } from '../api/mastodon';
 import { NanacoinService, newIdempotencyKey } from '../api/nanacoin.service';
 import { Session } from '../api/session';
 import { Toasts } from '../ui/toasts';
+import { Dialogs } from '../ui/dialog';
 import { toggleCaps } from './message-caps';
 import { validQuantity } from '../catalog/economics';
 
@@ -14,6 +15,7 @@ interface RecentSend {
   id: string;
   description: string;
   recipient: string;
+  recipientAccount: string;
   amount: number;
   createdAt: number;
 }
@@ -125,6 +127,7 @@ interface RecentSend {
 export class SendPage {
   private readonly api = inject(NanacoinService);
   private readonly toasts = inject(Toasts);
+  private readonly dialogs = inject(Dialogs);
   protected readonly session = inject(Session);
   protected readonly mastodon = inject(Mastodon);
 
@@ -160,6 +163,7 @@ export class SendPage {
           id: txn.id,
           description: txn.description,
           recipient: recipient.name,
+          recipientAccount: recipient.account,
           amount: -delta,
           createdAt: txn.created_at,
         }];
@@ -226,6 +230,25 @@ export class SendPage {
       this.toasts.error('That person has not registered a Mastodon ID with NanaCoin.'); return;
     }
     if (wantsDm && !this.mastodon.connected()) { this.toasts.error('Connect your Mastodon account first.'); return; }
+
+    if (amount !== null) {
+      const duplicate = this.recentSends().find((sent) =>
+        sent.recipientAccount === this.to
+        && sent.amount === amount
+        && sent.description.trim() === this.memo.trim());
+      if (duplicate) {
+        const answer = await this.dialogs.confirm({
+          title: 'Send the same payment again?',
+          message: 'This matches a recent transaction. Continue only if you mean to pay twice.',
+          detail: [
+            `${amount} ${amount === 1 ? 'coin' : 'coins'} to ${duplicate.recipient}`,
+            this.memo.trim() || 'No description',
+          ],
+          confirmLabel: 'Send again',
+        });
+        if (answer === null) return;
+      }
+    }
 
     this.busy.set(true);
     // Generated once per attempted transfer, before the request. A retry with

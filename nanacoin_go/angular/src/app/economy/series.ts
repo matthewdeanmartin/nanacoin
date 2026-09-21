@@ -53,7 +53,7 @@ export interface Series {
 }
 
 /** How to group transactions along the time axis. */
-export type Bucket = 'day' | 'week';
+export type Bucket = 'day' | 'week' | 'month' | 'year';
 
 /**
  * The GDP series: the value of economic activity per bucket.
@@ -128,6 +128,30 @@ export function employmentSnapshot(
   };
 }
 
+/** Share of the eligible labor pool receiving labor income in each period. */
+export function employmentSeries(
+  txns: Transaction[],
+  eligibleAccounts: readonly string[],
+  bucket: Bucket,
+): Series {
+  const eligible = new Set(eligibleAccounts);
+  const earners = new Map<number, Set<string>>();
+  for (const txn of txns) {
+    const key = bucketStart(txn.created_at, bucket);
+    if (!earners.has(key)) earners.set(key, new Set());
+    if (txn.economic_kind !== 'LABOR' || txn.reversed_by || txn.kind === 'REVERSAL') continue;
+    const payee = txn.postings.find((posting) => posting.amount > 0 && eligible.has(posting.account));
+    if (payee) earners.get(key)!.add(payee.account);
+  }
+  const laborPool = eligible.size;
+  return {
+    name: 'Employment rate',
+    points: [...earners.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([at, people]) => ({ at, value: laborPool ? people.size * 100 / laborPool : 0 })),
+  };
+}
+
 export function giftsThisWeek(
   txns: Transaction[],
   now = Math.floor(Date.now() / 1000),
@@ -169,6 +193,43 @@ export function repeatPriceChanges(txns: Transaction[]): RepeatPriceChange[] {
       percent: previous.price ? (latest.price - previous.price) / previous.price : 0,
     }];
   }).sort((a, b) => a.thing.localeCompare(b.thing));
+}
+
+/** Average repeat-sale price change observed in each period, as a percentage. */
+export function inflationSeries(txns: Transaction[], bucket: Bucket): Series {
+  const byThing = new Map<string, { at: number; price: number }[]>();
+  for (const txn of txns) {
+    if (txn.economic_kind !== 'GOOD' || !txn.thing || !txn.quantity_milli || txn.reversed_by || txn.kind === 'REVERSAL') continue;
+    const observations = byThing.get(txn.thing) ?? [];
+    observations.push({
+      at: txn.created_at,
+      price: positiveSum(txn) * 1000 / txn.quantity_milli,
+    });
+    byThing.set(txn.thing, observations);
+  }
+
+  const changes = new Map<number, number[]>();
+  for (const observations of byThing.values()) {
+    observations.sort((a, b) => a.at - b.at);
+    for (let index = 1; index < observations.length; index++) {
+      const previous = observations[index - 1];
+      const latest = observations[index];
+      if (!previous.price) continue;
+      const key = bucketStart(latest.at, bucket);
+      const values = changes.get(key) ?? [];
+      values.push((latest.price - previous.price) * 100 / previous.price);
+      changes.set(key, values);
+    }
+  }
+  return {
+    name: 'Repeat-sale inflation',
+    points: [...changes.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([at, values]) => ({
+        at,
+        value: values.reduce((sum, value) => sum + value, 0) / values.length,
+      })),
+  };
 }
 
 /**
@@ -280,6 +341,10 @@ export function bucketStart(unixSeconds: number, bucket: Bucket): number {
     // Weeks start on Monday, which is how a household thinks about chores.
     const weekday = (d.getDay() + 6) % 7;
     d.setDate(d.getDate() - weekday);
+  } else if (bucket === 'month') {
+    d.setDate(1);
+  } else if (bucket === 'year') {
+    d.setMonth(0, 1);
   }
   return Math.floor(d.getTime() / 1000);
 }

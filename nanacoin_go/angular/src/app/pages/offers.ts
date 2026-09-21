@@ -137,7 +137,27 @@ import { Mastodon } from '../api/mastodon';
         </div>
       }
 
-      @if (!loading() && toDecide().length === 0 && mine().length === 0) {
+      @if (closedReceived().length > 0) {
+        <details class="disclosure">
+          <summary>Closed offers received ({{ closedReceived().length }})</summary>
+          <div class="cards">
+            @for (o of closedReceived(); track o.id) {
+              <article class="card card--closed">
+                <h3>{{ o.listing_title }}</h3>
+                <p class="card__meta">
+                  <strong>{{ o.amount }} {{ o.amount === 1 ? 'coin' : 'coins' }}</strong>
+                  · from {{ o.offerer_name }}
+                </p>
+                <p class="card__status">
+                  {{ o.status === 'ACCEPTED' || o.status === 'SETTLED' ? 'Accepted' : o.status === 'DECLINED' ? 'Declined' : o.status === 'NOT_SELECTED' ? 'Not selected because another offer was accepted' : o.status.toLowerCase() }}
+                </p>
+              </article>
+            }
+          </div>
+        </details>
+      }
+
+      @if (!loading() && toDecide().length === 0 && mine().length === 0 && closedReceived().length === 0) {
         <p class="muted">
           No offers yet. Offer on something in the Market, or post a want-ad
           there for something you would like someone to do.
@@ -176,6 +196,13 @@ export class OffersPage {
     return this.offers().filter((o) => o.offerer === me);
   });
 
+  /** Received offers remain visible after a winner closes the listing. */
+  protected readonly closedReceived = computed(() => {
+    const me = this.session.me()?.account;
+    return this.offers().filter((o) =>
+      o.listing_owner === me && o.offerer !== me && o.status !== 'OPEN');
+  });
+
   constructor() {
     void this.load();
   }
@@ -207,12 +234,17 @@ export class OffersPage {
    */
   protected async accept(offer: Offer): Promise<void> {
     if (this.busy()) return;
+    const competing = this.toDecide().filter((candidate) =>
+      candidate.listing === offer.listing && candidate.id !== offer.id).length;
     const ok = await this.dialogs.confirm({
       title: 'Accept this offer?',
       message: 'This moves the money now and closes the listing.',
       detail: [
         `${offer.amount} ${offer.amount === 1 ? 'coin' : 'coins'} from ${offer.offerer_name}`,
         offer.listing_title || 'a listing that no longer exists',
+        ...(competing > 0
+          ? [`This closes ${competing} competing ${competing === 1 ? 'offer' : 'offers'} as not selected.`]
+          : []),
         'You can undo this for a while afterwards, from the Offers tab.',
       ],
       confirmLabel: 'Accept',
@@ -222,7 +254,9 @@ export class OffersPage {
     this.busy.set(offer.id);
     try {
       await this.api.acceptOffer(offer.id, newIdempotencyKey());
-      this.toasts.ok('Accepted.');
+      this.toasts.ok(competing > 0
+        ? `Accepted. ${competing} competing ${competing === 1 ? 'offer was' : 'offers were'} closed as not selected.`
+        : 'Accepted.');
       if (this.notifyAccepted) {
         const recipient = this.session.household().find((u) => u.account === offer.offerer);
         if (!recipient?.mastodon_id) {

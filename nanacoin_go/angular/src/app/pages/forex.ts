@@ -38,7 +38,7 @@ import { Mastodon } from '../api/mastodon';
   selector: 'app-forex',
   imports: [FormsModule],
   template: `
-    <h1>Exchange</h1>
+    <h1>Forex</h1>
 
     @if (mastodon.connected()) {
       <label class="checkbox">

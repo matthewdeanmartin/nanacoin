@@ -31,7 +31,7 @@ export const routes: Routes = [
   {
     path: 'forex',
     loadComponent: () => import('./pages/forex').then((m) => m.ForexPage),
-    title: 'Exchange — NanaCoin',
+    title: 'Forex — NanaCoin',
   },
   {
     path: 'history',

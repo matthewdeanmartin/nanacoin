@@ -98,20 +98,18 @@
             which is the thing nobody could find.
           -->
           @if (session.hasSeveralAccounts()) {
-            <label class="switcher">
-              <span class="visually-hidden">Active account</span>
-              <select
-                class="switcher__select"
-                [value]="session.me()?.id ?? ''"
-                (change)="switchTo($any($event.target).value)"
-              >
+            <details class="account-menu">
+              <summary title="Switch to another signed-in account">Using {{ session.me()?.display_name }}</summary>
+              <div class="account-menu__items">
                 @for (a of session.signedInAccounts(); track a.userId) {
-                  <option [value]="a.userId">
-                    {{ a.displayName }}@if (a.role === 'nana') { (nana) }
-                  </option>
+                  @if (a.userId !== session.me()?.id) {
+                    <button type="button" (click)="switchTo(a.userId, $event)">
+                      Switch to {{ a.displayName }}@if (a.role === 'nana') { (nana) }
+                    </button>
+                  }
                 }
-              </select>
-            </label>
+              </div>
+            </details>
           }
 
           <details class="account-menu">

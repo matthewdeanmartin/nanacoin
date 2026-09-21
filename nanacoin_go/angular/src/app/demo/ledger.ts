@@ -270,6 +270,19 @@ export class DemoLedger {
     return this.view(u, actor);
   }
 
+  setUserPassword(actor: DemoUser, id: string, password: string): User {
+    const u = this.userById(id);
+    if (!u) throw new DemoError(404, 'not_found', 'No such member.');
+    if (actor.role !== 'nana' && actor.id !== u.id) {
+      throw new DemoError(403, 'forbidden', 'You can only change your own password.');
+    }
+    if (password.length < 4) {
+      throw new DemoError(400, 'bad_request', 'The password must be at least 4 characters.');
+    }
+    u.password = password;
+    return this.view(u, actor);
+  }
+
   /**
    * Appends a transaction, after checking it balances and leaves no ordinary
    * account overdrawn.
@@ -662,11 +675,16 @@ export class DemoLedger {
     if (l.seller === actor.account) {
       throw new DemoError(400, 'self_deal', 'You cannot offer on your own listing.');
     }
+    if (this.offers.some((offer) =>
+      offer.listing === listingId && offer.offerer === actor.account && offer.status === 'OPEN')) {
+      throw new DemoError(409, 'conflict', 'You already have an open offer on this listing.');
+    }
 
     const offer: Offer = {
       id: `offer-${this.nextId++}`,
       listing: l.id,
       listing_title: l.title,
+      listing_owner: l.seller,
       offerer: actor.account,
       offerer_name: actor.display_name,
       amount,
@@ -755,7 +773,7 @@ export class DemoLedger {
     // them open against something nobody can buy.
     for (const other of this.offers) {
       if (other.listing === listing.id && other.status === 'OPEN' && other.id !== offer.id) {
-        other.status = 'DECLINED';
+        other.status = 'NOT_SELECTED';
         other.updated_at = this.now();
       }
     }
@@ -831,7 +849,7 @@ export class DemoLedger {
    * believable order, and several landing in the same second is exactly the
    * case that made the economy charts collapse onto one point.
    */
-  private clock = Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 65;
+  private clock = Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 395;
   private now(): number {
     return (this.clock += 1);
   }

@@ -25,6 +25,13 @@ describe('the demo ledger', () => {
     expect(() => l.provision('other', 'Other', 'x', 'Another')).toThrow(DemoError);
   });
 
+  it('lets a member change their own password but not another member\'s', () => {
+    const { l, alice, bob } = household();
+    expect(l.setUserPassword(alice, alice.id, 'new-pin').id).toBe(alice.id);
+    expect(() => l.setUserPassword(alice, bob.id, 'stolen-pin')).toThrowError(DemoError);
+    expect(() => l.setUserPassword(alice, alice.id, '123')).toThrowError(DemoError);
+  });
+
   it('balances after every operation', () => {
     // The property that would break first if any arithmetic here were wrong.
     const { l, nana, alice, bob } = household();
@@ -188,7 +195,7 @@ describe('the demo marketplace', () => {
     expect(() => l.declineOffer(bob, offer.id)).toThrow(DemoError);
   });
 
-  it('closes the other offers when one is accepted', () => {
+  it('keeps competing offers visible as not selected when one is accepted', () => {
     const { l, nana, alice, bob } = household();
     const carol = l.addUser('carol', 'Carol', 'demo', 'user');
     l.issue(nana, carol.account, 100, 'Starting');
@@ -198,7 +205,14 @@ describe('the demo marketplace', () => {
     const second = l.makeOffer(carol, listing.id, 9, '');
 
     l.acceptOffer(alice, second.id);
-    expect(l.offerById(first.id).status).toBe('DECLINED');
+    expect(l.offerById(first.id).status).toBe('NOT_SELECTED');
+  });
+
+  it('refuses duplicate open offers from one person', () => {
+    const { l, alice, bob } = household();
+    const listing = l.createListing(alice, { title: 'Thing', description: '', price: 10 });
+    l.makeOffer(bob, listing.id, 8, 'First');
+    expect(() => l.makeOffer(bob, listing.id, 9, 'Spam')).toThrow(DemoError);
   });
 });
 

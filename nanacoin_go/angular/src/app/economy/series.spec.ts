@@ -9,9 +9,11 @@ import {
   balanceSeries,
   bucketStart,
   employmentSnapshot,
+  employmentSeries,
   gdpSeries,
   giftsThisWeek,
   moneySupplySeries,
+  inflationSeries,
   repeatPriceChanges,
 } from './series';
 
@@ -121,6 +123,24 @@ describe('classified economy', () => {
     const first = { ...transfer(now - 10, 50), economic_kind: 'GOOD' as const, thing: 'thing-7', thing_name: 'Cookies', quantity_milli: 1000, unit: 'BATCH' as const };
     const second = { ...transfer(now, 120), id: 'txn-2', economic_kind: 'GOOD' as const, thing: 'thing-7', thing_name: 'Cookies', quantity_milli: 2000, unit: 'BATCH' as const };
     expect(repeatPriceChanges([first, second])).toEqual([{ thing: 'Cookies', unit: 'BATCH', previous: 50, latest: 60, percent: 0.2 }]);
+  });
+
+  it('plots employment rates by the selected period', () => {
+    const january = Math.floor(new Date(2026, 0, 10, 12).getTime() / 1000);
+    const february = Math.floor(new Date(2026, 1, 10, 12).getTime() / 1000);
+    const labor = { ...transfer(january, 10, 'payer', 'worker'), economic_kind: 'LABOR' as const, quantity_milli: 1000 };
+    const activity = transfer(february, 2);
+    expect(employmentSeries([labor, activity], ['worker', 'idle'], 'month').points.map((point) => point.value))
+      .toEqual([50, 0]);
+  });
+
+  it('plots repeat-sale inflation by month and year', () => {
+    const january = Math.floor(new Date(2025, 0, 10, 12).getTime() / 1000);
+    const february = Math.floor(new Date(2026, 1, 10, 12).getTime() / 1000);
+    const first = { ...transfer(january, 10), economic_kind: 'GOOD' as const, thing: 'thing-1', quantity_milli: 1000 };
+    const second = { ...transfer(february, 12), economic_kind: 'GOOD' as const, thing: 'thing-1', quantity_milli: 1000 };
+    expect(inflationSeries([first, second], 'month').points[0].value).toBe(20);
+    expect(inflationSeries([first, second], 'year').points[0].value).toBe(20);
   });
 });
 
@@ -240,5 +260,13 @@ describe('bucketStart', () => {
     const start = new Date(bucketStart(thursday, 'week') * 1000);
     expect(start.getDay()).toBe(1);
     expect(start.getDate()).toBe(12);
+  });
+
+  it('starts months and years at their first day', () => {
+    const instant = Math.floor(new Date(2026, 8, 17, 12).getTime() / 1000);
+    const month = new Date(bucketStart(instant, 'month') * 1000);
+    const year = new Date(bucketStart(instant, 'year') * 1000);
+    expect([month.getDate(), month.getMonth()]).toEqual([1, 8]);
+    expect([year.getDate(), year.getMonth()]).toEqual([1, 0]);
   });
 });

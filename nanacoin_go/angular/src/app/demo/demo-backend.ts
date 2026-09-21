@@ -167,6 +167,9 @@ function handle(req: HttpRequest<unknown>): unknown {
   }
 
   if (path.startsWith('/users/') && method === 'PATCH') {
+    if (typeof body['password'] === 'string') {
+      return demoLedger.setUserPassword(me, lastSegment(path), body['password']);
+    }
     return demoLedger.setUserStatus(me, lastSegment(path), body['status'] as 'ACTIVE' | 'DISABLED');
   }
 

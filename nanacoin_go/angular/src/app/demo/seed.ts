@@ -31,8 +31,8 @@ export function seed(ledger: DemoLedger): void {
 
   // Opening balances. The parents hold the float; the children start small,
   // which is what makes the first few weeks of allowance visible on a chart.
-  ledger.issue(nanaUser, dad.account, 200, 'Monthly household float');
-  ledger.issue(nanaUser, mom.account, 200, 'Monthly household float');
+  ledger.issue(nanaUser, dad.account, 500, 'Monthly household float');
+  ledger.issue(nanaUser, mom.account, 500, 'Monthly household float');
   ledger.issueUSD(nanaUser, dad.account, 10_000, 'Household cash float');
   ledger.issueUSD(nanaUser, mom.account, 10_000, 'Household cash float');
   ledger.advance(DAY);
@@ -55,6 +55,20 @@ export function seed(ledger: DemoLedger): void {
     'Pick the movie',
     'Stay up half an hour late',
   ];
+
+  // Almost a year of sparse monthly observations makes Month and Year useful
+  // in the economy charts without stuffing the tiny-board model with assets.
+  for (let month = 0; month < 11; month++) {
+    ledger.transfer(dad, sam.account, 12 + (month % 3), 'Monthly yard work', {
+      economic_kind: 'LABOR', thing: 'thing-demo-monthly-yard-work',
+      quantity_milli: 1000, unit: 'TASK',
+    });
+    ledger.transfer(sam, mom.account, 5 + Math.floor(month / 3), 'Peanut butter cookies', {
+      economic_kind: 'GOOD', thing: 'thing-demo-peanut-butter-cookies',
+      quantity_milli: 1000, unit: 'BATCH',
+    });
+    ledger.advance(30 * DAY);
+  }
 
   // Eight weeks of an ordinary household: chores paid on Saturdays, treats
   // bought back during the week.
@@ -133,16 +147,6 @@ export function seed(ledger: DemoLedger): void {
     price: 30,
     economic_kind: 'GOOD', quantity_milli: 1000, unit: 'EACH', standard: true,
   });
-  ledger.createListing(dad, {
-    title: '$5 of real cash',
-    description: 'NanaCoin only records the coin side',
-    price: 50,
-    kind: 'currency',
-    currency: 'USD',
-    minor_units: 500,
-    economic_kind: 'OTHER', quantity_milli: 1000, unit: 'EACH', standard: true,
-  });
-
   // A want-ad: the thing the marketplace could not do before offers existed.
   ledger.advance(DAY);
   ledger.createListing(mom, {

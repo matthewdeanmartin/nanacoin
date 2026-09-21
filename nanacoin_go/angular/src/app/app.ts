@@ -247,7 +247,8 @@ export class App {
   }
 
   /** Switches to another signed-in account, or to login if its token died. */
-  protected async switchTo(userId: string): Promise<void> {
+  protected async switchTo(userId: string, event?: Event): Promise<void> {
+    (event?.currentTarget as HTMLElement | null)?.closest('details')?.removeAttribute('open');
     try {
       await this.session.switchTo(userId);
       this.phase.set('app');

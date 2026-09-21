@@ -30,7 +30,8 @@ export class MarketPage {
   protected unit: EconomicUnit = 'EACH';
   protected standard = false;
   protected selectedThing = '';
-  protected readonly catalog = ITEMS;
+  /** Cash belongs in Forex, never in the goods/services market. */
+  protected readonly catalog = ITEMS.filter((item) => !item.currency);
   protected readonly categories = CATEGORIES;
   protected catalogChoice = '';
   protected readonly units: readonly EconomicUnit[] = [
@@ -82,6 +83,22 @@ export class MarketPage {
   protected async offer(l: Listing): Promise<void> {
     if (this.offering()) return;
 
+    try {
+      const existing = (await this.api.offers()).offers.find((candidate) =>
+        candidate.listing === l.id
+        && candidate.offerer === this.session.me()?.account
+        && candidate.status === 'OPEN');
+      if (existing) {
+        this.toasts.error('You already have an open offer on this listing. Withdraw it before making another.');
+        return;
+      }
+    } catch (e) {
+      if (!(e instanceof ApiError && e.status === 404)) {
+        this.toasts.fromError(e);
+        return;
+      }
+    }
+
     const answer = await this.dialogs.offer({
       title: this.wanted(l) ? `Offer to do "${l.title}"` : `Offer on "${l.title}"`,
       message: this.wanted(l)
@@ -102,6 +119,8 @@ export class MarketPage {
       // runs ahead of the firmware - say so rather than reporting a raw 404.
       if (e instanceof ApiError && e.status === 404) {
         this.toasts.error('This NanaCoin does not support offers yet.');
+      } else if (e instanceof ApiError && e.status === 409 && e.code === 'conflict') {
+        this.toasts.error('You already have an open offer on this listing. Withdraw it before making another.');
       } else {
         this.toasts.fromError(e);
       }
@@ -121,6 +140,10 @@ export class MarketPage {
 
   protected async post(): Promise<void> {
     const price = Number(this.price);
+    if (price < 0) {
+      this.toasts.error("Can't do negative prices.");
+      return;
+    }
     if (!Number.isInteger(price) || price <= 0) {
       // Coins are whole numbers; there is no fractional NanaCoin.
       this.toasts.error('Enter a whole number of coins.');
@@ -181,7 +204,7 @@ export class MarketPage {
       this.standard = known.standard;
       return;
     }
-    const item = ITEMS.find((i) => i.name.localeCompare(value, undefined, { sensitivity: 'accent' }) === 0);
+    const item = this.catalog.find((i) => i.name.localeCompare(value, undefined, { sensitivity: 'accent' }) === 0);
     this.selectedThing = '';
     if (item) {
       const attributes = catalogEconomics(item);
@@ -195,12 +218,12 @@ export class MarketPage {
 
   protected chooseCatalog(code: string): void {
     this.catalogChoice = code;
-    const item = ITEMS.find((candidate) => candidate.code === Number(code));
+    const item = this.catalog.find((candidate) => candidate.code === Number(code));
     if (item) this.titleChanged(item.name);
   }
 
   protected itemsIn(category: Category) {
-    return ITEMS.filter((item) => item.cat === category.id);
+    return this.catalog.filter((item) => item.cat === category.id);
   }
 
   protected things(): Thing[] {
@@ -208,7 +231,7 @@ export class MarketPage {
   }
 
   protected attributesLocked(): boolean {
-    return Boolean(this.selectedThing) || ITEMS.some(
+    return Boolean(this.selectedThing) || this.catalog.some(
       (i) => i.name.localeCompare(this.title, undefined, { sensitivity: 'accent' }) === 0,
     );
   }

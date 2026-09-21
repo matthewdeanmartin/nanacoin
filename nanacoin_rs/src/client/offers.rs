@@ -6,6 +6,7 @@ struct OfferView<'a> {
     id: Id,
     listing: Id,
     listing_title: &'a str,
+    listing_owner: Id,
     offerer: Id,
     offerer_name: &'a str,
     amount: i64,
@@ -28,6 +29,7 @@ fn view<'a>(state: &'a State, offer: &'a Offer, now: u64) -> OfferView<'a> {
             .listing(offer.listing)
             .map(|l| l.title.as_str())
             .unwrap_or(""),
+        listing_owner: account(offer.owner),
         offerer: account(offer.offerer),
         offerer_name: state
             .member(offer.offerer)
@@ -35,7 +37,15 @@ fn view<'a>(state: &'a State, offer: &'a Offer, now: u64) -> OfferView<'a> {
             .unwrap_or(""),
         amount: offer.amount,
         message: &offer.message,
-        status: offer.status(now),
+        status: if offer.phase == OfferPhase::Open
+            && state
+                .listing(offer.listing)
+                .is_ok_and(|listing| listing.status != ListingStatus::Active)
+        {
+            "NOT_SELECTED"
+        } else {
+            offer.status(now)
+        },
         created_at: offer.created_at,
         updated_at: offer.updated_at,
         settled_tx: offer.settlement().map(|s| id("tx-", s.transaction)),

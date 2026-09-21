@@ -20,13 +20,12 @@ import { IS_DEMO } from '../demo/demo';
          <a routerLink="/nana" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Household</a>
        }
        <a routerLink="/send" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Send</a>
-       <a routerLink="/invite" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Invite</a>
        <details class="menu-group" routerLinkActive="current">
          <summary>Buy/Sell</summary>
          <div class="menu-group__items">
            <a routerLink="/market" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Market</a>
            <a routerLink="/offers" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Offers</a>
-           <a routerLink="/forex" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Exchange</a>
+           <a routerLink="/forex" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Forex</a>
            @if (demo) {
              <a routerLink="/nickles" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Nana-nickles</a>
            }
@@ -53,6 +52,7 @@ import { IS_DEMO } from '../demo/demo';
            }
          </div>
        </details>
+       <a routerLink="/invite" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Invite</a>
      } @else {
        <a routerLink="/ledger" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">The Notebook</a>
        @if (demo || session.diagAvailable()) {

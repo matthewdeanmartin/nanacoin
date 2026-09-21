@@ -44,10 +44,10 @@ interface Row {
     <p class="lede">Your activity, offers, exchange bids, and sign-in settings.</p>
 
     <nav class="section-nav" aria-label="My Account sections">
-      <a href="#recent-events">Recent events</a>
-      <a href="#my-offers">My offers</a>
-      <a href="#my-forex-bids">My forex bids</a>
-      <a href="#account-security">Password</a>
+      <button type="button" (click)="scrollTo('recent-events')">Recent events</button>
+      <button type="button" (click)="scrollTo('my-offers')">My offers</button>
+      <button type="button" (click)="scrollTo('my-forex-bids')">My forex bids</button>
+      <button type="button" (click)="scrollTo('account-security')">Password</button>
     </nav>
 
     <section id="my-offers" class="account-section">
@@ -76,7 +76,7 @@ interface Row {
     <section id="my-forex-bids" class="account-section">
       <div class="section-heading">
         <h2>My Forex Bids</h2>
-        <a routerLink="/forex">Open exchange</a>
+        <a routerLink="/forex">Open Forex</a>
       </div>
       @if (quotes.isLoading()) {
         <p class="muted">Loading bids…</p>
@@ -223,7 +223,7 @@ export class HistoryPage {
   protected readonly myOffers = computed(() => {
     const account = this.session.me()?.account;
     return (this.offers.value() ?? [])
-      .filter((o) => o.offerer === account || (o.status === 'OPEN' && o.offerer !== account))
+      .filter((o) => o.offerer === account || o.listing_owner === account)
       .sort((a, b) => b.updated_at - a.updated_at);
   });
 
@@ -305,7 +305,19 @@ export class HistoryPage {
     if (offer.status === 'OPEN') return mine ? 'Your offer is awaiting a decision' : 'You have an offer to consider';
     if (offer.status === 'ACCEPTED') return 'Offer accepted';
     if (offer.status === 'DECLINED') return 'Offer declined';
+    if (offer.status === 'NOT_SELECTED') return 'Another offer was selected';
+    if (offer.status === 'SETTLED') return 'Offer settled';
+    if (offer.status === 'REVERSED') return 'Offer settlement reversed';
     return 'Offer withdrawn';
+  }
+
+  /**
+   * The application uses hash routing, so a literal href="#section" is a
+   * route change rather than an in-page anchor. Keep section navigation out
+   * of the URL and scroll explicitly instead.
+   */
+  protected scrollTo(id: string): void {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   protected async changePassword(): Promise<void> {
