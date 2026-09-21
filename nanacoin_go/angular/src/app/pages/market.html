@@ -1,5 +1,7 @@
-<h1>Market</h1>
+<h1>{{ listingPage ? 'Offer to Sell' : 'Market' }}</h1>
 
+@if (!listingPage) {
+<p><a class="btn" routerLink="/list">Offer to Sell</a></p>
 @if (session.forSale().length === 0) {
   <p class="muted">Nothing for sale right now.</p>
 } @else {
@@ -68,9 +70,11 @@
     }
   </div>
 }
+}
 
+@if (listingPage) {
 <details class="disclosure" id="post-listing" open>
-  <summary>Post a listing</summary>
+  <summary>Add a listing</summary>
   <form (ngSubmit)="post()">
     <!--
       Which way round the listing is. Selling was the only option before:
@@ -144,8 +148,9 @@
     </button>
   </form>
 </details>
+}
 
-@if (session.closed().length > 0) {
+@if (!listingPage && session.closed().length > 0) {
   <details class="disclosure">
     <summary>Sold and cancelled ({{ session.closed().length }})</summary>
     <div class="cards">

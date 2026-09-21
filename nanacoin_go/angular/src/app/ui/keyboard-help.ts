@@ -33,7 +33,7 @@ export function isEditing(target: EventTarget | null): boolean {
      <dt><kbd>j</kbd> / <kbd>k</kbd></dt><dd>Focus next / previous listing or transaction</dd>
      <dt><kbd>0</kbd></dt><dd>Focus the first listing or transaction</dd>
      <dt><kbd>Alt</kbd> + <kbd>PageDown</kbd> / <kbd>PageUp</kbd></dt><dd>Next / previous record</dd>
-     <dt><kbd>n</kbd></dt><dd>Focus the new-listing title on Market, when its form is available</dd>
+     <dt><kbd>n</kbd></dt><dd>Open Offer to Sell and focus the listing title</dd>
    </dl>
    <h3>Standard controls</h3><p><kbd>Tab</kbd> / <kbd>Shift</kbd> + <kbd>Tab</kbd> move between links and buttons.
    <kbd>Enter</kbd> activates the focused link or button; <kbd>Space</kbd> activates a focused button or checkbox.
@@ -91,7 +91,15 @@ export class KeyboardHelp {
      } else if (key === 'g') { this.gUntil = performance.now() + 1000; handled = true; }
      else if (key === 'j' || key === 'k') handled = this.move(key === 'j' ? 1 : -1);
      else if (key === '0') handled = this.focus(this.rows()[0]);
-     else if (key === 'n') handled = this.focus(document.querySelector<HTMLElement>('app-market input[name="title"]') ?? undefined);
+     else if (key === 'n') {
+       const title = document.querySelector<HTMLElement>('app-market input[name="title"]');
+       if (title) handled = this.focus(title);
+       else {
+         void this.router.navigateByUrl('/list').then(() => requestAnimationFrame(() =>
+           requestAnimationFrame(() => document.querySelector<HTMLElement>('app-market input[name="title"]')?.focus())));
+         handled = true;
+       }
+     }
    }
    if (handled) { event.preventDefault(); event.stopPropagation(); }
  }

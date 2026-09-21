@@ -181,7 +181,7 @@
   currency, so this is the form that makes the Forex tab useful at all.
 -->
 <details class="disclosure">
-  <summary>Issue dollars</summary>
+  <summary>Record dollars held</summary>
   <p class="muted small">
     Records that someone holds dollars. No real money moves — handing over the
     actual note is between you and them.
@@ -208,7 +208,7 @@
       <input name="usdReason" [(ngModel)]="usdReason" maxlength="140" placeholder="Pocket money" />
     </label>
     <button class="btn" title="Record the entered dollar amount in the selected member's account" type="submit" [disabled]="issuingUsd()">
-      {{ issuingUsd() ? 'Issuing…' : 'Issue dollars' }}
+      {{ issuingUsd() ? 'Recording…' : 'Record dollars held' }}
     </button>
   </form>
 </details>

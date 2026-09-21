@@ -6,7 +6,7 @@ import { NavigationEnd, Router, RouterOutlet } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 import { ApiBase } from './api/api-base';
-import { ApiError } from './api/nanacoin.service';
+import { ApiError, NanacoinService } from './api/nanacoin.service';
 import { candidates, Discovery } from './api/discovery';
 import { IS_DEMO } from './demo/demo';
 import { Log } from './api/log';
@@ -21,6 +21,7 @@ import { Toasts } from './ui/toasts';
 import { SiteMenu } from './ui/site-menu';
 import { KeyboardHelp } from './ui/keyboard-help';
 import { MastodonConnect } from './ui/mastodon-connect';
+import { Dialogs } from './ui/dialog';
 
 type Phase = 'loading' | 'connect' | 'setup' | 'login' | 'app' | 'logs';
 
@@ -45,6 +46,8 @@ export class App {
   protected readonly publicPage = signal(false);
   protected readonly aboutPage = signal(false);
   private readonly router = inject(Router);
+  private readonly api = inject(NanacoinService);
+  private readonly dialogs = inject(Dialogs);
   protected readonly session = inject(Session);
   protected readonly apiBase = inject(ApiBase);
   private readonly toasts = inject(Toasts);
@@ -258,6 +261,29 @@ export class App {
       // active is where the user lands; with nothing left, that is login.
       this.phase.set(this.session.signedIn() ? 'app' : 'login');
     }
+  }
+
+  protected async changePassword(event?: Event): Promise<void> {
+    (event?.currentTarget as HTMLElement | null)?.closest('details')?.removeAttribute('open');
+    const password = await this.dialogs.password({
+      title: 'Change your password',
+      message: 'Choose a new PIN or password with at least 4 characters.',
+      placeholder: 'New PIN or password', confirmLabel: 'Continue', required: true,
+    });
+    if (password === null) return;
+    if (password.length < 4) { this.toasts.error('The password must be at least 4 characters.'); return; }
+    const confirmation = await this.dialogs.password({
+      title: 'Confirm your new password', placeholder: 'Type it again',
+      confirmLabel: 'Change password', required: true,
+    });
+    if (confirmation === null) return;
+    if (confirmation !== password) { this.toasts.error('The passwords did not match.'); return; }
+    try {
+      const id = this.session.me()?.id;
+      if (!id) return;
+      await this.api.setUserPassword(id, password);
+      window.location.reload();
+    } catch (e) { this.toasts.fromError(e); }
   }
 
 }

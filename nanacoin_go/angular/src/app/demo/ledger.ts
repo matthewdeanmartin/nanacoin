@@ -70,7 +70,7 @@ export class DemoLedger {
   private usdBalances = new Map<string, number>();
   private nextTxn = 1;
   private nextId = 1;
-  private nickles = new Map<string, { amount: number; serial: string }>();
+  private nickles = new Map<string, { amount: number; serial: string; issuer: string }>();
   private nextNickle = 1;
 
   createNickle(actor: DemoUser, amount: number, freshMoney = false): { token: string; amount: number; serial: string } {
@@ -86,7 +86,7 @@ export class DemoLedger {
       { account: freshMoney ? SYSTEM_ISSUANCE : actor.account, name: '', amount: -amount },
       { account: NICKLE_RESERVE, name: '', amount },
     ], { reference: `nickle:${serial}` });
-    this.nickles.set(digest, { amount, serial });
+    this.nickles.set(digest, { amount, serial, issuer: actor.id });
     this.nextNickle++;
     return { token, amount, serial };
   }
@@ -97,6 +97,9 @@ export class DemoLedger {
     const digest = digestNickle(token);
     const voucher = this.nickles.get(digest);
     if (!voucher) throw new DemoError(400, 'invalid_voucher', 'Unknown or already redeemed voucher.');
+    if (voucher.issuer === actor.id) {
+      throw new DemoError(403, 'self_redemption', 'You cannot redeem a voucher you issued. Give it to someone else.');
+    }
     // Synchronous check/post/consume: no await between these operations.
     const transaction = this.append('TRANSFER', actor.id, `Redeem nana-nickle ${voucher.serial}`, [
       { account: NICKLE_RESERVE, name: '', amount: -voucher.amount },

@@ -31,7 +31,7 @@ import { Mastodon } from '../api/mastodon';
   selector: 'app-offers',
   imports: [FormsModule],
   template: `
-    <h1>Offers</h1>
+    <h1>Offers Received</h1>
 
     @if (mastodon.connected()) {
       <label class="checkbox">

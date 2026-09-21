@@ -59,7 +59,7 @@ def main():
                 group = None
                 if label == 'Economy' or (label == 'The Notebook' and nav.get_by_text('Accounting', exact=True).count()):
                     group = 'Accounting'
-                elif label in ('Market', 'Offers', 'Forex', 'Nana-nickles'):
+                elif label in ('Market', 'Offer to Sell', 'Offers Received', 'Forex', 'Nana-nickles'):
                     group = 'Buy/Sell'
                 elif label in ('Browser Log', 'Browser Health', 'Board Health', 'Server Log'):
                     group = 'System Info'
@@ -92,6 +92,9 @@ def main():
             expect(page.locator('app-public-ledger .ledger-row').nth(1)).to_be_focused()
             page.keyboard.press('0')
             expect(page.locator('app-public-ledger .ledger-row').nth(0)).to_be_focused()
+            page.get_by_label('Category').select_option('LABOR')
+            expect(page.locator('app-public-ledger .ledger-row').first).to_contain_text('Organize the bookshelf')
+            page.get_by_label('Category').select_option('ALL')
             page.get_by_label('Spiral-bound notebook', exact=True).check()
             page.get_by_label('Handwritten cursive', exact=True).check()
             page.evaluate('document.fonts.load(\'20px "Nana Hand"\')')
@@ -128,9 +131,13 @@ def main():
             expect(page.get_by_role('dialog', name='Keyboard shortcuts')).not_to_be_visible()
             page.locator('app-market input[name="title"]').fill('')
             page.locator('app-market h1').first.click()
-            for label in ['My Account', 'Forex', 'Offers', 'Economy', 'Market']:
+            for label in ['My Account', 'Forex', 'Offers Received', 'Economy', 'Market']:
                 navigate(label)
                 expect(page.locator('main h1').first).to_be_visible()
+            navigate('Economy')
+            expect(page.get_by_text('employment · last year/data available', exact=True)).to_be_visible()
+            expect(page.get_by_text('Forex rates', exact=True)).to_be_visible()
+            expect(page.get_by_role('listitem').filter(has_text='Actual trade')).to_be_visible()
             page.evaluate("location.hash = '#/nickles'")
             expect(page.get_by_role('heading', name='Nana-nickles')).to_be_visible()
             page.get_by_role('button', name='Create voucher').click()
@@ -141,11 +148,16 @@ def main():
             expect(page.locator('.printable-voucher')).to_be_visible()
             assert page.get_by_role('button', name='Create voucher', include_hidden=True).evaluate('e => getComputedStyle(e).visibility') == 'hidden'
             page.emulate_media(media='screen')
+            page.locator('details.account-menu > summary').filter(has_text='Account').click()
+            page.get_by_role('button', name='Sign in another account').click()
+            page.get_by_role('button', name=re.compile(r'^Mom\b')).click()
             page.evaluate("token => location.hash = '#/redeem?token=' + encodeURIComponent(token)", token)
             expect(page).to_have_url(re.compile(r'#\/redeem$'))
             expect(page.get_by_label('Voucher code', exact=True)).to_have_value(token)
             page.get_by_role('button', name='Redeem once').click()
             expect(page.get_by_role('status').filter(has_text='Redeemed.')).to_be_visible()
+            expect(page.get_by_role('heading', name='My voucher redemptions')).to_be_visible()
+            expect(page.get_by_text(re.compile(r'Redeem nana-nickle NN-\d+'))).to_be_visible()
             page.get_by_label('Voucher code', exact=True).fill(token)
             page.get_by_role('button', name='Redeem once').click()
             expect(page.get_by_role('status').filter(has_text='already redeemed')).to_be_visible()

@@ -41,13 +41,12 @@ interface Row {
   imports: [RouterLink, Notebook],
   template: `
     <h1>My Account</h1>
-    <p class="lede">Your activity, offers, exchange bids, and sign-in settings.</p>
+    <p class="lede">Your activity, offers, exchange bids, and transaction history.</p>
 
     <nav class="section-nav" aria-label="My Account sections">
       <button type="button" (click)="scrollTo('recent-events')">Recent events</button>
       <button type="button" (click)="scrollTo('my-offers')">My offers</button>
       <button type="button" (click)="scrollTo('my-forex-bids')">My forex bids</button>
-      <button type="button" (click)="scrollTo('account-security')">Password</button>
     </nav>
 
     <section id="my-offers" class="account-section">
@@ -94,14 +93,6 @@ interface Row {
           }
         </div>
       }
-    </section>
-
-    <section id="account-security" class="account-section">
-      <div class="section-heading">
-        <h2>Password</h2>
-        <button class="btn btn--quiet btn--small" type="button" title="Choose a new PIN or password for your account" (click)="changePassword()">Change password…</button>
-      </div>
-      <p class="muted small">Changing it ends your other signed-in sessions and asks you to sign in again here.</p>
     </section>
 
     <section id="recent-events" class="account-section">
@@ -318,42 +309,6 @@ export class HistoryPage {
    */
   protected scrollTo(id: string): void {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
-
-  protected async changePassword(): Promise<void> {
-    const password = await this.dialogs.password({
-      title: 'Change your password',
-      message: 'Choose a new PIN or password with at least 4 characters.',
-      placeholder: 'New PIN or password',
-      confirmLabel: 'Continue',
-      required: true,
-    });
-    if (password === null) return;
-    if (password.length < 4) {
-      this.toasts.error('The password must be at least 4 characters.');
-      return;
-    }
-    const confirmation = await this.dialogs.password({
-      title: 'Confirm your new password',
-      placeholder: 'Type it again',
-      confirmLabel: 'Change password',
-      required: true,
-    });
-    if (confirmation === null) return;
-    if (confirmation !== password) {
-      this.toasts.error('The passwords did not match.');
-      return;
-    }
-    try {
-      const id = this.session.me()?.id;
-      if (!id) return;
-      await this.api.setUserPassword(id, password);
-      // The server revokes this token deliberately. Reload into the ordinary
-      // sign-in flow rather than leaving a dead session on screen.
-      window.location.reload();
-    } catch (e) {
-      this.toasts.fromError(e);
-    }
   }
 
   protected when(unixSeconds: number): string {

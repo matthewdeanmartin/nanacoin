@@ -2,6 +2,7 @@
 
 import { Component, inject, resource, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { Router, RouterLink } from '@angular/router';
 
 import { EconomicKind, EconomicUnit, Listing, ListingSide, Thing } from '../api/models';
 import { ApiError, NanacoinService, newIdempotencyKey } from '../api/nanacoin.service';
@@ -13,14 +14,16 @@ import { catalogEconomics, formatQuantity, validQuantity } from '../catalog/econ
 
 @Component({
   selector: 'app-market',
-  imports: [FormsModule],
+  imports: [FormsModule, RouterLink],
   templateUrl: './market.html',
 })
 export class MarketPage {
   private readonly api = inject(NanacoinService);
   private readonly toasts = inject(Toasts);
   private readonly dialogs = inject(Dialogs);
+  private readonly router = inject(Router);
   protected readonly session = inject(Session);
+  protected readonly listingPage = this.router.url.split('?')[0] === '/list';
 
   protected title = '';
   protected description = '';
@@ -58,6 +61,11 @@ export class MarketPage {
 
   /** The listing an offer is being made against. */
   protected readonly offering = signal<string | null>(null);
+
+  constructor() {
+    const repeated = history.state?.['repeat'] as Listing | undefined;
+    if (this.listingPage && repeated?.id) this.prefill(repeated);
+  }
 
   protected mine(l: Listing): boolean {
     return l.seller === this.session.me()?.account;
@@ -187,6 +195,7 @@ export class MarketPage {
       this.catalogChoice = '';
       this.toasts.ok(this.side === 'BUY' ? 'Want-ad posted.' : 'Listed.');
       await this.session.refresh();
+      if (this.listingPage) await this.router.navigate(['/market']);
     } catch (e) {
       this.toasts.fromError(e);
     } finally {
@@ -241,6 +250,10 @@ export class MarketPage {
   }
 
   protected offerAgain(l: Listing): void {
+    void this.router.navigate(['/list'], { state: { repeat: l } });
+  }
+
+  private prefill(l: Listing): void {
     this.title = l.title;
     this.description = l.description;
     this.price = l.price;
@@ -251,7 +264,6 @@ export class MarketPage {
     this.standard = l.standard ?? false;
     this.selectedThing = l.thing ?? '';
     this.catalogChoice = '';
-    document.querySelector('#post-listing')?.scrollIntoView({ behavior: 'smooth' });
   }
 
   /**

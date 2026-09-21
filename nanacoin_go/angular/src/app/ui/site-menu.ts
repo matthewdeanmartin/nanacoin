@@ -24,7 +24,8 @@ import { IS_DEMO } from '../demo/demo';
          <summary>Buy/Sell</summary>
          <div class="menu-group__items">
            <a routerLink="/market" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Market</a>
-           <a routerLink="/offers" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Offers</a>
+           <a routerLink="/list" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Offer to Sell</a>
+           <a routerLink="/offers" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Offers Received</a>
            <a routerLink="/forex" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Forex</a>
            @if (demo) {
              <a routerLink="/nickles" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Nana-nickles</a>

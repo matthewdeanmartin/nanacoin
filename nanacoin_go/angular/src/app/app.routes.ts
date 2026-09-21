@@ -19,6 +19,11 @@ export const routes: Routes = [
     title: 'Market — NanaCoin',
   },
   {
+    path: 'list',
+    loadComponent: () => import('./pages/market').then((m) => m.MarketPage),
+    title: 'Offer to Sell — NanaCoin',
+  },
+  {
     path: 'send',
     loadComponent: () => import('./pages/send').then((m) => m.SendPage),
     title: 'Send — NanaCoin',
@@ -26,7 +31,7 @@ export const routes: Routes = [
   {
     path: 'offers',
     loadComponent: () => import('./pages/offers').then((m) => m.OffersPage),
-    title: 'Offers — NanaCoin',
+    title: 'Offers Received — NanaCoin',
   },
   {
     path: 'forex',

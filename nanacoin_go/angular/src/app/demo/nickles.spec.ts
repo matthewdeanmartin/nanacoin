@@ -16,6 +16,8 @@ describe('demo bearer vouchers', () => {
    expect(ledger.balanceOf(alice.account)).toBe(15);
    expect(ledger.balanceOf(NICKLE_RESERVE)).toBe(5);
    expect(ledger.status().circulation).toBe(before);
+   expect(() => ledger.redeemNickle(alice, voucher.token)).toThrow();
+   expect(ledger.balanceOf(NICKLE_RESERVE)).toBe(5);
    ledger.redeemNickle(bob, voucher.token);
    expect(ledger.balanceOf(bob.account)).toBe(5);
    expect(ledger.balanceOf(NICKLE_RESERVE)).toBe(0);

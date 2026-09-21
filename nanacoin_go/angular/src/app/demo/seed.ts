@@ -200,8 +200,10 @@ export function seed(ledger: DemoLedger): void {
   const switchTime = ledger.allListings('ACTIVE').find((l) => l.title.includes('Switch'))!;
   ledger.makeOffer(ivy, switchTime.id, 9, 'Would you take 9?');
 
-  // Both sides of the exchange book are visible in the showcase. Dad can pay
-  // dollars for coins; Sam can sell coins for dollars.
+  // A completed trade gives the economy chart an observed rate, while the
+  // two live quotes leave a visible bid/ask spread.
+  const completedRate = ledger.postQuote(sam, 'ASK', 25, 4);
+  ledger.takeQuote(dad, completedRate.id);
   ledger.postQuote(dad, 'BID', 20, 10);
   ledger.postQuote(sam, 'ASK', 30, 8);
 

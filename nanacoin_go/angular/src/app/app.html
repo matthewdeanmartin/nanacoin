@@ -115,6 +115,7 @@
           <details class="account-menu">
             <summary title="Account, session, and data actions">Account</summary>
             <div class="account-menu__items">
+              <button type="button" title="Choose a new PIN or password for this account" (click)="changePassword($event)">Change password…</button>
               <button type="button" title="Sign in to another existing NanaCoin account on this device" (click)="addAccount()">Sign in another account</button>
               <button type="button" title="End the active account's session on this device" (click)="logout()">
                 {{ session.hasSeveralAccounts() ? 'Leave this account' : 'Log out' }}

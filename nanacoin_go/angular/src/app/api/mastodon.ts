@@ -167,6 +167,13 @@ export class Mastodon {
     this.changed.update((n) => n + 1);
   }
 
+  /** Opens the connected home instance's public compose intent when possible. */
+  shareUrl(text: string): string {
+    const id = this.session.me()?.id;
+    const server = id ? this.credentials(id)?.server : null;
+    return `${server ?? 'https://mastodon.social'}/share?${new URLSearchParams({ text })}`;
+  }
+
   /** Always a direct status, and only accepts a registered household member. */
   async sendDirect(recipient: User, message: string): Promise<void> {
     const senderId = this.session.me()?.id;

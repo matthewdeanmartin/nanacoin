@@ -65,6 +65,11 @@ import { Mastodon } from '../api/mastodon';
         Trade coins for dollars at a rate you choose. Posting a rate moves no
         money — it waits until somebody takes it.
       </p>
+      <p class="muted small">
+        The dollar balance is a household record of cash someone says they hold.
+        NanaCoin does not hold, transmit, or guarantee the physical cash; the
+        people trading arrange that handoff themselves.
+      </p>
 
       <!-- What you are holding, in both currencies, side by side. -->
       <div class="stats">
@@ -74,7 +79,7 @@ import { Mastodon } from '../api/mastodon';
         </div>
         <div class="stat">
           <span>{{ dollars(myCents()) }}</span>
-          <span class="stat__label">dollars</span>
+          <span class="stat__label">recorded dollars</span>
         </div>
         @if (spread(); as s) {
           <div class="stat">
