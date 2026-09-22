@@ -223,6 +223,16 @@ export function seed(ledger: DemoLedger): void {
   ledger.reform(nanaUser, {decimals:4,power:0,expected_epoch:ledger.moneyEpoch,expected_sequence:ledger.revision,preview:false});
   ledger.startLive();
   const now = Math.floor(Date.now()/1000);
+  // Finished examples and open ticket sales for each kind of lotto.
+  for (const kind of ['SIMPLE','DELAYED','SAVINGS'] as const) {
+    const title=kind==='SIMPLE'?'Winner takes the pool':kind==='DELAYED'?'A prize with interest':'Save and win interest';
+    const past=now-32*DAY;
+    const terms={kind,title:`Recent draw · ${title}`,ticket_price:10000,closes_at:past+DAY,rate_bps:kind==='SIMPLE'?0:500};
+    const draw=ledger.lotto.create(nanaUser,terms,past);
+    for (const member of [dad,mom,sam,ivy]) ledger.lotto.buy(member,draw.id,1,past);
+    ledger.lotto.tick(now);
+    ledger.lotto.create(nanaUser,{...terms,title,closes_at:now+DAY},now);
+  }
   ledger.lending.offer(nanaUser,{borrower:sam.account,amount:200000,rate_bps:500,rate_days:7,payment_days:7,installment:50000,credit:false,memo:'A little help for your next project'},now);
   ledger.lending.offer(mom,{borrower:ivy.account,amount:150000,rate_bps:0,rate_days:365,payment_days:7,installment:30000,credit:true,memo:'An interest-free cushion at zero'},now);
 }

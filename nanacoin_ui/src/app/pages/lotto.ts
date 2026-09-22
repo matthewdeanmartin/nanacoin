@@ -7,7 +7,7 @@ import { NanacoinService, newIdempotencyKey } from '../api/nanacoin.service';
 import { Session } from '../api/session';
 import { Dialogs } from '../ui/dialog';
 import { Toasts } from '../ui/toasts';
-import { IS_DEMO } from '../demo/demo';
+import { lottoOutcome } from './account-commitments';
 
 @Component({
   selector: 'app-lotto', imports: [FormsModule, MoneyPipe, DatePipe],
@@ -16,8 +16,7 @@ import { IS_DEMO } from '../demo/demo';
     <p>Every ticket has an equal chance. Ticket money is held safely in the pool. Nana is the house and cannot buy tickets in her own draw.</p>
     <p>Simple lotto pays the whole pool when sales close. Delayed lotto draws and pays the pool plus interest 30 days after sales close. Savings lotto returns everyone's ticket money then, and one winner gets all the pool's interest.</p>
     <p>Interest is a fixed simple rate for those 30 days, rounded down to the smallest currency unit. Nana pays interest from her balance; any shortfall is newly issued coins.</p>
-    @if (demo) { <p>Lotto is available when connected to the Rust server. The browser demo does not run lotto draws.</p> }
-    @else if (!session.signedIn()) { <p>Sign in to buy tickets.</p> }
+    @if (!session.signedIn()) { <p>Sign in to buy tickets.</p> }
     @else {
       @if (session.isNana()) {
         <section class="panel"><h2>Create a lotto</h2>
@@ -42,25 +41,42 @@ import { IS_DEMO } from '../demo/demo';
           <p>Draw and payments due: {{lotto.due_at * 1000 | date:'medium'}}</p>
           @if (lotto.terms.kind !== 'SIMPLE') { <p>30-day interest: {{lotto.terms.rate_bps / 100}}% · Pool interest: {{lotto.interest | nc}} NC</p> }
           @if (lotto.winner_name) { <p>Winner: <strong>{{lotto.winner_name}}</strong></p> }
+          @if (lotto.my_tickets) {
+            <section class="your-result" aria-label="Your lotto result">
+              <h3>{{lotto.status === 'SETTLED' ? outcome(lotto).label : 'Your entry'}}</h3>
+              <p>Ticket cost: {{lotto.my_tickets * lotto.terms.ticket_price | nc}} NC</p>
+              @if (lotto.status === 'SETTLED') {
+                <p>{{lotto.terms.kind === 'SAVINGS' ? 'Principal returned' : 'Prize paid'}}: {{principal(lotto) | nc}} NC</p>
+                <p>Interest paid to you: {{lotto.winner === session.me()?.account ? lotto.interest : 0 | nc}} NC</p>
+                <p><strong>Net {{outcome(lotto).net < 0 ? 'loss' : 'gain'}}: {{outcome(lotto).net | nc}} NC</strong></p>
+              } @else if (lotto.terms.kind === 'SAVINGS') {
+                <p>Principal due back: {{lotto.my_tickets * lotto.terms.ticket_price | nc}} NC. The winner receives all the pool interest.</p>
+              }
+            </section>
+          }
           @if (lotto.status === 'SETTLED' && !lotto.tickets) { <p>No tickets were sold.</p> }
           @if (lotto.status === 'WAITING' || lotto.status === 'PAYING') { <p>Automatic settlement resumes when the server is online. Payments may pause at an accounting limit.</p> }
           @if (lotto.status === 'OPEN' && lotto.house !== session.me()?.account) {
             <button class="btn" [disabled]="busy()" (click)="buy(lotto)">Buy tickets</button>
+          } @else if (lotto.status === 'OPEN') {
+            <p>Ticket sales are open to household members. The house cannot buy tickets.</p>
           }
         </article>
       } @empty { @if (!book.isLoading() && !book.error()) { <p>No lottos yet.</p> } }
     }
   `,
+  styles: [`.card {margin-block:1rem;} .your-result {border-left:3px solid currentColor;padding-left:1rem;margin-block:1rem;} form {display:grid;gap:.75rem;max-width:32rem;} input,select {max-width:100%;box-sizing:border-box;} .btn {min-height:44px;padding:.6rem 1rem;}`],
 })
 export class LottoPage {
   protected readonly session = inject(Session);
-  protected readonly demo = IS_DEMO;
   private readonly api = inject(NanacoinService);
   private readonly money = inject(Money);
   private readonly dialogs = inject(Dialogs);
   private readonly toasts = inject(Toasts);
   protected readonly busy = signal(false);
-  protected readonly book = resource({ params: () => this.session.signedIn() && !this.demo ? true : undefined, loader: () => this.api.lottos() });
+  protected readonly book = resource({ params: () => this.session.me()?.account, loader: () => this.api.lottos() });
+  protected outcome(lotto: Lotto) { return lottoOutcome(lotto,this.session.me()?.account ?? ''); }
+  protected principal(lotto: Lotto): number { return lotto.terms.kind === 'SAVINGS' ? lotto.my_tickets*lotto.terms.ticket_price : lotto.winner === this.session.me()?.account ? lotto.pool : 0; }
   protected title = ''; protected kind: LottoKind = 'SIMPLE'; protected price = '1'; protected rate = '1'; protected closes = '';
   private readonly keys = new Map<string,string>();
   constructor() { const timer = setInterval(() => this.book.reload(), 10_000); inject(DestroyRef).onDestroy(() => clearInterval(timer)); }

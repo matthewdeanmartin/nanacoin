@@ -5,7 +5,6 @@ import { MoneyPipe } from '../api/money';
 import { NanacoinService } from '../api/nanacoin.service';
 import { Session } from '../api/session';
 import { Loan, Lotto } from '../api/models';
-import { IS_DEMO } from '../demo/demo';
 
 export function lottoOutcome(l: Lotto, account: string): { label: string; net: number } {
  const cost = l.my_tickets*l.terms.ticket_price;
@@ -36,7 +35,6 @@ export function lottoOutcome(l: Lotto, account: string): { label: string; net: n
  </section>
  <section id="my-lotto" class="account-section">
    <div class="section-heading"><h2>Lotto</h2><a routerLink="/lotto">View lottos</a></div>
-   @if (demo) { <p class="muted small">Lotto runs on the Rust server.</p> }
    @if (lottos.isLoading()) { <p role="status">Loading lotto…</p> }
    @if (lottos.error()) { <p role="alert">Could not load lotto. <button class="btn btn--quiet" (click)="lottos.reload()">Retry</button></p> }
    <h3>Upcoming draws</h3><div class="account-summary-list">
@@ -55,9 +53,8 @@ export function lottoOutcome(l: Lotto, account: string): { label: string; net: n
 })
 export class AccountCommitments {
  private readonly api=inject(NanacoinService); private readonly session=inject(Session);
- protected readonly demo=IS_DEMO;
  protected readonly loans=resource({params:()=>this.session.me()?.account,loader:()=>this.api.loans()});
- protected readonly lottos=resource({params:()=>!this.demo ? this.session.me()?.account : undefined,loader:()=>this.api.lottos()});
+ protected readonly lottos=resource({params:()=>this.session.me()?.account,loader:()=>this.api.lottos()});
  protected readonly loanGroups=computed(()=> {
    const account=this.session.me()?.account, all=this.loans.value()?.loans ?? [];
    return [{title:'Loans · money lent',description:'Money others owe this account.',items:all.filter(l=>l.lender===account)},

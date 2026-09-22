@@ -16,7 +16,7 @@ import { Observable, delay, of, throwError } from 'rxjs';
 import { EconomicKind, EconomicUnit } from '../api/models';
 import { DemoError, DemoLedger } from './ledger';
 import { seed } from './seed';
-import { LoanOfferInput, ReformInput } from '../api/models';
+import { LoanOfferInput, ReformInput, LottoTerms } from '../api/models';
 
 /** The one ledger this tab is showing. */
 export const demoLedger = new DemoLedger();
@@ -164,6 +164,9 @@ function handle(req: HttpRequest<unknown>): unknown {
   // --- everything below needs a session ---
 
   const me = current(req);
+  if (path === '/lottos' && method === 'GET') return {lottos:demoLedger.lotto.book(me),decimals:demoLedger.decimals,money_epoch:demoLedger.moneyEpoch};
+  if (path === '/lottos' && method === 'POST') return demoLedger.lotto.create(me,req.body as LottoTerms,Math.floor(Date.now()/1000));
+  if (/^\/lottos\/\d+\/tickets$/.test(path) && method === 'POST') return demoLedger.lotto.buy(me,Number(path.split('/')[2]),Number(body['count']),Math.floor(Date.now()/1000));
   if (path === '/loans' && method === 'GET') return demoLedger.lending.book(me,demoLedger.decimals,demoLedger.moneyEpoch,demoLedger.revision,Math.floor(Date.now()/1000));
   if (path === '/loans' && method === 'POST') return demoLedger.lending.offer(me,req.body as LoanOfferInput,Math.floor(Date.now()/1000));
   if (path.startsWith('/loans/') && method === 'POST') {

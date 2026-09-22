@@ -41,6 +41,7 @@ import {
 } from '../api/models';
 import { sha256 } from '../api/sha256';
 import { DemoLending } from './lending';
+import { DemoLotto } from './lotto';
 import { MAX_MONEY } from '../api/money';
 import { ReformInput, ReformResult } from '../api/models';
 
@@ -69,6 +70,11 @@ export class DemoLedger {
   moneyEpoch = 0;
   revision = 0;
   private liveClock = false;
+  readonly lotto = new DemoLotto({
+    balance: account => this.balanceOf(account),
+    name: account => this.userByAccount(account)?.display_name ?? account,
+    post: (id,memo,postings) => { this.append('TRANSFER','system',memo,postings,{reference:`lotto-${id}`,economic_kind:'OTHER'}); },
+  });
   readonly lending = new DemoLending({
     balance: account => this.balanceOf(account),
     user: account => this.userByAccount(account)!,
@@ -79,7 +85,7 @@ export class DemoLedger {
     },
   });
   startLive(): void { this.liveClock = true; }
-  tickLoans(): void { this.revision += this.lending.tick(Math.floor(Date.now()/1000)); }
+  tickLoans(): void { const now=Math.floor(Date.now()/1000);this.revision += this.lending.tick(now);this.lotto.tick(now); }
   reform(actor: User, input: ReformInput): ReformResult {
     if (actor.role !== 'nana' || actor.status !== 'ACTIVE') throw new DemoError(403,'forbidden','Only Nana can reform currency.');
     if (input.expected_epoch !== this.moneyEpoch || input.expected_sequence !== this.revision) throw new DemoError(409,'conflict','The ledger changed. Preview again.');
@@ -101,7 +107,8 @@ export class DemoLedger {
     for (const user of this.users) convert(this.balanceOf(user.account));
     const circulation=convert(-this.balanceOf(SYSTEM_ISSUANCE));
     const loans = this.lending.reform(exponent);
-    if (!input.preview) { for (const change of changes) change(); loans();this.decimals=input.decimals;this.moneyEpoch++;this.revision++; }
+    const lotto = this.lotto.reform(value=>convert(value,exponent,MAX_MONEY));
+    if (!input.preview) { for (const change of changes) change(); loans();lotto();this.decimals=input.decimals;this.moneyEpoch++;this.revision++; }
     return {decimals:input.decimals,money_epoch:this.moneyEpoch,sequence:this.revision,circulation,preview:input.preview};
   }
   private users: DemoUser[] = [];
@@ -551,7 +558,7 @@ export class DemoLedger {
    */
   reverse(actor: DemoUser, id: string, reason: string): Transaction {
     const original = this.transactions.find((t) => t.id === id);
-    if (original?.kind === 'MESSAGE' || original?.reference?.startsWith('nickle:') || original?.reference?.startsWith('loan-')) {
+    if (original?.kind === 'MESSAGE' || original?.reference?.startsWith('nickle:') || original?.reference?.startsWith('loan-') || original?.reference?.startsWith('lotto-')) {
       throw new DemoError(409, 'voucher_transaction', 'Bearer voucher transfers cannot be reversed independently of their voucher.');
     }
     if (!original) throw new DemoError(404, 'not_found', 'No such transaction.');
