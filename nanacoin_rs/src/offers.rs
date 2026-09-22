@@ -33,6 +33,8 @@ pub struct Offer {
     pub id: OfferId,
     pub listing: u64,
     pub owner: MemberId,
+    pub listing_side: Side,
+    pub listing_title: Title,
     pub offerer: MemberId,
     pub amount: i64,
     pub message: OfferMessage,
@@ -210,6 +212,8 @@ impl State {
                     .push(Offer {
                         id: OfferId(event.sequence),
                         listing: *listing,
+                        listing_side: self.listing(*listing).unwrap().side,
+                        listing_title: self.listing(*listing).unwrap().title.clone(),
                         owner,
                         offerer: event.actor,
                         amount: *amount,

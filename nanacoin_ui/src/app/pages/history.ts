@@ -4,6 +4,7 @@ import { inject as moneyInject } from '@angular/core';
 
 import { Component, computed, inject, resource, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
+import { AccountCommitments } from './account-commitments';
 import { Notebook } from '../ui/notebook';
 
 import { Offer, Quote, Transaction } from '../api/models';
@@ -40,16 +41,21 @@ interface Row {
 
 @Component({
   selector: 'app-history',
-  imports: [MoneyPipe, RouterLink, Notebook],
+  imports: [MoneyPipe, RouterLink, Notebook, AccountCommitments],
   template: `
     <h1>My Account</h1>
-    <p class="lede">Your activity, offers, exchange bids, and transaction history.</p>
+    <p class="lede">Your balances, loans, debts, lotto results, and financial activity.</p>
 
+    <p><strong>{{session.balance() | nc}} NC available</strong> · <a routerLink="/messages">Open Mail</a></p>
     <nav class="section-nav" aria-label="My Account sections">
-      <button type="button" (click)="scrollTo('recent-events')">Recent events</button>
+      <button type="button" (click)="scrollTo('my-loans')">Loans & debts</button>
+      <button type="button" (click)="scrollTo('my-lotto')">Lotto</button>
+      <button type="button" (click)="scrollTo('recent-events')">Transactions</button>
       <button type="button" (click)="scrollTo('my-offers')">My offers</button>
       <button type="button" (click)="scrollTo('my-forex-bids')">My forex bids</button>
     </nav>
+
+    <app-account-commitments />
 
     <section id="my-offers" class="account-section">
       <div class="section-heading">
@@ -98,14 +104,7 @@ interface Row {
     </section>
 
     <section id="recent-events" class="account-section">
-    <h2>Recent Events</h2>
-
-    @for (o of recentOfferEvents(); track o.id) {
-      <a class="account-event" routerLink="/offers">
-        <span>{{ offerEventLabel(o) }}</span>
-        <span>{{ o.listing_title || 'Offer' }} · {{ when(o.updated_at) }}</span>
-      </a>
-    }
+    <h2>Transactions</h2>
 
     @if (history.isLoading()) {
       <p class="muted">Loading…</p>
@@ -155,7 +154,7 @@ interface Row {
                 button at all: the correction exists, and a second one would
                 undo the undo.
               -->
-              @if (session.isNana() && !r.txn.reversed_by && r.txn.kind !== 'REVERSAL' && !r.txn.reference?.startsWith('lotto-') && !r.txn.reference?.startsWith('nickle:')) {
+              @if (session.isNana() && !r.txn.reversed_by && r.txn.kind !== 'REVERSAL' && !r.txn.reference?.startsWith('loan-') && !r.txn.reference?.startsWith('lotto-') && !r.txn.reference?.startsWith('nickle:')) {
                 <button
                   class="btn btn--quiet btn--small"
                   type="button"
@@ -228,12 +227,9 @@ export class HistoryPage {
       .sort((a, b) => b.updated_at - a.updated_at);
   });
 
-  /** Offer changes belong in the event stream alongside money movement. */
-  protected readonly recentOfferEvents = computed(() => this.myOffers().slice(0, 5));
-
   protected readonly rows = computed<Row[]>(() => {
     const account = this.session.me()?.account;
-    const txns = this.history.value()?.transactions ?? [];
+    const txns = (this.history.value()?.transactions ?? []).filter(t => t.kind !== 'MESSAGE');
     if (!account) return [];
 
     return txns.map((txn) => {
@@ -249,7 +245,7 @@ export class HistoryPage {
         other: other?.name ?? '',
         label: kindLabel(txn.kind),
         otherAccount: other?.account ?? '',
-        repeatable: txn.kind === 'TRANSFER' && delta < 0 && !!other?.account,
+        repeatable: txn.kind === 'TRANSFER' && !txn.reference && delta < 0 && !!other?.account,
       };
     });
   });
@@ -292,17 +288,6 @@ export class HistoryPage {
     } finally {
       this.reversing.set(null);
     }
-  }
-
-  protected offerEventLabel(offer: Offer): string {
-    const mine = offer.offerer === this.session.me()?.account;
-    if (offer.status === 'OPEN') return mine ? 'Your offer is awaiting a decision' : 'You have an offer to consider';
-    if (offer.status === 'ACCEPTED') return 'Offer accepted';
-    if (offer.status === 'DECLINED') return 'Offer declined';
-    if (offer.status === 'NOT_SELECTED') return 'Another offer was selected';
-    if (offer.status === 'SETTLED') return 'Offer settled';
-    if (offer.status === 'REVERSED') return 'Offer settlement reversed';
-    return 'Offer withdrawn';
   }
 
   /**

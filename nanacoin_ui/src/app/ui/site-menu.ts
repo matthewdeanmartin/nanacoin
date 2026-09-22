@@ -19,15 +19,25 @@ import { IS_DEMO } from '../demo/demo';
        @if (session.isNana()) {
          <a routerLink="/nana" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Household</a>
        }
-       <a routerLink="/send" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Send</a>
-       <a routerLink="/lotto" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Lotto</a>
-       <a routerLink="/loans" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Loans & credit</a>
+       <details class="menu-group" routerLinkActive="current">
+         <summary>Mail</summary><div class="menu-group__items">
+           <a routerLink="/send" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Send Money</a>
+           <a routerLink="/messages" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Messages</a>
+           <a routerLink="/invite" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Invitations</a>
+         </div>
+       </details>
+       <details class="menu-group" routerLinkActive="current">
+         <summary>Loans and Credit</summary><div class="menu-group__items">
+           <a routerLink="/loans" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Loans</a>
+           <a routerLink="/lotto" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Lotto</a>
+         </div>
+       </details>
        <details class="menu-group" routerLinkActive="current">
          <summary>Buy/Sell</summary>
          <div class="menu-group__items">
            <a routerLink="/market" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Market</a>
            <a routerLink="/list" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Offer to Sell</a>
-           <a routerLink="/offers" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Offers Received</a>
+           <a routerLink="/offers" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Offers</a>
            <a routerLink="/forex" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Forex</a>
            @if (demo) {
              <a routerLink="/nickles" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Nana-nickles</a>
@@ -55,7 +65,6 @@ import { IS_DEMO } from '../demo/demo';
            }
          </div>
        </details>
-       <a routerLink="/invite" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Invite</a>
      } @else {
        <a routerLink="/ledger" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">The Notebook</a>
        @if (demo || session.diagAvailable()) {

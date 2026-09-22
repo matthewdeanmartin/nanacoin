@@ -13,6 +13,8 @@ import { Component, computed, inject, resource, signal } from '@angular/core';
 import { NanacoinService } from '../api/nanacoin.service';
 import { Session } from '../api/session';
 import { Quote } from '../api/models';
+import { actualRates } from '../economy/forex-series';
+import { ForexChart } from '../economy/forex-chart';
 import { LineChart } from '../economy/line-chart';
 import { EconomyStat } from '../ui/economy-stat';
 import {
@@ -34,7 +36,7 @@ const LEDGER_LIMIT = 365;
 
 @Component({
   selector: 'app-economy',
-  imports: [MoneyPipe, LineChart, EconomyStat],
+  imports: [MoneyPipe, LineChart, EconomyStat, ForexChart],
   template: `
     <h1>Economy</h1>
 
@@ -67,7 +69,7 @@ const LEDGER_LIMIT = 365;
         <app-economy-stat id="supply-help" label="money supply" [value]="money.format(data.value()?.circulation ?? 0) + ' NC'"
           help="Current NanaCoin in circulation across all accounts, including Nana. Issuing and retiring coins change the supply; transfers and lending move existing coins." />
         <app-economy-stat id="exchange-help" label="exchange rate" [value]="currentRateLabel()"
-          help="Rate from the most recently completed exchange retained by the board, or the average of live quotes when no completed exchange is available. Change the display direction below the charts." />
+          help="Rate from the most recent completed exchange in retained quotes or paired transaction records. Live bids and asks are shown separately in the exchange chart." />
         <app-economy-stat id="interest-help" label="interest rate" [value]="interestLabel()"
           help="Current simple interest rate weighted by outstanding loan principal, including zero-rate loans. Each loan's rate is normalized to 365 days. This is not a compounded yield or an inflation forecast. Undrawn credit and unaccepted offers are excluded." />
       </div>
@@ -151,21 +153,7 @@ const LEDGER_LIMIT = 365;
           [series]="balances()"
         />
 
-        <section class="chart-controls">
-          <label>Forex rate display
-            <select [value]="rateDirection()" (change)="rateDirection.set($any($event.target).value)">
-              <option value="USD_PER_NC">$ per NanaCoin</option>
-              <option value="NC_PER_USD">NanaCoin per $</option>
-            </select>
-          </label>
-          <p><strong>{{ currentRateSentence() }}</strong></p>
-        </section>
-        <app-line-chart
-          title="Forex rates"
-          [subtitle]="rateDirection() === 'USD_PER_NC' ? 'Dollars per NanaCoin: bids, asks, and completed trades.' : 'NanaCoin per dollar: bids, asks, and completed trades.'"
-          [series]="forexChart()"
-          [zeroBased]="false"
-        />
+        <app-forex-chart [quotes]="quotes()" [transactions]="txns()" [decimals]="money.decimals()" />
     }
   `,
 })
@@ -175,7 +163,6 @@ export class EconomyPage {
   protected readonly session = inject(Session);
 
   protected readonly bucket = signal<Bucket>('day');
-  protected readonly rateDirection = signal<'USD_PER_NC' | 'NC_PER_USD'>('USD_PER_NC');
 
   /**
    * Every signed-in household member reads the shared ledger.
@@ -203,8 +190,8 @@ export class EconomyPage {
     },
   });
 
-  private readonly txns = computed(() => this.data.value()?.transactions ?? []);
-  private readonly quotes = computed(() => this.data.value()?.quotes ?? []);
+  protected readonly txns = computed(() => this.data.value()?.transactions ?? []);
+  protected readonly quotes = computed(() => this.data.value()?.quotes ?? []);
   private readonly yearTxns = computed(() => {
     const txns = this.txns();
     if (!txns.length) return [];
@@ -237,37 +224,10 @@ export class EconomyPage {
     return rate === null ? 'No loans' : `${rate.toLocaleString(undefined, { maximumFractionDigits: 4 })}%/yr`;
   }
 
-  private readonly currentRate = computed(() => {
-    const filled = this.quotes().filter((quote) => quote.status === 'FILLED').sort((a, b) => b.updated_at - a.updated_at)[0];
-    if (filled) return filled.cents_per_coin;
-    const live = this.quotes().filter((quote) => quote.live);
-    if (!live.length) return null;
-    return live.reduce((sum, quote) => sum + quote.cents_per_coin, 0) / live.length;
-  });
   protected currentRateLabel(): string {
-    const cents = this.currentRate();
-    if (!cents) return 'No rate';
-    return this.rateDirection() === 'USD_PER_NC' ? `$${(cents / 100).toFixed(2)}/NC` : `${(100 / cents).toFixed(2)} NC/$`;
+    const cents = actualRates(this.quotes(),this.txns(),this.money.decimals()).at(-1)?.cents;
+    return cents === undefined ? 'No trades yet' : `$${(cents/100).toLocaleString(undefined,{maximumFractionDigits:6})}/NC`;
   }
-  protected currentRateSentence(): string {
-    const cents = this.currentRate();
-    if (!cents) return 'There is no exchange rate yet.';
-    const value = this.rateDirection() === 'USD_PER_NC' ? cents / 100 : 100 / cents;
-    return this.rateDirection() === 'USD_PER_NC'
-      ? `Currently ${trimNumber(value)} dollars per NanaCoin.`
-      : `Currently ${trimNumber(value)} NanaCoin per dollar.`;
-  }
-  protected readonly forexChart = computed<Series[]>(() => {
-    const convert = (cents: number) => this.rateDirection() === 'USD_PER_NC' ? cents / 100 : 100 / cents;
-    const make = (name: string, quotes: Quote[]): Series => ({ name, points: quotes
-      .slice().sort((a, b) => a.updated_at - b.updated_at)
-      .map((quote) => ({ at: quote.updated_at, value: Number(convert(quote.cents_per_coin).toFixed(4)) })) });
-    return [
-      make('Bid', this.quotes().filter((quote) => quote.side === 'BID')),
-      make('Ask', this.quotes().filter((quote) => quote.side === 'ASK')),
-      make('Actual trade', this.quotes().filter((quote) => quote.status === 'FILLED')),
-    ];
-  });
 
   protected readonly retained = computed(() => this.txns().length);
 
@@ -338,8 +298,4 @@ export class EconomyPage {
   });
 
   private moneySeries(series: Series): Series { return { ...series, points: series.points.map(p => ({ ...p, value: this.money.chart(p.value) })) }; }
-}
-
-function trimNumber(value: number): string {
-  return String(Number(value.toFixed(4)));
 }

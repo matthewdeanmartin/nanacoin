@@ -9,7 +9,7 @@ import { Mastodon } from '../api/mastodon';
   selector: 'app-invite',
   imports: [FormsModule],
   template: `
-    <h1>Invite</h1>
+    <h1>Invitations</h1>
     <p class="lede">Tell friends and family about NanaCoin.</p>
     <section class="panel panel--compact">
       <label>

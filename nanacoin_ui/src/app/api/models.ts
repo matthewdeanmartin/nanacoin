@@ -39,6 +39,7 @@ export type UserStatus = 'ACTIVE' | 'DISABLED';
 export type ListingStatus = 'ACTIVE' | 'SOLD' | 'CANCELLED';
 
 export type TransactionKind =
+  | 'MESSAGE'
   | 'ISSUE'
   | 'RETIRE'
   | 'TRANSFER'
@@ -160,6 +161,9 @@ export interface Offer {
   listing_title: string;
   /** Account that owns the listing and receives offers. */
   listing_owner?: AccountId;
+  listing_owner_name?: string;
+  listing_side?: ListingSide;
+  reversible?: boolean;
   /** Who made the offer. */
   offerer: AccountId;
   offerer_name: string;

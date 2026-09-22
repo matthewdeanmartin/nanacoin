@@ -212,3 +212,24 @@ lotto terms and balances exactly or reject the reform if rounding is required.
 The browser-only demo displays an explicit notice; lotto runs on the Rust server.
 The Go app is unchanged. Development journals/checkpoints from before this schema
 may be reset; no old-schema compatibility is provided.
+
+## Bank mail
+
+A transfer of zero NC with a nonblank memo is a message. It uses the ordinary
+transaction journal, idempotency receipts, checkpoints, and retained history;
+no separate messaging database or financial postings are introduced. Sender and
+recipient are the ordered zero-value transaction legs. The wire kind is MESSAGE.
+Messages cannot be reversed and do not change balances, supply, or loan credit
+eligibility. Negative transfers and blank messages are rejected.
+
+Messages appear in the participants' account transaction histories, and are
+excluded from the public notebook and public transaction reads. Administrative
+state snapshots remain privileged audit data. Messages share the bounded history
+window with payments. Mail combines retained transactions, offers and loan
+requests; its New markers are local to the browser and account. Mastodon is an
+optional copy sent after the NanaCoin record succeeds, never a prerequisite for
+local delivery. A failed copy does not undo or repeat the bank record.
+
+Offer records preserve their listing direction and title so retained proposals
+remain understandable after the listing is recycled. The UI groups incoming
+buy/sell offers and outgoing buy/sell offers and names both parties explicitly.

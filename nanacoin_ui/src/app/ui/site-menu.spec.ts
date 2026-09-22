@@ -20,7 +20,11 @@ describe('responsive site navigation', () => {
    const buySell = [...fixture.nativeElement.querySelectorAll('details')].find((group: Element) => group.textContent?.includes('Buy/Sell'));
    expect(buySell?.textContent).toContain('Market');
    expect(buySell?.textContent).toContain('Offer to Sell');
-   expect(buySell?.textContent).toContain('Offers Received');
+   expect(buySell?.textContent).toContain('Offers');
+   const mail = [...fixture.nativeElement.querySelectorAll('details')].find((g: Element) => g.querySelector('summary')?.textContent === 'Mail');
+   expect([...mail!.querySelectorAll('a')].map((a: Element)=>a.textContent)).toEqual(['Send Money','Messages','Invitations']);
+   const loans = [...fixture.nativeElement.querySelectorAll('details')].find((g: Element) => g.querySelector('summary')?.textContent === 'Loans and Credit');
+   expect([...loans!.querySelectorAll('a')].map((a: Element)=>a.textContent)).toEqual(['Loans','Lotto']);
    expect(fixture.nativeElement.textContent).toContain('Board Health');
  });
  it('toggles expanded state and dismisses on Escape or outside click', () => {

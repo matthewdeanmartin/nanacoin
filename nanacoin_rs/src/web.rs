@@ -167,6 +167,8 @@ fn route(
                 | "/offers"
                 | "/forex"
                 | "/lotto"
+                | "/messages"
+                | "/loans"
                 | "/history"
                 | "/economy"
                 | "/clientlog"

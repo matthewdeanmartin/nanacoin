@@ -40,6 +40,7 @@ async function render(quotes: Quote[], me: Partial<{ account: string; balance: n
   });
   const api = TestBed.inject(NanacoinService);
   api.quotes = () => Promise.resolve({ quotes });
+  api.ledger = () => Promise.resolve({transactions: [], circulation: 0});
 
   const session = TestBed.inject(Session);
   session.me.set({
@@ -63,6 +64,13 @@ async function render(quotes: Quote[], me: Partial<{ account: string; balance: n
 afterEach(() => TestBed.resetTestingModule());
 
 describe('the exchange book', () => {
+  it('shows the exchange chart while leaving the posting rate blank', async () => {
+    const {fixture,text} = await render([]);
+    const input = fixture.nativeElement.querySelector('input[name="rate"]') as HTMLInputElement;
+    expect(input.value).toBe(''); expect(input.placeholder).not.toBe('25');
+    expect(text).toContain('Last completed trade: None yet');
+    expect(fixture.nativeElement.querySelector('app-forex-chart')).not.toBeNull();
+  });
   it('describes an ask as paying dollars to get coins', async () => {
     const { text } = await render([quote({ side: 'ASK', cents_per_coin: 25, coins: 10 })]);
 

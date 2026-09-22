@@ -254,7 +254,7 @@ export class DemoLedger {
 
   ledger(limit: number): { transactions: Transaction[]; circulation: number } {
     return {
-      transactions: this.named(this.transactions.slice(-limit).reverse()),
+      transactions: this.named(this.transactions.filter(t => t.kind !== 'MESSAGE').slice(-limit).reverse()),
       circulation: -this.balanceOf(SYSTEM_ISSUANCE),
     };
   }
@@ -396,7 +396,8 @@ export class DemoLedger {
     economic?: { economic_kind: EconomicKind; thing?: string; quantity_milli: number; unit: EconomicUnit },
   ): Transaction {
     this.requireActive(actor);
-    this.requireAmount(amount);
+    if (amount === 0) { if (!memo.trim() || new TextEncoder().encode(memo).length > 96) throw new DemoError(400, 'invalid_input', 'Write a message of at most 96 bytes.'); }
+    else this.requireAmount(amount);
     if (to === actor.account) {
       throw new DemoError(400, 'self_deal', 'You cannot pay yourself.');
     }
@@ -404,7 +405,7 @@ export class DemoLedger {
     if (economic?.economic_kind === 'LABOR' && this.userByAccount(to)?.role === 'nana') {
       throw new DemoError(403, 'forbidden', 'Nana cannot sell labor.');
     }
-    return this.append('TRANSFER', actor.id, memo, [
+    return this.append(amount === 0 ? 'MESSAGE' : 'TRANSFER', actor.id, memo, [
       { account: actor.account, name: '', amount: -amount },
       { account: to, name: '', amount },
     ], economic);
@@ -550,7 +551,7 @@ export class DemoLedger {
    */
   reverse(actor: DemoUser, id: string, reason: string): Transaction {
     const original = this.transactions.find((t) => t.id === id);
-    if (original?.reference?.startsWith('nickle:') || original?.reference?.startsWith('loan-')) {
+    if (original?.kind === 'MESSAGE' || original?.reference?.startsWith('nickle:') || original?.reference?.startsWith('loan-')) {
       throw new DemoError(409, 'voucher_transaction', 'Bearer voucher transfers cannot be reversed independently of their voucher.');
     }
     if (!original) throw new DemoError(404, 'not_found', 'No such transaction.');
@@ -738,6 +739,8 @@ export class DemoLedger {
       listing: l.id,
       listing_title: l.title,
       listing_owner: l.seller,
+      listing_owner_name: this.userByAccount(l.seller)?.display_name ?? l.seller,
+      listing_side: l.side ?? 'SELL',
       offerer: actor.account,
       offerer_name: actor.display_name,
       amount,

@@ -161,7 +161,9 @@ fn transaction<'a>(state: &'a State, tx: &'a Transaction) -> TransactionView<'a>
     };
     TransactionView {
         id: id("tx-", tx.id),
-        kind: if tx.reverses.is_some() {
+        kind: if tx.amount == 0 {
+            "MESSAGE"
+        } else if tx.reverses.is_some() {
             "REVERSAL"
         } else if tx.listing.is_some() {
             "PURCHASE"
@@ -534,6 +536,7 @@ pub(crate) fn route<J: Journal>(
                             .iter()
                             .rev()
                             .filter(|t| t.usd == usd && (t.from == member || t.to == member))
+                            .filter(|t| t.amount != 0 || t.from == actor || t.to == actor)
                             .take(limit)
                             .map(|t| transaction(&s.state, t)),
                     ),
@@ -546,7 +549,7 @@ pub(crate) fn route<J: Journal>(
             s.state
                 .history
                 .iter()
-                .find(|t| t.id == tx_id)
+                .find(|t| t.id == tx_id && (t.amount != 0 || t.from == actor || t.to == actor))
                 .ok_or(Error::NotFound)?;
             return transaction_response(&s.state, tx_id, output);
         }
@@ -687,7 +690,13 @@ pub(crate) fn route<J: Journal>(
                 unit: Option<Unit>,
             }
             let r: Transfer = parse(body)?;
-            if r.economic_kind.is_some()
+            if r.amount == 0 {
+                Command::Transfer {
+                    to: member_id(&r.to, "account-")?,
+                    amount: 0,
+                    memo: r.memo,
+                }
+            } else if r.economic_kind.is_some()
                 || r.thing.is_some()
                 || r.quantity.is_some()
                 || r.unit.is_some()
@@ -925,6 +934,7 @@ pub(crate) fn public_ledger(
                     .history
                     .iter()
                     .rev()
+                    .filter(|t| t.amount != 0)
                     .take(limit)
                     .map(|t| transaction(state, t)),
             ),
@@ -939,7 +949,15 @@ pub(crate) fn public_transaction(
     id: &str,
     output: &mut [u8],
 ) -> Result<usize, Error> {
-    transaction_response(state, number(id, "tx-")?, output)
+    let sequence = number(id, "tx-")?;
+    if !state
+        .history
+        .iter()
+        .any(|t| t.id == sequence && t.amount != 0)
+    {
+        return Err(Error::NotFound);
+    }
+    transaction_response(state, sequence, output)
 }
 fn transaction_response(state: &State, sequence: u64, output: &mut [u8]) -> Result<usize, Error> {
     serialize(

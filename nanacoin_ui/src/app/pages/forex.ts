@@ -29,7 +29,8 @@ import { inject as moneyInject } from '@angular/core';
 import { Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
-import { Quote, QuoteSide } from '../api/models';
+import { ForexChart } from '../economy/forex-chart';
+import { Quote, QuoteSide, Transaction } from '../api/models';
 import { ApiError, NanacoinService, newIdempotencyKey } from '../api/nanacoin.service';
 import { Session } from '../api/session';
 import { Dialogs } from '../ui/dialog';
@@ -38,7 +39,7 @@ import { Mastodon } from '../api/mastodon';
 
 @Component({
   selector: 'app-forex',
-  imports: [MoneyPipe, FormsModule],
+  imports: [MoneyPipe, FormsModule, ForexChart],
   template: `
     <h1>Forex</h1>
 
@@ -94,6 +95,45 @@ import { Mastodon } from '../api/mastodon';
       @if (loading()) {
         <p class="muted">Loading…</p>
       }
+
+      <section class="forex-posting">
+        <div><app-forex-chart [quotes]="quotes()" [transactions]="transactions()" [decimals]="money.decimals()" />
+        @if (chartError()) { <p role="alert">Could not load transaction history. The chart shows retained quotes only.</p> }</div>
+      <details class="disclosure" open>
+        <summary>Post your own rate</summary>
+        <form (ngSubmit)="post()">
+          <label>
+            I want to
+            <select name="side" [(ngModel)]="side">
+              <option value="ASK">sell coins for dollars</option>
+              <option value="BID">buy coins with dollars</option>
+            </select>
+          </label>
+          <label>
+            How many coins
+            <input name="coins" type="text" inputmode="decimal" [(ngModel)]="coins" required />
+          </label>
+          <label>
+            Cents per coin
+            <input
+              name="rate"
+              type="number"
+              min="1"
+              step="1"
+              [(ngModel)]="rate"
+              required
+              placeholder="Enter a rate"
+            />
+          </label>
+          @if (preview(); as p) {
+            <p class="muted small">{{ p }}</p>
+          }
+          <button class="btn" title="Publish this rate for another household member to take" type="submit" [disabled]="posting()">
+            {{ posting() ? 'Posting…' : 'Post rate' }}
+          </button>
+        </form>
+      </details>
+      </section>
 
       <!--
         Asks first, cheapest first, because that is the one a buyer reads:
@@ -169,40 +209,6 @@ import { Mastodon } from '../api/mastodon';
         </div>
       }
 
-      <details class="disclosure">
-        <summary>Post your own rate</summary>
-        <form (ngSubmit)="post()">
-          <label>
-            I want to
-            <select name="side" [(ngModel)]="side">
-              <option value="ASK">sell coins for dollars</option>
-              <option value="BID">buy coins with dollars</option>
-            </select>
-          </label>
-          <label>
-            How many coins
-            <input name="coins" type="text" inputmode="decimal" [(ngModel)]="coins" required />
-          </label>
-          <label>
-            Cents per coin
-            <input
-              name="rate"
-              type="number"
-              min="1"
-              step="1"
-              [(ngModel)]="rate"
-              required
-              placeholder="25"
-            />
-          </label>
-          @if (preview(); as p) {
-            <p class="muted small">{{ p }}</p>
-          }
-          <button class="btn" title="Publish this rate for another household member to take" type="submit" [disabled]="posting()">
-            {{ posting() ? 'Posting…' : 'Post rate' }}
-          </button>
-        </form>
-      </details>
 
       @if (settled().length > 0) {
         <details class="disclosure">
@@ -225,6 +231,7 @@ import { Mastodon } from '../api/mastodon';
       }
     }
   `,
+  styles: [`.forex-posting { display:grid; grid-template-columns:minmax(0,1.6fr) minmax(0,1fr); gap:1.25rem; align-items:start; margin-block:1.5rem; } @media(max-width:760px) { .forex-posting {grid-template-columns:minmax(0,1fr);} }`],
 })
 export class ForexPage {
   protected readonly money = moneyInject(Money);
@@ -235,6 +242,8 @@ export class ForexPage {
   protected readonly session = inject(Session);
 
   protected readonly quotes = signal<Quote[]>([]);
+  protected readonly transactions = signal<Transaction[]>([]);
+  protected readonly chartError = signal(false);
   protected readonly loading = signal(false);
   protected readonly posting = signal(false);
 
@@ -345,6 +354,8 @@ export class ForexPage {
       const page = await this.api.quotes();
       this.quotes.set(page.quotes);
       this.unsupported.set(false);
+      try { const ledger = await this.api.ledger(365); this.transactions.set(ledger.transactions); this.chartError.set(false); }
+      catch { this.chartError.set(true); }
     } catch (e) {
       if (e instanceof ApiError && e.status === 404) {
         this.unsupported.set(true);

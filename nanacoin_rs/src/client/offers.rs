@@ -7,6 +7,8 @@ struct OfferView<'a> {
     listing: Id,
     listing_title: &'a str,
     listing_owner: Id,
+    listing_owner_name: &'a str,
+    listing_side: &'static str,
     offerer: Id,
     offerer_name: &'a str,
     amount: i64,
@@ -25,11 +27,14 @@ fn view<'a>(state: &'a State, offer: &'a Offer, now: u64) -> OfferView<'a> {
     OfferView {
         id: id("offer-", offer.id.0),
         listing: id("listing-", offer.listing),
-        listing_title: state
-            .listing(offer.listing)
-            .map(|l| l.title.as_str())
-            .unwrap_or(""),
+        listing_title: &offer.listing_title,
         listing_owner: account(offer.owner),
+        listing_owner_name: &state.member(offer.owner).unwrap().name,
+        listing_side: if offer.listing_side == Side::Buy {
+            "BUY"
+        } else {
+            "SELL"
+        },
         offerer: account(offer.offerer),
         offerer_name: state
             .member(offer.offerer)
@@ -38,9 +43,9 @@ fn view<'a>(state: &'a State, offer: &'a Offer, now: u64) -> OfferView<'a> {
         amount: offer.amount,
         message: &offer.message,
         status: if offer.phase == OfferPhase::Open
-            && state
+            && !state
                 .listing(offer.listing)
-                .is_ok_and(|listing| listing.status != ListingStatus::Active)
+                .is_ok_and(|listing| listing.status == ListingStatus::Active)
         {
             "NOT_SELECTED"
         } else {

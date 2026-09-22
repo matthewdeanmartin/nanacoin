@@ -207,7 +207,9 @@ function handle(req: HttpRequest<unknown>): unknown {
     const rest = path.slice('/accounts/'.length);
     if (rest.endsWith('/transactions')) {
       const account = rest.slice(0, -'/transactions'.length);
-      return demoLedger.history(account, Number(query.get('limit') ?? 50));
+      if (account !== me.account && me.role !== 'nana') throw new DemoError(403,'forbidden','This is another account.');
+      const result = demoLedger.history(account, Number(query.get('limit') ?? 50));
+      return { ...result, transactions: result.transactions.filter(t=>t.kind !== 'MESSAGE' || t.postings.some(p=>p.account===me.account)) };
     }
   }
 

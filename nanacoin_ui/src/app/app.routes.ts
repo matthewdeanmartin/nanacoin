@@ -8,6 +8,7 @@ import { IS_DEMO } from './demo/demo';
  * and the part most people never open - are not in the initial bundle.
  */
 export const routes: Routes = [
+  { path: 'messages', loadComponent: () => import('./pages/messages').then(m => m.MessagesPage), title: 'Messages — NanaCoin' },
   { path: 'lotto', loadComponent: () => import('./pages/lotto').then(m => m.LottoPage), title: 'Lotto — NanaCoin' },
   { path: 'loans', loadComponent: () => import('./pages/loans').then(m => m.LoansPage), title: 'Loans & credit — NanaCoin' },
   { path: 'about', loadComponent: () => import('./pages/about').then(m => m.AboutPage), title: 'About — NanaCoin' },
@@ -28,12 +29,12 @@ export const routes: Routes = [
   {
     path: 'send',
     loadComponent: () => import('./pages/send').then((m) => m.SendPage),
-    title: 'Send — NanaCoin',
+    title: 'Send Money — NanaCoin',
   },
   {
     path: 'offers',
     loadComponent: () => import('./pages/offers').then((m) => m.OffersPage),
-    title: 'Offers Received — NanaCoin',
+    title: 'Offers — NanaCoin',
   },
   {
     path: 'forex',
@@ -73,7 +74,7 @@ export const routes: Routes = [
   {
     path: 'invite',
     loadComponent: () => import('./pages/invite').then((m) => m.InvitePage),
-    title: 'Invite — NanaCoin',
+    title: 'Invitations — NanaCoin',
   },
   {
     path: 'diagnostics',

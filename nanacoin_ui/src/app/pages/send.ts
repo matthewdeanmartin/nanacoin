@@ -27,7 +27,7 @@ interface RecentSend {
   selector: 'app-send',
   imports: [MoneyPipe, FormsModule],
   template: `
-    <h1>Send</h1>
+    <h1>Send Money or a Message</h1>
 
     <div class="tabs" role="tablist" aria-label="Send sections">
       <button class="tab" type="button" role="tab" [attr.aria-selected]="activeTab() === 'money'" (click)="activeTab.set('money')">Send Money</button>
@@ -54,14 +54,14 @@ interface RecentSend {
         <label>
           Amount
           <input name="amount" type="text" inputmode="decimal" [(ngModel)]="amount"
-                 placeholder="Optional for a message" />
+                 placeholder="0 for a message" />
         </label>
         <label>
           Message / what for?
-          <input name="memo" [ngModel]="memo" (ngModelChange)="memo = allCaps ? $event.toLocaleUpperCase() : $event" maxlength="140"
+          <input name="memo" [ngModel]="memo" (ngModelChange)="memo = allCaps ? $event.toLocaleUpperCase() : $event" maxlength="96"
                  placeholder="Taking out the trash" />
         </label>
-        @if (amount !== null) {
+        @if (isPayment()) {
           <label>
             What kind of exchange is this?
             <select name="economicKind" [(ngModel)]="economicKind" required>
@@ -92,14 +92,13 @@ interface RecentSend {
           <input name="allCaps" type="checkbox" [ngModel]="allCaps" (ngModelChange)="setAllCaps($event)" />
           ALL CAPS
         </label>
-        @if (amount !== null) {
-          <label class="checkbox">
-            <input name="sendDm" type="checkbox" [(ngModel)]="sendDm" />
-            Also send this as a private Mastodon message
-          </label>
-        }
-        <button class="btn" title="Send coins, a private Mastodon message, or both" type="submit" [disabled]="busy()">
-          {{ busy() ? 'Sending…' : (amount === null ? 'Send private message' : 'Send') }}
+        <p class="muted small">Zero or an empty amount sends a NanaCoin message without moving money.</p>
+        <label class="checkbox">
+          <input name="sendDm" type="checkbox" [(ngModel)]="sendDm" />
+          Also send a copy through Mastodon
+        </label>
+        <button class="btn" title="Record a payment or message in NanaCoin" type="submit" [disabled]="busy()">
+          {{ busy() ? 'Sending…' : (isPayment() ? 'Send money' : 'Send message') }}
         </button>
       </form>
 
@@ -139,7 +138,7 @@ interface RecentSend {
         <label>Amount <input name="allowanceAmount" type="text" inputmode="decimal" [ngModel]="allowanceAmount" (ngModelChange)="allowanceAmount = $event"></label>
         <label>Frequency <select name="allowanceCadence" [ngModel]="allowanceCadence" (ngModelChange)="allowanceCadence = $event"><option value="WEEKLY">Weekly</option><option value="MONTHLY">Monthly</option></select></label>
         <label>First payment date <input name="allowanceFirstDue" type="date" [ngModel]="allowanceFirstDue" (ngModelChange)="allowanceFirstDue = $event"></label>
-        <label>Description <input name="allowanceMemo" maxlength="140" [ngModel]="allowanceMemo" (ngModelChange)="allowanceMemo = $event"></label>
+        <label>Description <input name="allowanceMemo" maxlength="96" [ngModel]="allowanceMemo" (ngModelChange)="allowanceMemo = $event"></label>
         <button class="btn" type="button" (click)="saveAllowance()">Save allowance</button>
       </section>
 
@@ -244,93 +243,49 @@ export class SendPage {
     }
   }
 
+  private readonly pendingKeys = new Map<string, string>();
+  protected isPayment(): boolean {
+    try { return this.money.parse(this.amount ?? '0') > 0; } catch { return false; }
+  }
   protected async send(): Promise<void> {
     if (this.busy()) return;
-
-    if (!this.to) {
-      // An empty <select required> passes browser validation when it has no
-      // options, so this is checked rather than assumed.
-      this.toasts.error('Choose who the coins are for.');
-      return;
+    if (!this.to) { this.toasts.error('Choose a recipient.'); return; }
+    let amount: number;
+    try { amount = this.money.parse(this.amount === null || this.amount === '' ? '0' : this.amount); }
+    catch (e) { this.toasts.fromError(e); return; }
+    const memo = this.memo.trim();
+    if (amount === 0 && !memo) { this.toasts.error('Write a message first.'); return; }
+    if (new TextEncoder().encode(memo).length > 96) { this.toasts.error('Keep the message within 96 bytes; some characters use more than one.'); return; }
+    if (amount > 0 && (!this.economicKind || !validQuantity(this.quantity))) {
+      this.toasts.error('Choose an exchange kind and a positive quantity with at most three decimal places.'); return;
     }
-    let amount: number | null;
-    try { amount = this.amount === null || this.amount === '' ? null : this.money.parse(this.amount); } catch (e) { this.toasts.fromError(e); return; }
-    if (amount !== null && (!Number.isInteger(amount) || amount <= 0)) {
-      this.toasts.error('Enter a positive amount in NC, or leave it empty for a message.');
-      return;
+    const recipient = this.recipient(), wantsDm = this.sendDm;
+    if (wantsDm && !memo) { this.toasts.error('Write a message for the Mastodon copy.'); return; }
+    if (wantsDm && (!recipient?.mastodon_id || !this.mastodon.connected())) {
+      this.toasts.error('A Mastodon copy needs a connected account and a registered recipient. Uncheck it to send through NanaCoin only.'); return;
     }
-    if (amount !== null && !this.economicKind) {
-      this.toasts.error('Choose what kind of exchange this payment is for.');
-      return;
+    const economic = amount > 0 ? { economic_kind: this.economicKind as EconomicKind, quantity: this.quantity, unit: this.unit } : undefined;
+    const identity = JSON.stringify([this.to, amount, memo, economic]);
+    if (amount > 0 && !this.pendingKeys.has(identity)) {
+      const duplicate = this.recentSends().find(s => s.recipientAccount === this.to && s.amount === amount && s.description.trim() === memo);
+      if (duplicate && await this.dialogs.confirm({ title: 'Send the same payment again?', message: 'This matches a recent transaction. Continue only if you mean to pay twice.', detail: [`${this.money.format(amount)} NC to ${duplicate.recipient}`, memo || 'No description'], confirmLabel: 'Send again' }) === null) return;
     }
-    if (amount !== null && !validQuantity(this.quantity)) {
-      this.toasts.error('Quantity must be a positive decimal with at most three places.');
-      return;
-    }
-    const recipient = this.recipient();
-    const wantsDm = amount === null || this.sendDm;
-    if (wantsDm && !this.memo.trim()) { this.toasts.error('Write a message first.'); return; }
-    if (wantsDm && !recipient?.mastodon_id) {
-      this.toasts.error('That person has not registered a Mastodon ID with NanaCoin.'); return;
-    }
-    if (wantsDm && !this.mastodon.connected()) { this.toasts.error('Connect your Mastodon account first.'); return; }
-
-    if (amount !== null) {
-      const duplicate = this.recentSends().find((sent) =>
-        sent.recipientAccount === this.to
-        && sent.amount === amount
-        && sent.description.trim() === this.memo.trim());
-      if (duplicate) {
-        const answer = await this.dialogs.confirm({
-          title: 'Send the same payment again?',
-          message: 'This matches a recent transaction. Continue only if you mean to pay twice.',
-          detail: [
-            `${this.money.format(amount)} NC to ${duplicate.recipient}`,
-            this.memo.trim() || 'No description',
-          ],
-          confirmLabel: 'Send again',
-        });
-        if (answer === null) return;
-      }
-    }
-
     this.busy.set(true);
-    // Generated once per attempted transfer, before the request. A retry with
-    // this same key returns the original transaction instead of sending twice.
-    const key = newIdempotencyKey();
-    let paymentSent = false;
+    const key = this.pendingKeys.get(identity) ?? newIdempotencyKey(); this.pendingKeys.set(identity,key);
     try {
-      if (amount !== null) {
-        await this.api.transfer(this.to, amount, this.memo.trim(), key, {
-          economic_kind: this.economicKind as EconomicKind,
-          quantity: this.quantity,
-          unit: this.unit,
-        });
-        paymentSent = true;
-        this.amount = null;
-        this.economicKind = '';
-        this.quantity = '1';
-        this.unit = 'EACH';
-        await this.session.refresh();
-        this.history.reload();
-      }
+      await this.api.transfer(this.to,amount,memo,key,economic);
+      this.pendingKeys.delete(identity);
+      this.amount = null; this.memo = ''; this.sendDm = false; this.allCaps = false;
+      this.economicKind = ''; this.quantity = '1'; this.unit = 'EACH';
+      this.history.reload();
+      this.toasts.ok(amount === 0 ? 'Message saved in NanaCoin Mail.' : 'Coins sent.');
       if (wantsDm && recipient) {
-        try { await this.mastodon.sendDirect(recipient, this.memo); }
-        catch (e) {
-          const detail = e instanceof Error ? e.message : 'Mastodon error';
-          this.toasts.error(paymentSent ? `Coins sent, but the private message failed: ${detail}` : `Private message failed: ${detail}`);
-          return;
-        }
+        try { await this.mastodon.sendDirect(recipient,memo); }
+        catch (e) { this.toasts.error(`Saved in NanaCoin, but the Mastodon copy failed: ${e instanceof Error ? e.message : 'Mastodon error'}`); }
       }
-      this.memo = '';
-      this.sendDm = false;
-      this.allCaps = false;
-      this.toasts.ok(amount === null ? 'Private message sent.' : wantsDm ? 'Coins and private message sent.' : 'Coins sent.');
-    } catch (e) {
-      this.toasts.fromError(e);
-    } finally {
-      this.busy.set(false);
-    }
+      await this.session.refresh();
+    } catch (e) { this.toasts.fromError(e); }
+    finally { this.busy.set(false); }
   }
 
   protected saveAllowance(): void {

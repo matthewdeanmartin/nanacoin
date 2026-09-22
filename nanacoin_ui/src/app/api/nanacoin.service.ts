@@ -590,6 +590,8 @@ export class NanacoinService {
   }
 
   /** Refuses an offer, leaving the listing open for others. */
+  unacceptOffer(id: OfferId, reason: string, key: string): Promise<OfferResult> { return this.post(`/offers/${encodeURIComponent(id)}/unaccept`, {reason}, key); }
+
   declineOffer(id: OfferId): Promise<Offer> {
     return this.post<Offer>(`/offers/${encodeURIComponent(id)}/decline`, {});
   }

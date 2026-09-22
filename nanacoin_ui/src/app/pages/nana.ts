@@ -328,7 +328,7 @@ export class NanaPage {
   /** A reversal cannot itself be reversed, and issuance is corrected by retiring. */
   protected reversible(t: Transaction): boolean {
     if (t.reference?.startsWith('lotto-') || t.reference?.startsWith('nickle:')) return false;
-    return !t.reversed_by && t.kind !== 'REVERSAL' && t.kind !== 'ISSUE';
+    return t.kind !== 'MESSAGE' && !t.reversed_by && t.kind !== 'REVERSAL' && t.kind !== 'ISSUE';
   }
 
   protected kindLabel(kind: Transaction['kind']): string {

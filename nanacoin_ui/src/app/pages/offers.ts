@@ -1,28 +1,10 @@
 import { Money, MoneyPipe } from '../api/money';
 import { inject as moneyInject } from '@angular/core';
-// Offers: proposing a deal, and deciding on the ones proposed to you.
-//
-// The marketplace could only ever do one thing before this - buy a listing at
-// its asking price. There was no way to offer 100 coins for peanut butter
-// cookies, and no way to haggle over a price. An offer is the missing step:
-// a proposal that moves no money until the other person accepts.
-//
-// # This page runs ahead of the server
-//
-// The endpoints it calls do not exist on the board yet. That is deliberate:
-// the board is memory-constrained and changing it is expensive, so the shape
-// of the feature is worth settling here - where a mistake costs a rebuild -
-// before any bytes are committed to a fixed-size array in RAM.
-//
-// So every request here may 404, and a 404 on /offers means "this NanaCoin is
-// older than this feature", not "something broke". The page says so plainly
-// rather than showing an error, because during this period that is the
-// expected state rather than a fault.
-
 import { Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
-import { Listing, Offer } from '../api/models';
+import { offerGroup, offerPayment, offerSentence } from './offer-language';
+import { Offer } from '../api/models';
 import { ApiError, NanacoinService, newIdempotencyKey } from '../api/nanacoin.service';
 import { Session } from '../api/session';
 import { Dialogs } from '../ui/dialog';
@@ -33,140 +15,44 @@ import { Mastodon } from '../api/mastodon';
   selector: 'app-offers',
   imports: [MoneyPipe, FormsModule],
   template: `
-    <h1>Offers Received</h1>
-
+    <h1>Offers</h1>
+    <p class="muted">Offers move money only when the listing owner accepts.</p>
     @if (mastodon.connected()) {
-      <label class="checkbox">
-        <input type="checkbox" [(ngModel)]="notifyAccepted" />
-        Send a private Mastodon message when I accept an offer
-      </label>
-      @if (notifyAccepted) {
-        <label class="checkbox"><input type="checkbox" [(ngModel)]="notificationAllCaps" /> ALL CAPS</label>
-      }
+      <label class="checkbox"><input type="checkbox" [(ngModel)]="notifyAccepted" /> Also send a Mastodon copy when accepting</label>
+      @if (notifyAccepted) { <label class="checkbox"><input type="checkbox" [(ngModel)]="notificationAllCaps" /> ALL CAPS</label> }
     }
-
-    @if (unsupported()) {
-      <!--
-        The board has not caught up yet. Not an error: it is the expected
-        state while the UI is built first, and saying so is more useful than
-        a red toast reporting a 404 nobody can act on.
-      -->
-      <p class="muted">
-        This NanaCoin does not support offers yet. The board needs newer
-        firmware; everything else works as before.
-      </p>
-    } @else {
-      @if (loading()) {
-        <p class="muted">Loading…</p>
-      }
-
-      <!-- Offers waiting on you: the ones with a decision to make. -->
-      @if (toDecide().length > 0) {
-        <h3>Waiting for you</h3>
-        <div class="cards">
-          @for (o of toDecide(); track o.id) {
-            <article class="card">
-              <h3>{{ o.listing_title }}</h3>
-              <p class="card__meta">
-                <strong>{{ o.amount | nc }} NC</strong>
-                · from {{ o.offerer_name }}
-              </p>
-              @if (o.message) {
-                <p class="card__desc">{{ o.message }}</p>
-              }
-              @if (!o.listing_title) {
-                <!--
-                  The listing this offer points at is gone - recycled, or
-                  written with a truncated ID by an older build. There is
-                  nothing to accept, so do not offer a button that cannot
-                  work; declining still tidies it away.
-                -->
-                <p class="card__status">
-                  The listing this refers to no longer exists.
-                </p>
-              }
-              <div class="card__actions">
-                @if (o.listing_title) {
-                  <button
-                    class="btn"
-                    title="Accept this proposal and settle the transaction after confirmation"
-                    (click)="accept(o)"
-                    [disabled]="busy() !== null"
-                  >
-                    {{ busy() === o.id ? 'Accepting…' : 'Accept' }}
-                  </button>
-                }
-                <button
-                  class="btn btn--quiet"
-                  title="Refuse this proposal without moving money"
-                  (click)="decline(o)"
-                  [disabled]="busy() !== null"
-                >
-                  Decline
-                </button>
-              </div>
-            </article>
-          }
-        </div>
-      }
-
-      <!-- Offers you have made and are still waiting on. -->
-      @if (mine().length > 0) {
-        <h3>Yours</h3>
-        <div class="cards">
-          @for (o of mine(); track o.id) {
-            <article class="card">
-              <h3>{{ o.listing_title }}</h3>
-              <p class="card__meta">
-                <strong>{{ o.amount | nc }} NC</strong>
-                · <span class="tag">{{ o.status.toLowerCase() }}</span>
-              </p>
-              @if (o.message) {
-                <p class="card__desc">{{ o.message }}</p>
-              }
-              @if (o.status === 'OPEN') {
-                <button
-                  class="btn btn--quiet"
-                  title="Take back this open proposal"
-                  (click)="withdraw(o)"
-                  [disabled]="busy() !== null"
-                >
-                  Withdraw
-                </button>
-              }
-            </article>
-          }
-        </div>
-      }
-
-      @if (closedReceived().length > 0) {
-        <details class="disclosure">
-          <summary>Closed offers received ({{ closedReceived().length }})</summary>
+    @if (unsupported()) { <p>This server does not support offers.</p> }
+    @else {
+      @if (loading()) { <p role="status">Loading offers…</p> }
+      @for (group of groups(); track group.id) {
+        <section class="offer-section" [attr.aria-labelledby]="group.id">
+          <h2 [id]="group.id">{{group.title}} <span class="muted small">({{group.offers.length}})</span></h2>
+          <p class="muted small">{{group.description}}</p>
           <div class="cards">
-            @for (o of closedReceived(); track o.id) {
-              <article class="card card--closed">
-                <h3>{{ o.listing_title }}</h3>
-                <p class="card__meta">
-                  <strong>{{ o.amount | nc }} NC</strong>
-                  · from {{ o.offerer_name }}
-                </p>
-                <p class="card__status">
-                  {{ o.status === 'ACCEPTED' || o.status === 'SETTLED' ? 'Accepted' : o.status === 'DECLINED' ? 'Declined' : o.status === 'NOT_SELECTED' ? 'Not selected because another offer was accepted' : o.status.toLowerCase() }}
-                </p>
+            @for (o of group.offers; track o.id) {
+              <article class="card">
+                <h3>{{o.listing_title || 'Listing no longer available'}}</h3>
+                <p>{{sentence(o)}}</p>
+                <p class="card__meta"><strong>{{o.amount | nc}} NC</strong> · {{payment(o)}} · {{o.status.toLowerCase().replaceAll('_', ' ')}}</p>
+                @if (o.message) { <p class="card__desc">{{o.message}}</p> }
+                <div class="offer-actions">
+                  @if (o.status === 'OPEN' && o.listing_owner === session.me()?.account) {
+                    <button class="btn" (click)="accept(o)" [disabled]="busy() !== null">Accept</button>
+                    <button class="btn btn--quiet" (click)="decline(o)" [disabled]="busy() !== null">Decline</button>
+                  }
+                  @if (o.status === 'OPEN' && o.offerer === session.me()?.account) {
+                    <button class="btn btn--quiet" (click)="withdraw(o)" [disabled]="busy() !== null">Withdraw</button>
+                  }
+                  @if (o.reversible) { <button class="btn btn--quiet" (click)="undo(o)" [disabled]="busy() !== null">Undo acceptance</button> }
+                </div>
               </article>
-            }
+            } @empty { <p class="muted small">No offers in this section.</p> }
           </div>
-        </details>
-      }
-
-      @if (!loading() && toDecide().length === 0 && mine().length === 0 && closedReceived().length === 0) {
-        <p class="muted">
-          No offers yet. Offer on something in the Market, or post a want-ad
-          there for something you would like someone to do.
-        </p>
+        </section>
       }
     }
   `,
+  styles: [`.offer-section { margin-block: 1.5rem; } .offer-actions { display:flex; flex-wrap:wrap; gap:.75rem; margin-top:1rem; } .offer-actions .btn { padding:.65rem 1rem; min-height:44px; }`],
 })
 export class OffersPage {
   protected readonly money = moneyInject(Money);
@@ -187,24 +73,20 @@ export class OffersPage {
   protected notifyAccepted = false;
   protected notificationAllCaps = false;
 
-  /** Open offers on listings this user owns: the ones needing a decision. */
-  protected readonly toDecide = computed(() => {
-    const me = this.session.me()?.account;
-    return this.offers().filter((o) => o.status === 'OPEN' && o.offerer !== me);
+  protected readonly sentence = offerSentence;
+  protected readonly payment = offerPayment;
+  protected readonly groups = computed(() => {
+    const account = this.session.me()?.account ?? '';
+    const name = this.session.me()?.display_name ?? 'this account';
+    return [
+      { id: 'received-buy', title: 'Received · offers to buy', description: `Other people have offered to buy from ${name}.` },
+      { id: 'received-sell', title: 'Received · offers to sell', description: `Other people have offered to sell to ${name}.` },
+      { id: 'sent-buy', title: 'Sent · offers to buy', description: `${name} has offered to buy from other people.` },
+      { id: 'sent-sell', title: 'Sent · offers to sell', description: `${name} has offered to sell to other people.` },
+    ].map(g => ({ ...g, offers: this.offers().filter(o => offerGroup(o,account) === g.id)
+      .sort((a,b) => Number(b.status === 'OPEN') - Number(a.status === 'OPEN') || b.updated_at-a.updated_at) }));
   });
-
-  /** Offers this user made, whatever became of them. */
-  protected readonly mine = computed(() => {
-    const me = this.session.me()?.account;
-    return this.offers().filter((o) => o.offerer === me);
-  });
-
-  /** Received offers remain visible after a winner closes the listing. */
-  protected readonly closedReceived = computed(() => {
-    const me = this.session.me()?.account;
-    return this.offers().filter((o) =>
-      o.listing_owner === me && o.offerer !== me && o.status !== 'OPEN');
-  });
+  protected readonly toDecide = computed(() => this.offers().filter(o => o.status === 'OPEN' && o.listing_owner === this.session.me()?.account));
 
   constructor() {
     void this.load();
@@ -243,12 +125,12 @@ export class OffersPage {
       title: 'Accept this offer?',
       message: 'This moves the money now and closes the listing.',
       detail: [
-        `${this.money.format(offer.amount)} ${offer.amount === 1 ? 'coin' : 'coins'} from ${offer.offerer_name}`,
+        `${offerPayment(offer)} ${this.money.format(offer.amount)} NC.`,
         offer.listing_title || 'a listing that no longer exists',
         ...(competing > 0
           ? [`This closes ${competing} competing ${competing === 1 ? 'offer' : 'offers'} as not selected.`]
           : []),
-        'You can undo this for a while afterwards, from the Offers tab.',
+        'Undo acceptance remains available until the server’s settlement deadline.',
       ],
       confirmLabel: 'Accept',
     });
@@ -278,6 +160,15 @@ export class OffersPage {
     } finally {
       this.busy.set(null);
     }
+  }
+
+  protected async undo(offer: Offer): Promise<void> {
+    if (this.busy()) return;
+    const reason = await this.dialogs.prompt({ title: 'Undo acceptance?', message: 'Return the payment and reopen the listing.', required: true });
+    if (reason === null) return;
+    this.busy.set(offer.id);
+    try { await this.api.unacceptOffer(offer.id,reason,newIdempotencyKey()); await this.session.refresh(); await this.load(); }
+    catch (e) { this.toasts.fromError(e); } finally { this.busy.set(null); }
   }
 
   protected async decline(offer: Offer): Promise<void> {

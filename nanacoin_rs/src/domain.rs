@@ -755,9 +755,21 @@ impl State {
                 self.member(*from)?;
                 self.posting(*from, MemberId(0), *amount)?;
             }
-            Command::Transfer { to, amount, .. } => {
-                self.member(*to)?;
-                self.posting(actor, *to, *amount)?;
+            Command::Transfer { to, amount, memo } => {
+                let recipient = self.member(*to)?;
+                if *amount == 0 {
+                    if actor == *to {
+                        return Err(Error::SelfDeal);
+                    }
+                    if recipient.disabled {
+                        return Err(Error::Disabled);
+                    }
+                    if memo.trim().is_empty() || memo.chars().any(char::is_control) {
+                        return Err(Error::InvalidInput);
+                    }
+                } else {
+                    self.posting(actor, *to, *amount)?;
+                }
             }
             Command::ClassifiedTransfer {
                 to,
@@ -903,7 +915,7 @@ impl State {
                     .find(|t| t.id == *transaction)
                     .ok_or(Error::NotFound)?;
                 let nana = self.member(actor)?.role == Role::Nana;
-                if tx.loan.is_some() || tx.lotto.is_some() {
+                if tx.amount == 0 || tx.loan.is_some() || tx.lotto.is_some() {
                     return Err(Error::Forbidden);
                 }
                 // Nana may correct any ordinary ledger error. A member may
@@ -1384,7 +1396,7 @@ impl State {
     }
 
     pub(crate) fn record_transaction(&mut self, tx: Transaction) {
-        if !tx.usd {
+        if !tx.usd && tx.amount != 0 {
             for id in [tx.from, tx.to] {
                 if id != MemberId(0) && id != crate::lotto::ESCROW {
                     let bit = 1u16 << (id.0 - 1);
