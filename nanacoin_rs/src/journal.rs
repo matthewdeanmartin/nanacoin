@@ -219,7 +219,9 @@ impl<J: Journal> Service<J> {
         request_id: u64,
         command: Command,
     ) -> Result<Receipt, Error> {
-        if actor == MemberId(0) || matches!(command, Command::RunLoan { .. }) {
+        if actor == MemberId(0)
+            || matches!(command, Command::RunLoan { .. } | Command::RunLotto { .. })
+        {
             return Err(Error::Forbidden);
         }
         self.commit(actor, request_id, command, None)
@@ -271,7 +273,9 @@ impl<J: Journal> Service<J> {
         if money_epoch != self.state.money_epoch {
             return Err(Error::StaleRequest);
         }
-        if actor == MemberId(0) || matches!(command, Command::RunLoan { .. }) {
+        if actor == MemberId(0)
+            || matches!(command, Command::RunLoan { .. } | Command::RunLotto { .. })
+        {
             return Err(Error::Forbidden);
         }
         let request_id = self.state.member(actor)?.last_request + 1;
@@ -384,6 +388,33 @@ impl<J: Journal> Service<J> {
             let command = Command::RunLoan {
                 loan: id,
                 expected_updated_at: self.state.loan(id)?.updated_at,
+            };
+            if self.state.validate_at(MemberId(0), &command, now).is_err() {
+                continue;
+            }
+            self.commit(MemberId(0), self.state.sequence + 1, command, None)?;
+            completed += 1;
+        }
+        let ids: heapless::Vec<u64, { crate::lotto::LOTTOS }> = self
+            .state
+            .lottos
+            .iter()
+            .filter(|l| l.step < 19 && now >= l.due_at())
+            .map(|l| l.id)
+            .collect();
+        for id in ids {
+            if completed == 4 {
+                break;
+            }
+            let l = self.state.lotto(id)?;
+            let command = Command::RunLotto {
+                lotto: id,
+                step: l.step,
+                ticket: if l.step == 0 {
+                    crate::lotto::random_ticket(l.total_tickets())?
+                } else {
+                    0
+                },
             };
             if self.state.validate_at(MemberId(0), &command, now).is_err() {
                 continue;

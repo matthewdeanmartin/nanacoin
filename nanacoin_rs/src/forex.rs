@@ -167,6 +167,7 @@ impl State {
                 usd: true,
                 quote: None,
                 loan: None,
+                lotto: None,
                 economic: EconomicDetails::default(),
             }),
             Command::PostQuote {
@@ -233,6 +234,7 @@ impl State {
                     usd: false,
                     quote: Some(q.id),
                     loan: None,
+                    lotto: None,
                     economic: EconomicDetails::default(),
                 };
                 let cash = Transaction {

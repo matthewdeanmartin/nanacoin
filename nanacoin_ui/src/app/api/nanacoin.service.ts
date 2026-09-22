@@ -13,7 +13,7 @@ import { Log } from './log';
 import { digestSha256, hasNativeDigest } from './sha256';
 import { ApiBase } from './api-base';
 import { Money } from './money';
-import { Loan, LoanBook, LoanOfferInput, ReformInput, ReformResult } from './models';
+import { Lotto, LottoBook, LottoTerms, Loan, LoanBook, LoanOfferInput, ReformInput, ReformResult } from './models';
 import {
   AccountHistory,
   AccountId,
@@ -608,6 +608,14 @@ export class NanacoinService {
   }
 
   // --- config ---
+  async lottos(): Promise<LottoBook> {
+    const source = this.base;
+    const result = await this.get<LottoBook>('/lottos');
+    if (this.base === source) { moneyEpoch = result.money_epoch; this.money.update(result.decimals, result.money_epoch, source); }
+    return result;
+  }
+  createLotto(terms: LottoTerms, key: string): Promise<Lotto> { return this.post('/lottos', terms, key); }
+  buyTickets(id: number, count: number, key: string): Promise<Lotto> { return this.post(`/lottos/${id}/tickets`, { count }, key); }
   async loans(): Promise<LoanBook> {
     const source = this.base;
     const result = await this.get<LoanBook>('/loans');

@@ -321,3 +321,7 @@ export interface TradeResult {
   coin_transaction: Transaction;
   cash_transaction: Transaction;
 }
+export type LottoKind = 'SIMPLE' | 'DELAYED' | 'SAVINGS';
+export interface LottoTerms { kind: LottoKind; title: string; ticket_price: number; closes_at: number; rate_bps: number }
+export interface Lotto { id: number; terms: LottoTerms; house: string; pool: number; interest: number; tickets: number; my_tickets: number; winner: string | null; winner_name: string | null; due_at: number; status: 'OPEN' | 'WAITING' | 'PAYING' | 'SETTLED' }
+export interface LottoBook { lottos: Lotto[]; decimals: number; money_epoch: number }

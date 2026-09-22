@@ -77,7 +77,7 @@ export class PublicLedger {
  refundable(txn: Transaction): boolean {
    const account = this.session.me()?.account;
    if (!account || txn.reversed_by || txn.kind === 'REVERSAL' || txn.kind === 'ISSUE' || txn.kind === 'RETIRE') return false;
-   if (txn.reference?.startsWith('quote-') || txn.reference?.startsWith('nickle:')) return false;
+   if (txn.reference?.startsWith('lotto-') || txn.reference?.startsWith('quote-') || txn.reference?.startsWith('nickle:')) return false;
    return txn.postings.some((posting) => posting.account === account && posting.amount > 0);
  }
 

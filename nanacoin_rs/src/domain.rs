@@ -58,6 +58,18 @@ pub enum Error {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum Command {
+    CreateLotto {
+        terms: crate::lotto::LottoTerms,
+    },
+    BuyTickets {
+        lotto: u64,
+        count: u32,
+    },
+    RunLotto {
+        lotto: u64,
+        step: u8,
+        ticket: u64,
+    },
     OfferLoan {
         terms: crate::loans::LoanTerms,
     },
@@ -363,6 +375,7 @@ pub struct Transaction {
     pub quote: Option<u64>,
     #[serde(default)]
     pub loan: Option<u64>,
+    pub lotto: Option<u64>,
     #[serde(default)]
     pub economic: EconomicDetails,
 }
@@ -375,6 +388,9 @@ pub struct State {
     pub(crate) credit_blocked: u16,
     #[serde(skip)]
     pub loans: Vec<crate::loans::Loan, { crate::loans::LOANS }>,
+    #[serde(skip)]
+    pub lottos: Vec<crate::lotto::Lotto, { crate::lotto::LOTTOS }>,
+    pub lotto_escrow: i64,
     pub household_name: Name,
     pub initial_grant: i64,
     pub currency: Name,
@@ -430,6 +446,8 @@ impl Default for State {
             money_epoch: 0,
             credit_blocked: 0,
             loans: Vec::new(),
+            lottos: Vec::new(),
+            lotto_escrow: 0,
             household_name: Name::new(),
             initial_grant: 1_000_000,
             currency: Name::try_from("NanaCoin").unwrap(),
@@ -456,6 +474,8 @@ impl State {
         self.money_epoch = 0;
         self.credit_blocked = 0;
         self.loans.clear();
+        self.lottos.clear();
+        self.lotto_escrow = 0;
         self.household_name.clear();
         self.initial_grant = 1_000_000;
         self.currency = Name::try_from("NanaCoin").unwrap();
@@ -564,6 +584,9 @@ impl State {
         command: &Command,
         now: u64,
     ) -> Result<(), Error> {
+        if matches!(command, Command::RunLotto { .. }) {
+            return self.validate_lotto(actor, command, now);
+        }
         if matches!(command, Command::RunLoan { .. }) {
             return self.validate_loan(actor, command, now);
         }
@@ -580,6 +603,9 @@ impl State {
             return Err(Error::Forbidden);
         }
         match command {
+            Command::CreateLotto { .. } | Command::BuyTickets { .. } | Command::RunLotto { .. } => {
+                self.validate_lotto(actor, command, now)?
+            }
             Command::OfferLoan { .. }
             | Command::AcceptLoan { .. }
             | Command::CloseLoan { .. }
@@ -877,7 +903,7 @@ impl State {
                     .find(|t| t.id == *transaction)
                     .ok_or(Error::NotFound)?;
                 let nana = self.member(actor)?.role == Role::Nana;
-                if tx.loan.is_some() {
+                if tx.loan.is_some() || tx.lotto.is_some() {
                     return Err(Error::Forbidden);
                 }
                 // Nana may correct any ordinary ledger error. A member may
@@ -990,6 +1016,9 @@ impl State {
         let mut posting_economic = EconomicDetails::default();
         let mut usd = false;
         match &event.command {
+            Command::CreateLotto { .. } | Command::BuyTickets { .. } | Command::RunLotto { .. } => {
+                self.apply_lotto(event)
+            }
             Command::OfferLoan { .. }
             | Command::AcceptLoan { .. }
             | Command::CloseLoan { .. }
@@ -1339,6 +1368,7 @@ impl State {
                 usd,
                 quote: None,
                 loan: None,
+                lotto: None,
                 economic: posting_economic,
             });
         }
@@ -1356,7 +1386,7 @@ impl State {
     pub(crate) fn record_transaction(&mut self, tx: Transaction) {
         if !tx.usd {
             for id in [tx.from, tx.to] {
-                if id != MemberId(0) {
+                if id != MemberId(0) && id != crate::lotto::ESCROW {
                     let bit = 1u16 << (id.0 - 1);
                     if tx.loan.is_some() {
                         self.credit_blocked |= bit;
@@ -1368,7 +1398,9 @@ impl State {
         }
         self.transactions += 1;
         for (id, delta) in [(tx.from, -tx.amount), (tx.to, tx.amount)] {
-            if id == MemberId(0) {
+            if id == crate::lotto::ESCROW {
+                self.lotto_escrow += delta;
+            } else if id == MemberId(0) {
                 if tx.usd {
                     self.usd_issuance_balance += delta;
                 } else {
@@ -1390,6 +1422,7 @@ impl State {
     }
 
     pub fn check_invariants(&self) -> Result<(), Error> {
+        self.check_lottos()?;
         if self.decimals > 8 || self.money_epoch > MAX_SEQUENCE {
             return Err(Error::CorruptJournal);
         }
@@ -1434,16 +1467,16 @@ impl State {
                 return Err(Error::CorruptJournal);
             }
         }
-        let sum = self
-            .members
-            .iter()
-            .try_fold(self.issuance_balance, |sum, m| {
-                if m.balance.unsigned_abs() > MAX_SEQUENCE {
-                    None
-                } else {
-                    sum.checked_add(m.balance)
-                }
-            });
+        let sum =
+            self.members
+                .iter()
+                .try_fold(self.issuance_balance + self.lotto_escrow, |sum, m| {
+                    if m.balance.unsigned_abs() > MAX_SEQUENCE {
+                        None
+                    } else {
+                        sum.checked_add(m.balance)
+                    }
+                });
         let usd_sum = self
             .members
             .iter()

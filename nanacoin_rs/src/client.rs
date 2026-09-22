@@ -12,6 +12,7 @@ use serde::{ser::SerializeSeq, Deserialize, Serialize};
 type Id = String<32>;
 mod forex;
 mod loans;
+mod lotto;
 mod offers;
 fn id(prefix: &str, number: u64) -> Id {
     let mut out = Id::new();
@@ -19,7 +20,9 @@ fn id(prefix: &str, number: u64) -> Id {
     out
 }
 fn account(member: MemberId) -> Id {
-    if member.0 == 0 {
+    if member == crate::lotto::ESCROW {
+        Id::try_from("account:lotto-escrow").unwrap()
+    } else if member.0 == 0 {
         Id::try_from("account:system-issuance").unwrap()
     } else {
         id("account-", member.0 as u64)
@@ -148,7 +151,9 @@ struct TransactionView<'a> {
 }
 fn transaction<'a>(state: &'a State, tx: &'a Transaction) -> TransactionView<'a> {
     let name = |member| {
-        if member == MemberId(0) {
+        if member == crate::lotto::ESCROW {
+            "Lotto escrow"
+        } else if member == MemberId(0) {
             "Issuance"
         } else {
             state.member(member).map(|m| m.name.as_str()).unwrap_or("")
@@ -179,6 +184,7 @@ fn transaction<'a>(state: &'a State, tx: &'a Transaction) -> TransactionView<'a>
         reference: tx
             .loan
             .map(|l| id("loan-", l))
+            .or_else(|| tx.lotto.map(|l| id("lotto-", l)))
             .or_else(|| tx.quote.map(|q| id("quote-", q))),
         economic_kind: tx.economic.kind,
         thing: (tx.economic.thing != 0).then(|| id("thing-", tx.economic.thing)),
@@ -373,6 +379,9 @@ pub(crate) fn route<J: Journal>(
     output: &mut [u8],
 ) -> Result<usize, Error> {
     let (path, query) = uri.split_once('?').unwrap_or((uri, ""));
+    if let Some(result) = lotto::route(s, actor, method, path, key, body, output) {
+        return result;
+    }
     if let Some(result) = loans::route(s, actor, method, path, key, body, output) {
         return result;
     }

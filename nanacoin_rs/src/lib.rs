@@ -14,3 +14,5 @@ pub mod offers;
 pub mod web;
 
 pub mod forex;
+
+pub mod lotto;

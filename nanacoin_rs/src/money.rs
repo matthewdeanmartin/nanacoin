@@ -36,6 +36,19 @@ impl State {
         let exponent = decimals as i16 - self.decimals as i16 - power as i16;
         let amount = |v| rescale(v, exponent, MAX_AMOUNT);
         let balance = |v| rescale(v, exponent, MAX_SEQUENCE as i64);
+        balance(self.lotto_escrow)?;
+        for l in &self.lottos {
+            amount(l.terms.ticket_price)?;
+            amount(l.pool)?;
+            amount(l.escrow)?;
+            amount(l.interest)?;
+            amount(l.interest_remaining)?;
+            if amount(l.interest)? as i128
+                != amount(l.pool)? as i128 * l.terms.rate_bps as i128 / 10_000
+            {
+                return Err(Error::Conflict);
+            }
+        }
         amount(self.initial_grant)?;
         balance(self.issuance_balance)?;
         for m in &self.members {
@@ -85,6 +98,14 @@ impl State {
         let exponent = decimals as i16 - self.decimals as i16 - power as i16;
         let convert =
             |value: &mut i64| *value = rescale(*value, exponent, MAX_SEQUENCE as i64).unwrap();
+        convert(&mut self.lotto_escrow);
+        for l in &mut self.lottos {
+            convert(&mut l.terms.ticket_price);
+            convert(&mut l.pool);
+            convert(&mut l.escrow);
+            convert(&mut l.interest);
+            convert(&mut l.interest_remaining);
+        }
         convert(&mut self.initial_grant);
         convert(&mut self.issuance_balance);
         for m in &mut self.members {

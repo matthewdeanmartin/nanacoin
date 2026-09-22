@@ -12,6 +12,7 @@ pub const MAX_ROWS: usize = 1
     + crate::offers::OFFERS
     + crate::forex::QUOTES
     + crate::loans::LOANS
+    + crate::lotto::LOTTOS
     + THINGS
     + MAX_RECORDS;
 
@@ -21,6 +22,8 @@ pub(super) fn save_empty<J: Journal>(j: &mut J) -> Result<(), Error> {
         money_epoch: 0,
         credit_blocked: 0,
         loans: 0,
+        lottos: 0,
+        lotto_escrow: 0,
         household_name: Name::new(),
         initial_grant: 1_000_000,
         currency: Name::try_from("NanaCoin").unwrap(),
@@ -49,6 +52,8 @@ struct Header {
     money_epoch: u64,
     credit_blocked: u16,
     loans: usize,
+    lottos: usize,
+    lotto_escrow: i64,
     household_name: Name,
     initial_grant: i64,
     currency: Name,
@@ -138,6 +143,8 @@ pub(super) fn save<J: Journal>(
         money_epoch: s.money_epoch,
         credit_blocked: s.credit_blocked,
         loans: s.loans.len(),
+        lottos: s.lottos.len(),
+        lotto_escrow: s.lotto_escrow,
         household_name: s.household_name.clone(),
         initial_grant: s.initial_grant,
         currency: s.currency.clone(),
@@ -190,6 +197,9 @@ pub(super) fn save<J: Journal>(
     for x in &s.loans {
         write(j, &mut index, 8, x)?;
     }
+    for x in &s.lottos {
+        write(j, &mut index, 9, x)?;
+    }
     for x in keys {
         write(j, &mut index, 6, x)?;
     }
@@ -209,6 +219,7 @@ pub(super) fn restore<J: Journal>(
     if h.decimals > 8
         || h.money_epoch > MAX_SEQUENCE
         || h.loans > crate::loans::LOANS
+        || h.lottos > crate::lotto::LOTTOS
         || h.members > MEMBERS
         || h.listings > LISTINGS
         || h.history > HISTORY
@@ -223,6 +234,7 @@ pub(super) fn restore<J: Journal>(
             + h.quotes
             + h.things
             + h.loans
+            + h.lottos
             + h.keys
             != j.checkpoint_rows()
         || h.sequence > MAX_SEQUENCE
@@ -233,6 +245,7 @@ pub(super) fn restore<J: Journal>(
     s.decimals = h.decimals;
     s.money_epoch = h.money_epoch;
     s.credit_blocked = h.credit_blocked;
+    s.lotto_escrow = h.lotto_escrow;
     s.currency = h.currency;
     s.initial_grant = h.initial_grant;
     s.offer_settles_after = h.offer_settles_after;
@@ -280,6 +293,11 @@ pub(super) fn restore<J: Journal>(
     for _ in 0..h.loans {
         s.loans
             .push(read(j, &mut index, 8)?)
+            .map_err(|_| Error::CorruptJournal)?;
+    }
+    for _ in 0..h.lottos {
+        s.lottos
+            .push(read(j, &mut index, 9)?)
             .map_err(|_| Error::CorruptJournal)?;
     }
     for _ in 0..h.keys {

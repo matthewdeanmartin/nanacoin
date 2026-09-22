@@ -20,6 +20,7 @@ import { IS_DEMO } from '../demo/demo';
          <a routerLink="/nana" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Household</a>
        }
        <a routerLink="/send" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Send</a>
+       <a routerLink="/lotto" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Lotto</a>
        <a routerLink="/loans" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Loans & credit</a>
        <details class="menu-group" routerLinkActive="current">
          <summary>Buy/Sell</summary>

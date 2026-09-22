@@ -124,6 +124,12 @@ describe('gdpSeries', () => {
 });
 
 describe('interestSeries', () => {
+  it('includes issued lotto interest in income and supply, excluding it from GDP', () => {
+    const interest = { ...issue(0, 3), economic_kind: 'INTEREST' as const, reference: 'lotto-1' };
+    expect(interestSeries([interest], 'day').points[0].value).toBe(3);
+    expect(gdpSeries([interest], 'day').points).toEqual([]);
+    expect(moneySupplySeries([interest], 3).points.at(-1)?.value).toBe(3);
+  });
   const paid = { ...transfer(0, 3, 'borrower', 'lender'), economic_kind: 'INTEREST' as const };
 
   it('reports the same payment as lender income and borrower expense, once in household totals', () => {

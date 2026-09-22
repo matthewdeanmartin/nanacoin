@@ -141,7 +141,7 @@ const LEDGER_LIMIT = 365;
 
         <app-line-chart
           title="Interest paid"
-          subtitle="Recorded interest payments in the available history. The lender earns what the borrower pays; principal and pure interest are excluded from GDP."
+          subtitle="Recorded interest payments in the available history. Includes loan and lotto interest, including newly issued lotto interest. Principal and pure interest are excluded from GDP."
           [series]="interest()"
         />
 

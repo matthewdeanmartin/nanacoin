@@ -37,7 +37,7 @@ Implemented client flows include provisioning/login/logout, status, members and 
 
 Negotiated offers support proposing, accepting, declining, withdrawing and undoing acceptance. Only the listing owner accepts, at the offered price; SELL charges the offerer and BUY charges the listing owner. Proposals need no funds, while acceptance does. Offers are private to the two parties and Nana. Undo is available to either party or Nana until the configured deadline (48 hours by default), creates a reversal even if the payee spent the money, and reopens the listing. Refund, status and reopening commit in one event. Acceptance details survive recent-history eviction, so an unexpired deal can still be undone.
 
-The September 19 parity pass adds USD wallets, a bounded forex quote book, external-currency listing metadata, account/listing reads, balance/ledger privacy, and member/listing timestamps. Recent transactions retain 365 records in a preallocated ring; HTTP ledger pages cap at 100. Old timestamp-less Rust events still report zero. Diagnostic/log streaming and Go journal import remain absent. Loans and interest are not implemented by either current server. See [PARITY.md](PARITY.md) for remaining differences. Direct purchases still pay immediately. Nana's manual reversal requires a retained transaction, permits correction overdrafts, and does not reopen listings; reversing an offer's payment prevents a second refund through unaccept.
+The September 19 parity pass adds USD wallets, a bounded forex quote book, external-currency listing metadata, account/listing reads, balance/ledger privacy, and member/listing timestamps. Recent transactions retain 365 records in a preallocated ring; HTTP ledger pages cap at 100. Old timestamp-less Rust events still report zero. Diagnostic/log streaming and Go journal import remain absent. The Rust server supports loans, scheduled interest and lotto. See [PARITY.md](PARITY.md) for remaining differences. Direct purchases still pay immediately. Nana's manual reversal requires a retained transaction, permits correction overdrafts, and does not reopen listings; reversing an offer's payment prevents a second refund through unaccept.
 
 Settlement deadlines use server wall time, never browser time or uptime. Firmware starts SNTP after Wi-Fi; optionally set `NANACOIN_NTP_SERVER` at build time for a reachable LAN time server. Until the clock is valid, timed offer mutations return 503 and offers are not advertised as reversible. A clock behind the last durable event also blocks timed mutations. Deadlines and the configuration survive replay; changing the window applies only to future acceptances.
 
@@ -173,3 +173,42 @@ The file and NVS adapters automatically save a durable checkpoint and retire the
 USD issuance is Nana-only. Quotes support BID/ASK, integer cents per coin, all-or-nothing takes, expiry and owner/Nana cancellation. A take validates both wallets and records both currency legs in one durable event. Balances and quote status replay together; there is no half-trade state. Ordinary disabled accounts cannot send or receive. Currency listings retain descriptive metadata but do not themselves move USD wallets.
 
 See [API.md](API.md), [PARITY.md](PARITY.md) and [VALIDATION.md](VALIDATION.md).
+
+## Lotto
+
+The Angular **Lotto** page uses the Rust-only `/api/v1/lottos` endpoints. Nana
+creates a draw with a title, ticket price, sales closing time, kind (`SIMPLE`,
+`DELAYED`, `SAVINGS`) and fixed 30-day `rate_bps` (0–10,000; SIMPLE requires 0).
+Members buy a positive integer `count` at `POST /api/v1/lottos/{id}/tickets`.
+POSTs require the usual durable idempotency key. Nana cannot enter her own draw.
+Each ticket has equal odds, including multiple tickets held by the same member.
+
+- **Simple:** draw at sales close; the winner receives the full ticket pool.
+- **Delayed:** draw 30 days after sales close; the winner receives the pool and
+  one fixed month's simple interest.
+- **Savings:** draw 30 days after sales close; every buyer receives their full
+  principal back, and one winner receives the whole pool's interest.
+
+One month means exactly 30 days. Interest starts at sales close, rounds down
+once to minor units, and does not grow further if the server is offline.
+Purchases are final. Ticket funds live in a separate escrow account, outside
+Nana's spendable balance. Interest uses the creating Nana's available coins
+first, then issues only the shortfall. Disabled accounts still receive owed
+settlements. Changes to the house's role do not change its existing obligations.
+No house fee is deducted. Zero-ticket draws finish without a winner or payment.
+
+The existing bounded background scheduler journals the random winning ticket
+before paying. OS randomness uses rejection sampling to avoid modulo bias.
+Each principal/interest leg is a separate durable occurrence, with a persisted
+settlement cursor; replay and checkpoints resume without redrawing or double
+payment. Ledger entries carry `lotto-` references and cannot be reversed outside
+the settlement model. Interest is classified as INTEREST, including issuance;
+principal is OTHER and does not count as production. A bad clock or accounting
+limit pauses settlement. No timer per draw or logged-in user is required.
+
+There are 16 retained draws; only completed draws may be recycled. Pool plus
+interest is capped at the existing per-transfer limit. Currency reforms rescale
+lotto terms and balances exactly or reject the reform if rounding is required.
+The browser-only demo displays an explicit notice; lotto runs on the Rust server.
+The Go app is unchanged. Development journals/checkpoints from before this schema
+may be reset; no old-schema compatibility is provided.

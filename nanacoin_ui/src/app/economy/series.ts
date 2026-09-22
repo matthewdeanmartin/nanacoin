@@ -93,13 +93,13 @@ export function gdpSeries(txns: Transaction[], bucket: Bucket): Series {
 
 /** Cash interest income/expense per account in the retained ledger window.
  * Postings already give reversals their correct sign; don't discard originals.
- * Household net interest is zero, since one person's expense is another's income.
+ * Lotto interest can also be issued when the house has insufficient funds.
  */
 export function interestSeries(txns: Transaction[], bucket: Bucket, account?: string): Series {
   const totals = new Map<number, number>();
   for (const txn of txns) {
     if (txn.economic_kind !== 'INTEREST') continue;
-    if (txn.kind !== 'TRANSFER' && txn.kind !== 'REVERSAL') continue;
+    if (txn.kind !== 'TRANSFER' && txn.kind !== 'REVERSAL' && txn.kind !== 'ISSUE') continue;
     const value = account
       ? txn.postings.filter((posting) => posting.account === account).reduce((sum, posting) => sum + posting.amount, 0)
       : (txn.kind === 'REVERSAL' ? -1 : 1) * positiveSum(txn);

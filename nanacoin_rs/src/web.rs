@@ -166,6 +166,7 @@ fn route(
                 | "/send"
                 | "/offers"
                 | "/forex"
+                | "/lotto"
                 | "/history"
                 | "/economy"
                 | "/clientlog"
@@ -286,7 +287,7 @@ mod tests {
     ];
     #[test]
     fn paths_and_methods() {
-        for path in ["/", "/nana", "/market?x=1", "/diagnostics/"] {
+        for path in ["/", "/nana", "/market?x=1", "/diagnostics/", "/lotto"] {
             assert_eq!(route(FIXTURE, "GET", path, "", "").unwrap().bytes, b"html");
         }
         for path in [

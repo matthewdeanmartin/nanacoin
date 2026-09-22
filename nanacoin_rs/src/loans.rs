@@ -445,6 +445,7 @@ impl State {
             usd: false,
             quote: None,
             loan: Some(loan.id),
+            lotto: None,
             economic: EconomicDetails {
                 kind,
                 ..EconomicDetails::default()

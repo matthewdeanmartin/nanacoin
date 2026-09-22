@@ -155,7 +155,7 @@ interface Row {
                 button at all: the correction exists, and a second one would
                 undo the undo.
               -->
-              @if (session.isNana() && !r.txn.reversed_by && r.txn.kind !== 'REVERSAL' && !r.txn.reference?.startsWith('nickle:')) {
+              @if (session.isNana() && !r.txn.reversed_by && r.txn.kind !== 'REVERSAL' && !r.txn.reference?.startsWith('lotto-') && !r.txn.reference?.startsWith('nickle:')) {
                 <button
                   class="btn btn--quiet btn--small"
                   type="button"
