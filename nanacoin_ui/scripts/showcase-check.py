@@ -56,17 +56,11 @@ def main():
                 if not nav.is_visible():
                     page.get_by_role('button', name='Open navigation menu').click()
                     expect(nav).to_be_visible()
-                group = None
-                if label == 'Economy' or (label == 'The Notebook' and nav.get_by_text('Accounting', exact=True).count()):
-                    group = 'Accounting'
-                elif label in ('Market', 'Offer to Sell', 'Offers Received', 'Forex', 'Nana-nickles'):
-                    group = 'Buy/Sell'
-                elif label in ('Browser Log', 'Browser Health', 'Board Health', 'Server Log'):
-                    group = 'System Info'
-                if group:
-                    summary = nav.get_by_text(group, exact=True)
-                    if summary.get_attribute('aria-expanded') != 'true':
-                        summary.click()
+                # Find the link's actual dropdown instead of maintaining a second
+                # menu map here. Native details exposes its state through open.
+                group = nav.locator('details').filter(has=page.get_by_role('link', name=label, exact=True, include_hidden=True))
+                if group.count() and not group.evaluate('e => e.open'):
+                    group.locator('summary').click()
                 link = nav.get_by_role('link', name=label, exact=True)
                 link.click()
                 expect(page.locator('#site-navigation a').filter(has_text=re.compile('^' + re.escape(label) + '$'))).to_have_attribute('aria-current', 'page')
@@ -131,9 +125,16 @@ def main():
             expect(page.get_by_role('dialog', name='Keyboard shortcuts')).not_to_be_visible()
             page.locator('app-market input[name="title"]').fill('')
             page.locator('app-market h1').first.click()
-            for label in ['My Account', 'Forex', 'Offers Received', 'Economy', 'Market']:
+            for label in ['My Account', 'Forex', 'Offers', 'Send Money', 'Messages', 'Invitations', 'Loans', 'Lotto', 'Economy', 'Market']:
                 navigate(label)
                 expect(page.locator('main h1').first).to_be_visible()
+            page.set_viewport_size({'width': 390, 'height': 844})
+            for label in ['Send Money', 'Messages', 'Invitations', 'Loans', 'Lotto', 'Offers']:
+                navigate(label)
+                expect(page.locator('main h1').first).to_be_visible()
+                expect(page.get_by_role('navigation', name='Main navigation')).not_to_be_visible()
+                assert page.evaluate('document.documentElement.scrollWidth <= innerWidth + 1'), label
+            page.set_viewport_size({'width': 1024, 'height': 768})
             navigate('Economy')
             indicators = page.locator('.economy-stats')
             expect(indicators.locator('app-economy-stat')).to_have_count(6)
@@ -166,9 +167,9 @@ def main():
             assert page.evaluate('document.documentElement.scrollWidth <= innerWidth + 1')
             page.set_viewport_size({'width': 1024, 'height': 768})
             assert indicators.locator('.stat').evaluate_all('cards => cards.every(e => e.scrollWidth <= e.clientWidth + 1)')
-            expect(page.get_by_text('Forex rates', exact=True)).to_be_visible()
-            expect(page.get_by_role('listitem').filter(has_text='Actual trade')).to_be_visible()
-            navigate('Send')
+            expect(page.get_by_text('Exchange rates', exact=True)).to_be_visible()
+            expect(page.get_by_role('listitem').filter(has_text='Completed trades')).to_be_visible()
+            navigate('Send Money')
             page.get_by_role('tab', name='Setup Allowance').click()
             expect(page.get_by_role('heading', name='Setup Allowance', exact=True)).to_be_visible()
             allowance_to = page.get_by_label('To')
