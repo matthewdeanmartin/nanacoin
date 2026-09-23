@@ -1,10 +1,11 @@
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AccountTodos, FulfillmentControl } from './fulfillment';
 import { Money, MoneyPipe } from '../api/money';
 import { inject as moneyInject } from '@angular/core';
 // Your own transactions, newest first.
 
 import { Component, computed, inject, resource, signal } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { AccountCommitments } from './account-commitments';
 import { Notebook } from '../ui/notebook';
 
@@ -48,19 +49,23 @@ interface Row {
     <p class="lede">Your balances, loans, debts, lotto results, and financial activity.</p>
 
     <p><strong>{{session.balance() | nc}} NC available</strong> · <a routerLink="/messages">Open Mail</a></p>
-    <nav class="section-nav" aria-label="My Account sections">
-      <button type="button" (click)="scrollTo('my-todos')">TODO</button>
-      <button type="button" (click)="scrollTo('my-loans')">Loans & debts</button>
-      <button type="button" (click)="scrollTo('my-lotto')">Lotto</button>
-      <button type="button" (click)="scrollTo('recent-events')">Transactions</button>
-      <button type="button" (click)="scrollTo('my-offers')">My offers</button>
-      <button type="button" (click)="scrollTo('my-forex-bids')">My forex bids</button>
+    <nav class="account-tabs" role="tablist" aria-label="My Account sections">
+      @for (tab of tabs; track tab.id) {
+        <button class="btn btn--quiet" type="button" role="tab" [id]="'tab-'+tab.id"
+          [attr.aria-selected]="activeTab()===tab.id" [attr.aria-controls]="'panel-'+tab.id"
+          [attr.tabindex]="activeTab()===tab.id ? 0 : -1" (keydown)="tabKey($event,tab.id)" (click)="activeTab.set(tab.id)">
+          {{tab.label}} ({{tab.id==='todos' ? todos.count() ?? '…' : tab.id==='loans' ? commitments.loanCount() ?? '…' : tab.id==='lotto' ? commitments.lottoCount() ?? '…' : tab.id==='offers' ? offers.hasValue() ? myOffers().length : '…' : tab.id==='forex' ? quotes.hasValue() ? myBids().length : '…' : history.hasValue() ? rows().length : '…'}})
+        </button>
+      }
     </nav>
+    <div id="panel-todos" role="tabpanel" aria-labelledby="tab-todos" [hidden]="activeTab()!=='todos'" tabindex="0">
+      <app-account-todos #todos (changed)="history.reload()" />
+    </div>
+    <div [hidden]="activeTab()!=='loans' && activeTab()!=='lotto'">
+      <app-account-commitments #commitments [active]="activeTab()" />
+    </div>
 
-    <app-account-todos #todos (changed)="history.reload()" />
-    <app-account-commitments />
-
-    <section id="my-offers" class="account-section">
+    <section id="panel-offers" class="account-section" role="tabpanel" aria-labelledby="tab-offers" [hidden]="activeTab()!=='offers'" tabindex="0">
       <div class="section-heading">
         <h2>My Offers</h2>
         <a routerLink="/offers">View all offers</a>
@@ -73,7 +78,7 @@ interface Row {
         <p class="empty">You have no offers yet.</p>
       } @else {
         <div class="account-summary-list">
-          @for (o of myOffers().slice(0, 4); track o.id) {
+          @for (o of myOffers(); track o.id) {
             <a routerLink="/offers">
               <span>{{ o.listing_title || 'Offer' }}</span>
               <span>{{ o.amount | nc }} coins · {{ o.status.toLowerCase() }}</span>
@@ -83,7 +88,7 @@ interface Row {
       }
     </section>
 
-    <section id="my-forex-bids" class="account-section">
+    <section id="panel-forex" class="account-section" role="tabpanel" aria-labelledby="tab-forex" [hidden]="activeTab()!=='forex'" tabindex="0">
       <div class="section-heading">
         <h2>My Forex Bids</h2>
         <a routerLink="/forex">Open Forex</a>
@@ -96,7 +101,7 @@ interface Row {
         <p class="empty">You have no forex bids.</p>
       } @else {
         <div class="account-summary-list">
-          @for (q of myBids().slice(0, 4); track q.id) {
+          @for (q of myBids(); track q.id) {
             <a routerLink="/forex">
               <span>{{ q.coins | nc }} coins at {{ q.cents_per_coin }}¢ each</span>
               <span>{{ q.status.toLowerCase() }}</span>
@@ -106,7 +111,7 @@ interface Row {
       }
     </section>
 
-    <section id="recent-events" class="account-section">
+    <section id="panel-transactions" class="account-section" role="tabpanel" aria-labelledby="tab-transactions" [hidden]="activeTab()!=='transactions'" tabindex="0">
     <h2>Transactions</h2>
 
     @if (history.isLoading()) {
@@ -176,6 +181,15 @@ interface Row {
   `,
 })
 export class HistoryPage {
+  protected readonly activeTab=signal('todos');
+  constructor() { inject(ActivatedRoute).queryParamMap.pipe(takeUntilDestroyed()).subscribe(params=> { const tab=params.get('tab'); if(tab && this.tabs.some(t=>t.id===tab)) this.activeTab.set(tab); }); }
+  protected readonly tabs=[{id:'todos',label:'TODO'},{id:'loans',label:'Loans & debts'},{id:'lotto',label:'Lotto'},{id:'transactions',label:'Transactions'},{id:'offers',label:'My offers'},{id:'forex',label:'My forex bids'}];
+  protected tabKey(event: KeyboardEvent, id: string) {
+    const i=this.tabs.findIndex(t=>t.id===id);
+    const next=event.key==='ArrowRight' ? (i+1)%this.tabs.length : event.key==='ArrowLeft' ? (i+this.tabs.length-1)%this.tabs.length : event.key==='Home' ? 0 : event.key==='End' ? this.tabs.length-1 : -1;
+    if(next<0) return; event.preventDefault();this.activeTab.set(this.tabs[next].id);document.getElementById('tab-'+this.tabs[next].id)?.focus();
+  }
+
   protected readonly money = moneyInject(Money);
   private readonly api = inject(NanacoinService);
   private readonly toasts = inject(Toasts);

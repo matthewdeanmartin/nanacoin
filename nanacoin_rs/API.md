@@ -215,7 +215,7 @@ Each record has `transaction`, `provider`, `recipient`, their display names,
 `description`, `kind` (WORK/GOODS/CASH), `status`, and recent `updates`. Each update
 has a unique event `id`, `at` timestamp, actor account/name, status and reason.
 
-Only the provider can COMPLETE a TODO. Only the recipient can DISPUTE a TODO or
+Either the provider or the recipient can COMPLETE a TODO. Only the recipient can DISPUTE a TODO or
 DONE transaction, with a nonblank reason (at most 96 UTF-8 bytes, no control
 characters). Only that recipient can WITHDRAW_DISPUTE, returning it to DONE even
 if the dispute was raised before a completion claim. Providers cannot overwrite

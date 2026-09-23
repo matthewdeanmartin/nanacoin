@@ -47,7 +47,7 @@ import { lottoOutcome } from './account-commitments';
               <p>Ticket cost: {{lotto.my_tickets * lotto.terms.ticket_price | nc}} NC</p>
               @if (lotto.status === 'SETTLED') {
                 <p>{{lotto.terms.kind === 'SAVINGS' ? 'Principal returned' : 'Prize paid'}}: {{principal(lotto) | nc}} NC</p>
-                <p>Interest paid to you: {{lotto.winner === session.me()?.account ? lotto.interest : 0 | nc}} NC</p>
+                <p>Interest paid to you: {{(lotto.winner === session.me()?.account ? lotto.interest : 0) | nc}} NC</p>
                 <p><strong>Net {{outcome(lotto).net < 0 ? 'loss' : 'gain'}}: {{outcome(lotto).net | nc}} NC</strong></p>
               } @else if (lotto.terms.kind === 'SAVINGS') {
                 <p>Principal due back: {{lotto.my_tickets * lotto.terms.ticket_price | nc}} NC. The winner receives all the pool interest.</p>

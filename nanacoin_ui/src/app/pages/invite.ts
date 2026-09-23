@@ -18,13 +18,14 @@ import { Mastodon } from '../api/mastodon';
           [ngModel]="text"
           (ngModelChange)="text = allCaps ? $event.toLocaleUpperCase() : $event"
           maxlength="300"
-          rows="4"
+          rows="5"
         ></textarea>
       </label>
       <label class="checkbox">
         <input type="checkbox" [ngModel]="allCaps" (ngModelChange)="setAllCaps($event)" />
         <span>ALL CAPS</span>
       </label>
+      <div class="button-row">
       <button class="btn btn--quiet" type="button" (click)="shareFacebook()">
         Share on Facebook
       </button>
@@ -34,6 +35,7 @@ import { Mastodon } from '../api/mastodon';
       <button class="btn btn--quiet" type="button" (click)="shareBluesky()">
         Share on Bluesky
       </button>
+      </div>
       <p class="muted small">
         Each button opens that platform's posting screen with this draft. Facebook also copies the
         draft because its share dialog may omit custom text.

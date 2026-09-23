@@ -1323,3 +1323,21 @@ main:focus { outline: none; }
   border-radius: 6px;
   padding: 0.1rem 0.4rem;
 }
+
+/* Action rows keep touch targets distinct, including fulfillment controls. */
+.button-row { display:flex; flex-wrap:wrap; gap:.65rem; align-items:center; }
+.btn + .btn { margin-inline-start:.5rem; }
+.button-row > .btn + .btn { margin-inline-start:0; }
+app-fulfillment { display:block; }
+app-fulfillment .btn { margin-block:.3rem; }
+.fulfillment-activity { margin-block:.8rem; padding-inline-start:1rem; border-inline-start:2px solid var(--line, #ddd); }
+.fulfillment-activity h4 { margin:0 0 .4rem; font-size:.85rem; }
+.fulfillment-activity p { font-size:.85rem; margin:.35rem 0; }
+.account-tabs { display:flex; flex-wrap:wrap; gap:.5rem; margin-block:1rem; }
+.account-tabs [aria-selected="true"] { background:var(--accent); color:white; }
+[hidden] { display:none !important; }
+app-invite textarea { height:auto; min-height:8rem; line-height:1.5; resize:vertical; padding:.65rem; }
+
+.account-tabs > .btn + .btn { margin-inline-start:0; }
+app-loans label.checkbox { white-space:normal; align-items:flex-start; }
+app-loans label.checkbox input { margin-top:.25rem; }

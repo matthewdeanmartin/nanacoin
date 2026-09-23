@@ -1,4 +1,5 @@
-import { Component, DestroyRef, inject, resource, signal } from '@angular/core';
+import { EconomyStat } from '../ui/economy-stat';
+import { Component, DestroyRef, computed, inject, resource, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DatePipe } from '@angular/common';
 import { Loan, LoanOfferInput } from '../api/models';
@@ -8,14 +9,26 @@ import { Session } from '../api/session';
 import { Dialogs } from '../ui/dialog';
 import { Toasts } from '../ui/toasts';
 
+export function annualLoanPercent(rateBps: number, days: number): number { return rateBps / 100 * 365 / days; }
+export function averageOfferRate(loans: Loan[], account: string, direction: 'lender' | 'borrower'): number | null {
+  const open=loans.filter(l=>l.status==='OFFERED' && l[direction]===account);
+  return open.length ? open.reduce((sum,l)=>sum+annualLoanPercent(l.rate_bps,l.rate_days),0)/open.length : null;
+}
+
 @Component({
-  selector: 'app-loans', imports: [FormsModule, MoneyPipe, DatePipe],
+  selector: 'app-loans', imports: [FormsModule, MoneyPipe, DatePipe, EconomyStat],
   template: `
     <h1>Loans & credit</h1>
     <p>Lend coins you own. The borrower accepts the terms before money moves. Nana follows the same funding rule.</p>
     @if (!session.signedIn()) { <p>Sign in to view or offer loans.</p> }
     @else if (book.error()) { <p role="alert">Could not load loans. <button class="btn btn--quiet" (click)="book.reload()">Retry</button></p> }
     @else {
+      <div class="stats loan-stats" aria-label="Annual loan interest rates">
+        <app-economy-stat id="loan-current" label="Current household interest" [value]="rateLabel(book.value()?.summary?.weighted_annual_percent)" help="The same rate shown on Economy: annual simple interest weighted by outstanding principal. Excludes undrawn credit and unaccepted offers." />
+        <app-economy-stat id="loan-offered" label="Average open offered rate" [value]="rateLabel(offeredRate())" help="Your outgoing offers awaiting acceptance. Equal-weight average of each offer's annual simple interest rate; not weighted by amount." />
+        <app-economy-stat id="loan-desired" label="Average open desired rate" [value]="rateLabel(desiredRate())" help="Incoming offers awaiting your acceptance, used here as desired borrowing opportunities. Borrower-posted desired rates are not currently recorded. Equal-weight annual simple interest average." />
+      </div>
+      <p class="muted small">Offered = your outgoing offers. Desired = incoming offers awaiting your acceptance.</p>
       <section class="panel">
         <h2>Offer a loan</h2>
         <form (ngSubmit)="offer()">
@@ -23,9 +36,10 @@ import { Toasts } from '../ui/toasts';
           <label>Amount in NC <input name="amount" inputmode="decimal" [(ngModel)]="amount" required /></label>
           <label>Interest rate (%) <input name="rate" inputmode="decimal" [(ngModel)]="rate" required /></label>
           <label>Rate period <select name="rateDays" [(ngModel)]="rateDays"><option [ngValue]="1">Day</option><option [ngValue]="7">Week</option><option [ngValue]="30">30 days</option><option [ngValue]="365">Year (365 days)</option></select></label>
+          <p class="annual-rate" aria-live="polite"><strong>{{annualRateLabel()}}</strong> annual simple interest (365 days, no compounding).</p>
           <label>Principal per payment in NC <input name="installment" inputmode="decimal" [(ngModel)]="installment" required /></label>
           <label>Payment frequency <select name="paymentDays" [(ngModel)]="paymentDays"><option [ngValue]="1">Daily</option><option [ngValue]="7">Weekly</option><option [ngValue]="30">Every 30 days</option></select></label>
-          <label><input type="checkbox" name="credit" [(ngModel)]="credit" /> Draw once when the borrower's balance reaches exactly zero</label>
+          <label class="checkbox"><input type="checkbox" name="credit" [(ngModel)]="credit" /><span>Draw once when the borrower's balance reaches exactly zero</span></label>
           <label>Note <input name="memo" [(ngModel)]="memo" maxlength="96" /></label>
           <p class="muted small">Simple interest on outstanding principal, collected in addition to the principal installment. No negative rates, compounding, or late fees. A credit offer reserves no funds; it waits if the lender cannot fund it.</p>
           <button class="btn" type="submit" [disabled]="!!busy() || !borrower">Offer {{credit ? 'credit' : 'loan'}}</button>
@@ -35,7 +49,7 @@ import { Toasts } from '../ui/toasts';
       @for (loan of book.value()?.loans ?? []; track loan.id) {
         <article class="card">
           <h2>{{loan.lender_name}} → {{loan.borrower_name}}</h2>
-          <p><strong>{{loan.amount | nc}} NC</strong> · {{loan.rate_bps / 100}}% per {{period(loan.rate_days)}} · {{loan.status.toLocaleLowerCase()}}</p>
+          <p><strong>{{loan.amount | nc}} NC</strong> · {{loan.rate_bps / 100}}% per {{period(loan.rate_days)}} · {{rateLabel(annualPercent(loan.rate_bps,loan.rate_days))}} · {{loan.status.toLocaleLowerCase()}}</p>
           <p>{{loan.installment | nc}} NC principal + accrued interest every {{loan.payment_days}} days{{loan.credit ? ' · credit at zero' : ''}}.</p>
           @if (loan.memo) { <p>{{loan.memo}}</p> }
           @if (loan.status === 'ACTIVE') {
@@ -64,7 +78,15 @@ export class LoansPage {
   private readonly dialogs = inject(Dialogs);
   private readonly toasts = inject(Toasts);
   protected readonly busy = signal('');
-  protected readonly book = resource({ loader: () => this.api.loans() });
+  protected readonly book = resource({ params:()=>this.session.me()?.account, loader: () => this.api.loans() });
+  protected readonly annualPercent=annualLoanPercent;
+  protected readonly offeredRate=computed(()=>averageOfferRate(this.book.value()?.loans ?? [],this.session.me()?.account ?? '', 'lender'));
+  protected readonly desiredRate=computed(()=>averageOfferRate(this.book.value()?.loans ?? [],this.session.me()?.account ?? '', 'borrower'));
+  protected rateLabel(value: number | null | undefined): string { return value===undefined ? 'Loading…' : value===null ? 'No open loans' : `${value.toLocaleString(undefined,{maximumFractionDigits:2})}%/yr`; }
+  protected annualRateLabel(): string {
+    try { return this.rateLabel(annualLoanPercent(parseMoney(this.rate,2,this.money.locale),this.rateDays)); }
+    catch { return 'Enter a valid nonnegative rate'; }
+  }
   protected borrower = ''; protected amount = '10'; protected rate = '5';
   protected rateDays = 365; protected paymentDays = 7; protected installment = '1';
   protected credit = false; protected memo = '';

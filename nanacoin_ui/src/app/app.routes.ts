@@ -24,7 +24,7 @@ export const routes: Routes = [
   {
     path: 'list',
     loadComponent: () => import('./pages/market').then((m) => m.MarketPage),
-    title: 'Offer to Sell — NanaCoin',
+    title: 'Buy, sell, hire — NanaCoin',
   },
   {
     path: 'send',

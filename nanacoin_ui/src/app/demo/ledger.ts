@@ -616,7 +616,7 @@ export class DemoLedger {
     const f=this.transactions.find(t=>t.id===id)?.fulfillment;
     if (!f) throw new DemoError(404,'not_found','No delivery for this transaction.');
     if (!['COMPLETE','DISPUTE','WITHDRAW_DISPUTE'].includes(action) || typeof reason!=='string' || /[\x00-\x1f\x7f]/.test(reason) || new TextEncoder().encode(reason).length>96 || (action==='DISPUTE' && !reason.trim())) throw new DemoError(400,'invalid_input','Enter a dispute reason of at most 96 bytes.');
-    if (actor.account!==(action==='COMPLETE'?f.provider:f.recipient)) throw new DemoError(403,'forbidden','Only the responsible participant can do that.');
+    if (!(actor.account===f.recipient || (action==='COMPLETE' && actor.account===f.provider))) throw new DemoError(403,'forbidden','Only the responsible participant can do that.');
     if (!(action==='COMPLETE'?f.status==='TODO':action==='DISPUTE'?f.status==='TODO'||f.status==='DONE':f.status==='DISPUTED')) throw new DemoError(409,'conflict','The fulfillment status has changed.');
     f.status=action==='DISPUTE'?'DISPUTED':'DONE';
     f.updates.push({id:`fulfillment-${++this.revision}`,at:this.now(),actor:actor.account,actor_name:actor.display_name,status:f.status,reason});

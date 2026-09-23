@@ -35,7 +35,7 @@ function setup(account: string) {
 }
 afterEach(() => TestBed.resetTestingModule());
 describe('fulfillment controls and activity', () => {
-  it('lets only the provider claim completion', async () => {
+  it('lets the provider claim completion', async () => {
     const api = setup('account-2');
     const update = vi.spyOn(api, 'setFulfillment').mockResolvedValue({ ...work, status: 'DONE' });
     const fixture = TestBed.createComponent(FulfillmentControl);
@@ -47,6 +47,13 @@ describe('fulfillment controls and activity', () => {
     root.querySelector('button')!.click();
     await fixture.whenStable();
     expect(update).toHaveBeenCalledWith('tx-1', 'COMPLETE', '', expect.any(String));
+  });
+  it('lets the recipient record an outstanding delivery as done', async () => {
+    const api=setup('account-3'); const update=vi.spyOn(api,'setFulfillment').mockResolvedValue({...work,status:'DONE'});
+    const fixture=TestBed.createComponent(FulfillmentControl); fixture.componentRef.setInput('item',work); fixture.detectChanges();
+    const button=Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('button')).find(b=>b.textContent?.includes('Record as done'))!;
+    button.click(); await fixture.whenStable();
+    expect(update).toHaveBeenCalledWith('tx-1','COMPLETE','',expect.any(String));
   });
   it('lets the recipient dispute and then withdraw to done', async () => {
     const api = setup('account-3');

@@ -73,7 +73,7 @@ impl State {
             return Err(Error::InvalidInput);
         }
         let allowed = match action {
-            Action::Complete => actor == f.provider,
+            Action::Complete => actor == f.provider || actor == f.recipient,
             _ => actor == f.recipient,
         };
         if !allowed {

@@ -16,12 +16,16 @@ import { Component, input, signal } from '@angular/core';
   `,
   styles: `
     :host { display: block; min-width: 0; }
-    .stat { height: 100%; box-sizing: border-box; min-width: 0; }
+    .stat { position:relative; height: 100%; box-sizing: border-box; min-width: 0; }
     .value { overflow-wrap: anywhere; }
     .definition { background: none; border: 0; padding: .25rem; color: var(--ink-soft);
       font: inherit; font-size: .8rem; cursor: help; max-width: 100%; }
     .definition:focus-visible { outline: 2px solid var(--accent); border-radius: .2rem; }
-    .help { font-size: .8rem; line-height: 1.45; text-align: start; margin: .6rem 0 0;
+    .stat:has(.help:not([hidden])) { z-index: 20; }
+    .help { position:absolute; z-index:21; top:calc(100% - .25rem); left:0; right:0;
+      padding:1rem; border:1px solid var(--accent); border-radius:.75rem;
+      background:var(--surface); box-shadow:0 .6rem 1.8rem #0003;
+      font-size: .8rem; line-height: 1.45; text-align: start; margin: 0;
       overflow-wrap: anywhere; color: var(--ink-soft); }
   `,
 })

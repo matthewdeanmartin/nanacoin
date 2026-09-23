@@ -41,7 +41,7 @@ import { mailRows, MailRow } from './mail-model';
          @if (row.amount !== undefined) { <p>{{row.amount | nc}} NC</p> }
          <p class="mail-body">{{row.body}}</p>
          <div class="mail-actions">
-           @if (row.route) { <a class="btn" [routerLink]="row.route">{{row.kind === 'Offer' ? 'Review offer' : row.kind === 'Loan' ? 'Review loan' : 'View account'}}</a> }
+           @if (row.route) { <a class="btn" [routerLink]="row.route" [queryParams]="row.route==='/history' ? {tab:row.kind==='Transaction' ? 'transactions' : 'todos'} : {}">{{row.kind === 'Offer' ? 'Review offer' : row.kind === 'Loan' ? 'Review loan' : 'View account'}}</a> }
            @if (row.replyTo) { <a class="btn btn--quiet" routerLink="/send" [queryParams]="{to:row.replyTo, amount:'0'}">{{row.sent ? 'Write again' : 'Reply'}}</a> }
          </div>
        } @else { <p class="muted">Select a row to read it.</p> }

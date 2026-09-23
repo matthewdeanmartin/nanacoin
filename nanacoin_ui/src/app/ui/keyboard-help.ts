@@ -33,7 +33,7 @@ export function isEditing(target: EventTarget | null): boolean {
      <dt><kbd>j</kbd> / <kbd>k</kbd></dt><dd>Focus next / previous listing or transaction</dd>
      <dt><kbd>0</kbd></dt><dd>Focus the first listing or transaction</dd>
      <dt><kbd>Alt</kbd> + <kbd>PageDown</kbd> / <kbd>PageUp</kbd></dt><dd>Next / previous record</dd>
-     <dt><kbd>n</kbd></dt><dd>Open Offer to Sell and focus the listing title</dd>
+     <dt><kbd>n</kbd></dt><dd>Open Buy, sell, hire and focus the listing title</dd>
    </dl>
    <h3>Standard controls</h3><p><kbd>Tab</kbd> / <kbd>Shift</kbd> + <kbd>Tab</kbd> move between links and buttons.
    <kbd>Enter</kbd> activates the focused link or button; <kbd>Space</kbd> activates a focused button or checkbox.

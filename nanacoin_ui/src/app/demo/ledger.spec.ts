@@ -322,8 +322,8 @@ describe('physical fulfillment',()=>{
       const provider=side==='SELL'?alice:bob,recipient=side==='SELL'?bob:alice;
       expect(tx.fulfillment).toMatchObject({provider:provider.account,recipient:recipient.account,kind:'WORK',status:'TODO'});
       const before=[l.balanceOf(alice.account),l.balanceOf(bob.account)];
-      expect(()=>l.setFulfillment(recipient,tx.id,'COMPLETE','')).toThrow();
-      l.setFulfillment(provider,tx.id,'COMPLETE','');
+      expect(()=>l.setFulfillment(nana,tx.id,'COMPLETE','')).toThrow();
+      l.setFulfillment(recipient,tx.id,'COMPLETE','');
       l.setFulfillment(recipient,tx.id,'DISPUTE','Car is dirty');
       expect(()=>l.setFulfillment(provider,tx.id,'COMPLETE','')).toThrow();
       l.setFulfillment(recipient,tx.id,'WITHDRAW_DISPUTE','');

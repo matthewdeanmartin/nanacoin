@@ -1,4 +1,4 @@
-import { Component, DestroyRef, computed, inject, resource } from '@angular/core';
+import { Component, DestroyRef, computed, inject, input, resource } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { MoneyPipe } from '../api/money';
@@ -16,7 +16,7 @@ export function lottoOutcome(l: Lotto, account: string): { label: string; net: n
 @Component({
  selector:'app-account-commitments', imports:[MoneyPipe,DatePipe,RouterLink],
  template:`
- <section id="my-loans" class="account-section">
+ <section [hidden]="active() !== 'loans'" id="panel-loans" role="tabpanel" aria-labelledby="tab-loans" tabindex="0" class="account-section">
    <div class="section-heading"><h2>Loans & debts</h2><a routerLink="/loans">Manage loans</a></div>
    @if (loans.isLoading()) { <p role="status">Loading loans…</p> }
    @if (loans.error()) { <p role="alert">Could not load loans. <button class="btn btn--quiet" (click)="loans.reload()">Retry</button></p> }
@@ -33,7 +33,7 @@ export function lottoOutcome(l: Lotto, account: string): { label: string; net: n
      </div>
    }
  </section>
- <section id="my-lotto" class="account-section">
+ <section [hidden]="active() !== 'lotto'" id="panel-lotto" role="tabpanel" aria-labelledby="tab-lotto" tabindex="0" class="account-section">
    <div class="section-heading"><h2>Lotto</h2><a routerLink="/lotto">View lottos</a></div>
    @if (lottos.isLoading()) { <p role="status">Loading lotto…</p> }
    @if (lottos.error()) { <p role="alert">Could not load lotto. <button class="btn btn--quiet" (click)="lottos.reload()">Retry</button></p> }
@@ -52,6 +52,10 @@ export function lottoOutcome(l: Lotto, account: string): { label: string; net: n
  styles:[`.account-summary-list a { gap:.75rem; flex-wrap:wrap; } .account-summary-list span { min-width:0; overflow-wrap:anywhere; }`],
 })
 export class AccountCommitments {
+ readonly active=input('loans');
+ readonly loanCount=computed(()=>this.loans.value()?.loans.filter(l=>l.borrower===this.session.me()?.account || l.lender===this.session.me()?.account).length);
+ readonly lottoCount=computed(()=>this.lottos.value()?.lottos.filter(l=>l.my_tickets>0).length);
+
  private readonly api=inject(NanacoinService); private readonly session=inject(Session);
  protected readonly loans=resource({params:()=>this.session.me()?.account,loader:()=>this.api.loans()});
  protected readonly lottos=resource({params:()=>this.session.me()?.account,loader:()=>this.api.lottos()});
@@ -59,10 +63,10 @@ export class AccountCommitments {
    const account=this.session.me()?.account, all=this.loans.value()?.loans ?? [];
    return [{title:'Loans · money lent',description:'Money others owe this account.',items:all.filter(l=>l.lender===account)},
      {title:'Debts · money borrowed',description:'Money this account owes to others.',items:all.filter(l=>l.borrower===account)}]
-     .map(g=>({...g,principal:g.items.reduce((n,l)=>n+BigInt(l.principal),0n).toString(),interest:g.items.reduce((n,l)=>n+BigInt(l.interest),0n).toString(),items:g.items.slice().sort((a,b)=>b.updated_at-a.updated_at).slice(0,6)}));
+     .map(g=>({...g,principal:g.items.reduce((n,l)=>n+BigInt(l.principal),0n).toString(),interest:g.items.reduce((n,l)=>n+BigInt(l.interest),0n).toString(),items:g.items.slice().sort((a,b)=>b.updated_at-a.updated_at)}));
  });
  protected readonly upcoming=computed(()=>(this.lottos.value()?.lottos ?? []).filter(l=>l.my_tickets>0 && l.status!=='SETTLED').sort((a,b)=>a.due_at-b.due_at));
- protected readonly results=computed(()=>(this.lottos.value()?.lottos ?? []).filter(l=>l.my_tickets>0 && l.status==='SETTLED').sort((a,b)=>b.due_at-a.due_at).slice(0,6));
+ protected readonly results=computed(()=>(this.lottos.value()?.lottos ?? []).filter(l=>l.my_tickets>0 && l.status==='SETTLED').sort((a,b)=>b.due_at-a.due_at));
  protected outcome(l: Lotto) { return lottoOutcome(l,this.session.me()?.account ?? ''); }
  constructor() { const timer=setInterval(()=>{this.loans.reload();this.lottos.reload();},15_000);inject(DestroyRef).onDestroy(()=>clearInterval(timer)); }
 }

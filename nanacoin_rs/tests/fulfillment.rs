@@ -120,10 +120,6 @@ fn directions_permissions_disputes_and_retries_do_not_move_money() {
         assert_eq!(f.description.as_str(), "Wash car");
         let before = (balance(&s, 2), balance(&s, 3), s.state().transactions);
         assert_eq!(
-            exec(&mut s, recipient, change(tx, Action::Complete)),
-            Err(Error::Forbidden)
-        );
-        assert_eq!(
             exec(&mut s, 1, change(tx, Action::Complete)),
             Err(Error::Forbidden)
         );
@@ -346,13 +342,14 @@ fn http_status_account_scope_and_durable_keys() {
     let tx = purchase(&mut s, Side::Sell, "service");
     let alice = common::login_as(&mut s, "Alice", "1234");
     let bob = common::login_as(&mut s, "Bob", "1234");
+    let nana = common::login(&mut s);
     let endpoint = format!("/api/v1/transactions/tx-{tx}/fulfillment");
     assert_eq!(
         call(
             &mut s,
             "POST",
             &endpoint,
-            &bob,
+            &nana,
             "bad",
             json!({"action":"COMPLETE"})
         )
@@ -391,4 +388,16 @@ fn http_status_account_scope_and_durable_keys() {
     assert_eq!(code, 200);
     assert_eq!(f["status"], "DISPUTED");
     assert_eq!(f["updates"].as_array().unwrap().len(), 3);
+}
+
+#[test]
+fn recipient_can_record_delivery_without_moving_money() {
+    let (mut s,m)=house();
+    let tx=purchase(&mut s,Side::Sell,"service");
+    let before=(balance(&s,2),balance(&s,3),s.state().transactions);
+    exec(&mut s,3,change(tx,Action::Complete)).unwrap();
+    assert_eq!(s.state().fulfillments[0].status,Status::Done);
+    assert_eq!(before,(balance(&s,2),balance(&s,3),s.state().transactions));
+    let s=Service::open_with_clock(m,now).unwrap();
+    assert_eq!(s.state().fulfillments[0].updates.last().unwrap().actor,MemberId(3));
 }

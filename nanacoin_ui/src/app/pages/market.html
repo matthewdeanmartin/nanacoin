@@ -1,7 +1,7 @@
-<h1>{{ listingPage ? 'Offer to Sell' : 'Market' }}</h1>
+<h1>{{ listingPage ? 'Buy, sell, hire' : 'Market' }}</h1>
 
 @if (!listingPage) {
-<p><a class="btn" routerLink="/list">Offer to Sell</a></p>
+<p><a class="btn" routerLink="/list">Buy, sell, hire</a></p>
 @if (session.forSale().length === 0) {
   <p class="muted">Nothing for sale right now.</p>
 } @else {

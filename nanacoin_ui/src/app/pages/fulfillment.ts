@@ -42,6 +42,9 @@ export function fulfillmentLabel(f: Pick<Fulfillment, 'kind' | 'status'>): strin
         }}
       </button>
     }
+    @if (f.status === 'TODO' && account() === f.recipient) {
+      <button class="btn btn--small" [disabled]="busy()" (click)="act('COMPLETE')">Record as done</button>
+    }
     @if ((f.status === 'TODO' || f.status === 'DONE') && account() === f.recipient) {
       <button class="btn btn--quiet btn--small" [disabled]="busy()" (click)="act('DISPUTE')">
         {{
@@ -161,15 +164,15 @@ export class FulfillmentControl {
             <strong>{{ f.description }}</strong> · {{ f.transaction }}
           </p>
           <app-fulfillment [item]="f" (changed)="reload()" />
-          <details>
-            <summary>Recent fulfillment activity</summary>
+          <div class="fulfillment-activity">
+            <h4>Recent fulfillment activity</h4>
             @for (u of f.updates; track u.id) {
               <p>
-                {{ u.at * 1000 | date: 'medium' }} · {{ u.actor_name }} · {{ u.status }}
+                {{ u.at * 1000 | date: 'medium' }} · {{ u.actor_name }} · {{ activity(u.status) }}
                 {{ u.reason }}
               </p>
             }
-          </details>
+          </div>
         </article>
       } @empty {
         <p class="muted small">None.</p>
@@ -178,6 +181,12 @@ export class FulfillmentControl {
   </section>`,
 })
 export class AccountTodos {
+  readonly count = computed(() => {
+    const me = this.session.me()?.account;
+    return this.book.value()?.fulfillments.filter(f => (f.provider===me || f.recipient===me || this.session.isNana() && f.status==='DISPUTED') && (f.status==='TODO' || f.status==='DISPUTED')).length;
+  });
+  protected activity(status: string) { return ({TODO:'Work or delivery recorded as outstanding',DONE:'Recorded as done or delivered',DISPUTED:'Reported not done or not delivered',REVERSED:'Payment reversed'} as Record<string,string>)[status]; }
+
   private readonly api = inject(NanacoinService);
   private readonly session = inject(Session);
   readonly changed = output<void>();
