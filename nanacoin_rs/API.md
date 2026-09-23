@@ -189,3 +189,46 @@ Errors contain error and message fields. Statuses include 400 invalid input/over
 Offer-specific errors include self_deal (400), offer_closed, listing_closed and offer_settled (409). An invalid or unsynchronized settlement clock returns unavailable (503). Timed mutations never reset a persisted deadline on restart.
 
 Every movement balances debit and credit, including issuance account zero. Ordinary spending cannot overdraw. Corrections can make balances negative, matching TinyGo; they append opposite postings and never rewrite history. Journal and recent-history limits are explicit in README.md; retention is bounded.
+
+
+## Physical fulfillment (current development schema)
+
+Payment settlement and physical fulfillment are independent. A purchase or accepted
+listing offer creates a TODO for the coin recipient (the provider), with the coin
+payer as the recipient of the work, goods, or external cash. This applies to both
+BUY and SELL listings. Classified LABOR/GOOD transfers also create TODOs. Gifts,
+messages, issuance, loans, lotto and internal forex wallet transfers do not.
+Listing kind `service` / economic kind `LABOR` means WORK; listing kind `currency`
+means CASH; other purchases mean GOODS. Offer settlement deadlines do not mark
+fulfillment done.
+
+* `GET /api/v1/fulfillments`: `{ "fulfillments": [...] }`, scoped to either
+  participant, or all records for Nana.
+* `POST /api/v1/transactions/{id}/fulfillment`: requires the usual idempotency
+  key; body `{ "action": "COMPLETE|DISPUTE|WITHDRAW_DISPUTE", "reason": "..." }`.
+  Returns the current fulfillment record, including on a keyed retry.
+* Transaction views on ledger/account reads include nullable `fulfillment`.
+  Acceptance responses describe the immutable payment receipt; fetch live
+  fulfillment via the above reads.
+
+Each record has `transaction`, `provider`, `recipient`, their display names,
+`description`, `kind` (WORK/GOODS/CASH), `status`, and recent `updates`. Each update
+has a unique event `id`, `at` timestamp, actor account/name, status and reason.
+
+Only the provider can COMPLETE a TODO. Only the recipient can DISPUTE a TODO or
+DONE transaction, with a nonblank reason (at most 96 UTF-8 bytes, no control
+characters). Only that recipient can WITHDRAW_DISPUTE, returning it to DONE even
+if the dispute was raised before a completion claim. Providers cannot overwrite
+a dispute. Reversal sets REVERSED and disables further fulfillment actions.
+These changes never move money. Nana's existing reversal (or an authorized
+provider refund) performs any financial correction separately.
+
+The bounded server retains 128 fulfillment records, including the original
+payment needed for a refund after ordinary transaction history eviction. TODO
+and DISPUTED records are never recycled. DONE/REVERSED records become recyclable
+only after their original payment leaves retained history; a full unrecyclable
+table rejects new obligations before payment. Each record keeps its four latest
+activity events; older activity is discarded at journal compaction. Checkpoints
+use 4096-byte rows for the current schema. No old development-data migration is
+provided. Currency reforms rescale retained refund amounts, and an economy reset
+clears obligations with the rest of the economy.

@@ -1,3 +1,4 @@
+import { AccountTodos, FulfillmentControl } from './fulfillment';
 import { Money, MoneyPipe } from '../api/money';
 import { inject as moneyInject } from '@angular/core';
 // Your own transactions, newest first.
@@ -41,13 +42,14 @@ interface Row {
 
 @Component({
   selector: 'app-history',
-  imports: [MoneyPipe, RouterLink, Notebook, AccountCommitments],
+  imports: [MoneyPipe, RouterLink, Notebook, AccountCommitments, AccountTodos, FulfillmentControl],
   template: `
     <h1>My Account</h1>
     <p class="lede">Your balances, loans, debts, lotto results, and financial activity.</p>
 
     <p><strong>{{session.balance() | nc}} NC available</strong> · <a routerLink="/messages">Open Mail</a></p>
     <nav class="section-nav" aria-label="My Account sections">
+      <button type="button" (click)="scrollTo('my-todos')">TODO</button>
       <button type="button" (click)="scrollTo('my-loans')">Loans & debts</button>
       <button type="button" (click)="scrollTo('my-lotto')">Lotto</button>
       <button type="button" (click)="scrollTo('recent-events')">Transactions</button>
@@ -55,6 +57,7 @@ interface Row {
       <button type="button" (click)="scrollTo('my-forex-bids')">My forex bids</button>
     </nav>
 
+    <app-account-todos #todos (changed)="history.reload()" />
     <app-account-commitments />
 
     <section id="my-offers" class="account-section">
@@ -130,6 +133,7 @@ interface Row {
               <span class="txn__when">{{ when(r.txn.created_at) }}</span>
             </div>
 
+            <app-fulfillment [item]="r.txn.fulfillment" (changed)="history.reload(); todos.refresh()" />
             @if (r.txn.reversed_by) {
               <span class="tag tag--warn">reversed</span>
             }

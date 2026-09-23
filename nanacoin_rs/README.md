@@ -233,3 +233,12 @@ local delivery. A failed copy does not undo or repeat the bank record.
 Offer records preserve their listing direction and title so retained proposals
 remain understandable after the listing is recycled. The UI groups incoming
 buy/sell offers and outgoing buy/sell offers and names both parties explicitly.
+
+
+Physical fulfillment is tracked separately from payment: accepted offers and
+purchases create TODOs, providers claim work done or goods/cash delivered, and
+recipients can dispute or withdraw a dispute. My Account shows outstanding work,
+waiting deliveries and recent fulfillment activity; Messages and the public
+ledger show the same status. Nana can review disputes and reverse the payment.
+See [the fulfillment API](API.md#physical-fulfillment-current-development-schema)
+for authorization, retention and durability details.

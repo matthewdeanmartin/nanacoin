@@ -1,3 +1,4 @@
+import { FulfillmentControl } from './fulfillment';
 import { Money } from '../api/money';
 import { inject as moneyInject } from '@angular/core';
 import { Component, computed, inject, resource, signal } from '@angular/core';
@@ -15,7 +16,7 @@ import { Dialogs } from '../ui/dialog';
 import { Toasts } from '../ui/toasts';
 
 @Component({
- selector: 'app-public-ledger', imports: [Notebook, RouterLink, DatePipe, FormsModule],
+ selector: 'app-public-ledger', imports: [Notebook, RouterLink, DatePipe, FormsModule, FulfillmentControl],
  template: `<h1>The Notebook</h1><p class="notebook-treat"><a routerLink="/recipes">Vegetarian and vegan recipes</a> are available to everyone; eating is optional.</p>
  <p>{{ demo ? 'Public fictional household ledger: everyone can audit the latest 100 entries in this browser tab. Private descriptions are on the roadmap.' : 'The household ledger is public: anyone can audit every transaction. Private descriptions are on the roadmap.' }}</p>
  <div class="ledger-filters" aria-label="Notebook filters">
@@ -33,7 +34,7 @@ import { Toasts } from '../ui/toasts';
  @else { <app-notebook><div class="ledger">
  @for (t of filtered(); track t.id) {
  <article class="ledger-row" data-keyboard-row tabindex="-1"><p>{{ t.created_at * 1000 | date:'medium' }} · {{ t.id }} · {{ t.kind }}</p>
- <p>{{ t.description }}</p>
+ <p>{{ t.description }}</p><app-fulfillment [item]="t.fulfillment" (changed)="data.reload()" />
  @for (p of t.postings; track $index) { <span class="posting">{{ p.name }}: {{ p.amount >= 0 ? '+' : '' }}{{ p.account.endsWith('-usd') || p.account === 'account:usd-issuance' ? (p.amount / 100).toFixed(2) + ' USD' : money.format(p.amount) + ' NC' }}</span> }
  @if (refundable(t)) { <button class="btn btn--quiet btn--small ledger-refund" type="button" [disabled]="refunding() === t.id" (click)="refund(t)">{{ refunding() === t.id ? 'Refunding…' : 'Refund' }}</button> }
  </article> } @empty { <p>No transactions yet.</p> }

@@ -310,3 +310,27 @@ describe('the seeded household', () => {
     expect(l.ledger(500).transactions.some((t) => t.kind === 'REVERSAL')).toBe(true);
   });
 });
+
+
+describe('physical fulfillment',()=>{
+  for (const side of ['SELL','BUY'] as const) {
+    it(`tracks ${side} offer obligations separately from payment`,()=>{
+      const {l,alice,bob,nana}=household();
+      const listing=l.createListing(alice,{title:'Wash car',description:'',price:20,side,kind:'service'});
+      const offer=l.makeOffer(bob,listing.id,15,'');
+      const tx=l.acceptOffer(alice,offer.id).transaction;
+      const provider=side==='SELL'?alice:bob,recipient=side==='SELL'?bob:alice;
+      expect(tx.fulfillment).toMatchObject({provider:provider.account,recipient:recipient.account,kind:'WORK',status:'TODO'});
+      const before=[l.balanceOf(alice.account),l.balanceOf(bob.account)];
+      expect(()=>l.setFulfillment(recipient,tx.id,'COMPLETE','')).toThrow();
+      l.setFulfillment(provider,tx.id,'COMPLETE','');
+      l.setFulfillment(recipient,tx.id,'DISPUTE','Car is dirty');
+      expect(()=>l.setFulfillment(provider,tx.id,'COMPLETE','')).toThrow();
+      l.setFulfillment(recipient,tx.id,'WITHDRAW_DISPUTE','');
+      expect(tx.fulfillment?.status).toBe('DONE');
+      expect([l.balanceOf(alice.account),l.balanceOf(bob.account)]).toEqual(before);
+      l.reverse(nana,tx.id,'Refund'); expect(tx.fulfillment?.status).toBe('REVERSED');
+      expect(()=>l.setFulfillment(recipient,tx.id,'DISPUTE','Missing')).toThrow();
+    });
+  }
+});

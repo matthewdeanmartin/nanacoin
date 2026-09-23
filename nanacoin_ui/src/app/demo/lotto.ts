@@ -32,12 +32,21 @@ export class DemoLotto {
     l.pool=pool;l.interest=interest;l.tickets+=count;
     return {...l,my_tickets:d.entries.get(actor.account)!};
   }
-  tick(now: number): void {
+  resolveNow(actor: User, now: number): number {
+    this.active(actor);
+    if (actor.role !== 'nana') throw new Error('Only Nana can resolve demo lottos.');
+    const pending=this.draws.filter(d=>d.view.status!=='SETTLED').length;
+    this.settle(now,true);
+    return pending;
+  }
+  tick(now: number): void { this.settle(now,false); }
+  private settle(now: number, force: boolean): void {
     for (const d of this.draws) {
       const l=d.view;
-      if (l.status==='SETTLED' || now<l.terms.closes_at) continue;
+      if (l.status==='SETTLED' || (!force && now<l.terms.closes_at)) continue;
       l.status='WAITING';
-      if (now<l.due_at) continue;
+      if (!force && now<l.due_at) continue;
+      if (force) { l.terms.closes_at=Math.min(l.terms.closes_at,now);l.due_at=now; }
       if (!l.tickets) { l.status='SETTLED'; continue; }
       // Rejection sampling gives every ticket an equal chance without modulo bias.
       const bound=Math.floor(4294967296/l.tickets)*l.tickets;

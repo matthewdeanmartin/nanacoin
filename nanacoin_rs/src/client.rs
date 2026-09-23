@@ -11,6 +11,7 @@ use serde::{ser::SerializeSeq, Deserialize, Serialize};
 
 type Id = String<32>;
 mod forex;
+mod fulfillment;
 mod loans;
 mod lotto;
 mod offers;
@@ -129,6 +130,7 @@ struct Posting<'a> {
 }
 #[derive(Serialize)]
 struct TransactionView<'a> {
+    fulfillment: Option<fulfillment::View<'a>>,
     id: Id,
     kind: &'static str,
     created_at: u64,
@@ -160,6 +162,11 @@ fn transaction<'a>(state: &'a State, tx: &'a Transaction) -> TransactionView<'a>
         }
     };
     TransactionView {
+        fulfillment: state
+            .fulfillments
+            .iter()
+            .find(|f| f.transaction == tx.id)
+            .map(|f| fulfillment::view(state, f)),
         id: id("tx-", tx.id),
         kind: if tx.amount == 0 {
             "MESSAGE"
@@ -381,6 +388,9 @@ pub(crate) fn route<J: Journal>(
     output: &mut [u8],
 ) -> Result<usize, Error> {
     let (path, query) = uri.split_once('?').unwrap_or((uri, ""));
+    if let Some(result) = fulfillment::route(s, actor, method, path, key, body, output) {
+        return result;
+    }
     if let Some(result) = lotto::route(s, actor, method, path, key, body, output) {
         return result;
     }

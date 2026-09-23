@@ -16,3 +16,5 @@ pub mod web;
 pub mod forex;
 
 pub mod lotto;
+
+pub mod fulfillment;

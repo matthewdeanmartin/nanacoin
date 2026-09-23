@@ -76,7 +76,16 @@ export interface Posting {
   amount: number;
 }
 
+export type FulfillmentStatus = 'TODO' | 'DONE' | 'DISPUTED' | 'REVERSED';
+export type FulfillmentAction = 'COMPLETE' | 'DISPUTE' | 'WITHDRAW_DISPUTE';
+export interface Fulfillment {
+  transaction: string; provider: string; recipient: string;
+  provider_name: string; recipient_name: string; description: string;
+  kind: 'WORK' | 'GOODS' | 'CASH'; status: FulfillmentStatus;
+  updates: {id: string; at: number; actor: string; actor_name: string; status: FulfillmentStatus; reason: string}[];
+}
 export interface Transaction {
+  fulfillment?: Fulfillment | null;
   id: TransactionId;
   kind: TransactionKind;
   created_at: number;

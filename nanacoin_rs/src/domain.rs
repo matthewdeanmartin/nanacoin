@@ -58,6 +58,11 @@ pub enum Error {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum Command {
+    SetFulfillment {
+        transaction: u64,
+        action: crate::fulfillment::Action,
+        reason: Memo,
+    },
     CreateLotto {
         terms: crate::lotto::LottoTerms,
     },
@@ -382,6 +387,7 @@ pub struct Transaction {
 
 #[derive(Debug, Serialize)]
 pub struct State {
+    pub fulfillments: std::vec::Vec<crate::fulfillment::Fulfillment>,
     pub decimals: u8,
     pub money_epoch: u64,
     /// Debt payments cannot immediately cause more automatic borrowing.
@@ -463,6 +469,7 @@ impl Default for State {
             listings: Vec::new(),
             things: Vec::new(),
             history: VecDeque::with_capacity(HISTORY),
+            fulfillments: std::vec::Vec::with_capacity(crate::fulfillment::CAPACITY),
         }
     }
 }
@@ -491,6 +498,7 @@ impl State {
         self.offers.clear();
         self.quotes.clear();
         self.history.clear();
+        self.fulfillments.clear();
     }
     /// For the local migration tool only; never used for API authentication.
     pub fn authenticate_legacy(&self, token: &str) -> Result<MemberId, Error> {
@@ -602,7 +610,15 @@ impl State {
         {
             return Err(Error::Forbidden);
         }
+        if self.creates_fulfillment(command) && !self.fulfillment_room() {
+            return Err(Error::Capacity);
+        }
         match command {
+            Command::SetFulfillment {
+                transaction,
+                action,
+                reason,
+            } => self.validate_fulfillment(actor, *transaction, *action, reason)?,
             Command::CreateLotto { .. } | Command::BuyTickets { .. } | Command::RunLotto { .. } => {
                 self.validate_lotto(actor, command, now)?
             }
@@ -913,6 +929,12 @@ impl State {
                     .history
                     .iter()
                     .find(|t| t.id == *transaction)
+                    .or_else(|| {
+                        self.fulfillments
+                            .iter()
+                            .find(|f| f.transaction == *transaction)
+                            .map(|f| &f.payment)
+                    })
                     .ok_or(Error::NotFound)?;
                 let nana = self.member(actor)?.role == Role::Nana;
                 if tx.amount == 0 || tx.loan.is_some() || tx.lotto.is_some() {
@@ -1028,6 +1050,11 @@ impl State {
         let mut posting_economic = EconomicDetails::default();
         let mut usd = false;
         match &event.command {
+            Command::SetFulfillment {
+                transaction,
+                action,
+                reason,
+            } => self.apply_fulfillment(*transaction, *action, reason, event),
             Command::CreateLotto { .. } | Command::BuyTickets { .. } | Command::RunLotto { .. } => {
                 self.apply_lotto(event)
             }
@@ -1339,10 +1366,19 @@ impl State {
             Command::Reverse { transaction, memo } => {
                 let tx = self
                     .history
-                    .iter_mut()
+                    .iter()
                     .find(|t| t.id == *transaction)
-                    .unwrap();
-                tx.reversed = true;
+                    .or_else(|| {
+                        self.fulfillments
+                            .iter()
+                            .find(|f| f.transaction == *transaction)
+                            .map(|f| &f.payment)
+                    })
+                    .unwrap()
+                    .clone();
+                if let Some(original) = self.history.iter_mut().find(|t| t.id == *transaction) {
+                    original.reversed = true;
+                }
                 usd = tx.usd;
                 posting_economic = tx.economic;
                 posting = Some((
@@ -1396,6 +1432,7 @@ impl State {
     }
 
     pub(crate) fn record_transaction(&mut self, tx: Transaction) {
+        self.track_fulfillment(&tx);
         if !tx.usd && tx.amount != 0 {
             for id in [tx.from, tx.to] {
                 if id != MemberId(0) && id != crate::lotto::ESCROW {
@@ -1435,6 +1472,7 @@ impl State {
 
     pub fn check_invariants(&self) -> Result<(), Error> {
         self.check_lottos()?;
+        self.check_fulfillments()?;
         if self.decimals > 8 || self.money_epoch > MAX_SEQUENCE {
             return Err(Error::CorruptJournal);
         }

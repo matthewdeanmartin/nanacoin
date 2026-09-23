@@ -46,6 +46,15 @@
 
 <app-currency-reform />
 
+@if (isDemo) {
+  <section class="household-section" aria-labelledby="demo-lotto-title">
+    <h2 id="demo-lotto-title">Try a lotto draw</h2>
+    <p>Buy tickets as a household member, then return here as Nana. Resolve all open and pending lottos immediately to see prizes, returned savings, and interest paid.</p>
+    <p>This demo shortcut closes ticket sales and pays the full stated 30-day interest now.</p>
+    <button class="btn" type="button" [disabled]="resolvingLotto()" (click)="resolveLottos()">{{resolvingLotto() ? 'Resolving lottos…' : 'Resolve all lottos now'}}</button>
+  </section>
+}
+
 @if (session.status() && !session.status()!.ledger_balanced) {
   <p class="warning">
     The ledger does not balance. Something is wrong — do not issue more coins

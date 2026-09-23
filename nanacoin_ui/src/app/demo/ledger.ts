@@ -1,3 +1,4 @@
+import { Fulfillment, FulfillmentAction } from '../api/models';
 // A NanaCoin ledger, in TypeScript.
 //
 // This is the demo's server: the same economic rules the Go service enforces,
@@ -389,6 +390,20 @@ export class DemoLedger {
       unit: opts.unit,
       postings,
     };
+    const original = opts.reverses ? this.transactions.find(t=>t.id===opts.reverses) : undefined;
+    const user = this.users.find(u=>u.id===actor);
+    if (original?.fulfillment) {
+      original.fulfillment.status='REVERSED';
+      original.fulfillment.updates.push({id:txn.id,at:txn.created_at,actor:user?.account ?? actor,actor_name:user?.display_name ?? actor,status:'REVERSED',reason:''});
+      original.fulfillment.updates=original.fulfillment.updates.slice(-4);
+    } else if (kind !== 'REVERSAL' && (kind === 'PURCHASE' || opts.economic_kind === 'LABOR' || opts.economic_kind === 'GOOD')) {
+      const provider=postings.find(p=>p.amount>0),recipient=postings.find(p=>p.amount<0);
+      const listing=this.listings.find(l=>l.id===opts.reference);
+      if (provider && recipient) txn.fulfillment={transaction:txn.id,provider:provider.account,recipient:recipient.account,
+        provider_name:this.userByAccount(provider.account)?.display_name ?? provider.name,recipient_name:this.userByAccount(recipient.account)?.display_name ?? recipient.name,
+        description,kind:listing?.kind==='currency'?'CASH':opts.economic_kind==='LABOR' || listing?.kind==='service'?'WORK':'GOODS',status:'TODO',
+        updates:[{id:txn.id,at:txn.created_at,actor:user?.account ?? actor,actor_name:user?.display_name ?? actor,status:'TODO',reason:''}]};
+    }
     this.transactions.push(txn);
     this.revision++;
     this.lending.cashChanged(postings.map(p=>p.account), opts.reference?.startsWith('loan-') ?? false);
@@ -590,6 +605,23 @@ export class DemoLedger {
         unit: original.unit,
       },
     );
+  }
+
+  fulfillments(actor: DemoUser): {fulfillments: Fulfillment[]} {
+    this.requireActive(actor);
+    return {fulfillments:this.transactions.flatMap(t=>t.fulfillment && (actor.role==='nana' || t.fulfillment.provider===actor.account || t.fulfillment.recipient===actor.account)?[t.fulfillment]:[])};
+  }
+  setFulfillment(actor: DemoUser, id: string, action: FulfillmentAction, reason: string): Fulfillment {
+    this.requireActive(actor);
+    const f=this.transactions.find(t=>t.id===id)?.fulfillment;
+    if (!f) throw new DemoError(404,'not_found','No delivery for this transaction.');
+    if (!['COMPLETE','DISPUTE','WITHDRAW_DISPUTE'].includes(action) || typeof reason!=='string' || /[\x00-\x1f\x7f]/.test(reason) || new TextEncoder().encode(reason).length>96 || (action==='DISPUTE' && !reason.trim())) throw new DemoError(400,'invalid_input','Enter a dispute reason of at most 96 bytes.');
+    if (actor.account!==(action==='COMPLETE'?f.provider:f.recipient)) throw new DemoError(403,'forbidden','Only the responsible participant can do that.');
+    if (!(action==='COMPLETE'?f.status==='TODO':action==='DISPUTE'?f.status==='TODO'||f.status==='DONE':f.status==='DISPUTED')) throw new DemoError(409,'conflict','The fulfillment status has changed.');
+    f.status=action==='DISPUTE'?'DISPUTED':'DONE';
+    f.updates.push({id:`fulfillment-${++this.revision}`,at:this.now(),actor:actor.account,actor_name:actor.display_name,status:f.status,reason});
+    f.updates=f.updates.slice(-4);
+    return f;
   }
 
   // --- marketplace ---

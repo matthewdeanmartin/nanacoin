@@ -1,3 +1,4 @@
+import { FulfillmentAction } from '../api/models';
 // The demo's server, wired in as an HTTP interceptor.
 //
 // # Why an interceptor rather than a fake service
@@ -164,6 +165,10 @@ function handle(req: HttpRequest<unknown>): unknown {
   // --- everything below needs a session ---
 
   const me = current(req);
+  if (path === '/demo/lottos/resolve' && method === 'POST') {
+    if (me.role !== 'nana' || me.status !== 'ACTIVE') throw new DemoError(403,'forbidden','Only Nana can resolve demo lottos.');
+    return {resolved:demoLedger.lotto.resolveNow(me,Math.floor(Date.now()/1000))};
+  }
   if (path === '/lottos' && method === 'GET') return {lottos:demoLedger.lotto.book(me),decimals:demoLedger.decimals,money_epoch:demoLedger.moneyEpoch};
   if (path === '/lottos' && method === 'POST') return demoLedger.lotto.create(me,req.body as LottoTerms,Math.floor(Date.now()/1000));
   if (/^\/lottos\/\d+\/tickets$/.test(path) && method === 'POST') return demoLedger.lotto.buy(me,Number(path.split('/')[2]),Number(body['count']),Math.floor(Date.now()/1000));
@@ -215,6 +220,9 @@ function handle(req: HttpRequest<unknown>): unknown {
       return { ...result, transactions: result.transactions.filter(t=>t.kind !== 'MESSAGE' || t.postings.some(p=>p.account===me.account)) };
     }
   }
+
+  if (path === '/fulfillments' && method === 'GET') return demoLedger.fulfillments(me);
+  if (path.startsWith('/transactions/') && path.endsWith('/fulfillment') && method === 'POST') return demoLedger.setFulfillment(me,path.slice('/transactions/'.length,-'/fulfillment'.length),body['action'] as FulfillmentAction,body['reason'] ?? '');
 
   if (path === '/transactions' && method === 'GET') {
     return demoLedger.ledger(Number(query.get('limit') ?? 100));

@@ -4,8 +4,9 @@ use super::*;
 use crate::domain::*;
 use serde::de::DeserializeOwned;
 
-pub const ROW_BYTES: usize = 2048;
+pub const ROW_BYTES: usize = 4096;
 pub const MAX_ROWS: usize = 1
+    + crate::fulfillment::CAPACITY
     + MEMBERS
     + LISTINGS
     + HISTORY
@@ -21,6 +22,7 @@ pub(super) fn save_empty<J: Journal>(j: &mut J) -> Result<(), Error> {
         decimals: 4,
         money_epoch: 0,
         credit_blocked: 0,
+        fulfillments: 0,
         loans: 0,
         lottos: 0,
         lotto_escrow: 0,
@@ -48,6 +50,7 @@ pub(super) fn save_empty<J: Journal>(j: &mut J) -> Result<(), Error> {
 
 #[derive(Serialize, Deserialize)]
 struct Header {
+    fulfillments: usize,
     decimals: u8,
     money_epoch: u64,
     credit_blocked: u16,
@@ -142,6 +145,7 @@ pub(super) fn save<J: Journal>(
         decimals: s.decimals,
         money_epoch: s.money_epoch,
         credit_blocked: s.credit_blocked,
+        fulfillments: s.fulfillments.len(),
         loans: s.loans.len(),
         lottos: s.lottos.len(),
         lotto_escrow: s.lotto_escrow,
@@ -200,6 +204,9 @@ pub(super) fn save<J: Journal>(
     for x in &s.lottos {
         write(j, &mut index, 9, x)?;
     }
+    for x in &s.fulfillments {
+        write(j, &mut index, 10, x)?;
+    }
     for x in keys {
         write(j, &mut index, 6, x)?;
     }
@@ -216,7 +223,8 @@ pub(super) fn restore<J: Journal>(
     }
     let mut index = 0;
     let h: Header = read(j, &mut index, 0)?;
-    if h.decimals > 8
+    if h.fulfillments > crate::fulfillment::CAPACITY
+        || h.decimals > 8
         || h.money_epoch > MAX_SEQUENCE
         || h.loans > crate::loans::LOANS
         || h.lottos > crate::lotto::LOTTOS
@@ -227,7 +235,8 @@ pub(super) fn restore<J: Journal>(
         || h.quotes > crate::forex::QUOTES
         || h.things > THINGS
         || h.keys > MAX_RECORDS
-        || 1 + h.members
+        || 1 + h.fulfillments
+            + h.members
             + h.listings
             + h.history
             + h.offers
@@ -299,6 +308,9 @@ pub(super) fn restore<J: Journal>(
         s.lottos
             .push(read(j, &mut index, 9)?)
             .map_err(|_| Error::CorruptJournal)?;
+    }
+    for _ in 0..h.fulfillments {
+        s.fulfillments.push(read(j, &mut index, 10)?);
     }
     for _ in 0..h.keys {
         let key: KeyReceipt = read(j, &mut index, 6)?;

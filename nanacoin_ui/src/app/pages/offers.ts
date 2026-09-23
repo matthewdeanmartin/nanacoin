@@ -1,3 +1,4 @@
+import { RouterLink } from '@angular/router';
 import { Money, MoneyPipe } from '../api/money';
 import { inject as moneyInject } from '@angular/core';
 import { Component, computed, inject, signal } from '@angular/core';
@@ -13,7 +14,7 @@ import { Mastodon } from '../api/mastodon';
 
 @Component({
   selector: 'app-offers',
-  imports: [MoneyPipe, FormsModule],
+  imports: [MoneyPipe, FormsModule, RouterLink],
   template: `
     <h1>Offers</h1>
     <p class="muted">Offers move money only when the listing owner accepts.</p>
@@ -33,6 +34,7 @@ import { Mastodon } from '../api/mastodon';
               <article class="card">
                 <h3>{{o.listing_title || 'Listing no longer available'}}</h3>
                 <p>{{sentence(o)}}</p>
+                @if (o.settled_tx && o.status !== 'REVERSED') { <p><a routerLink="/history" fragment="my-todos">Track work or delivery in My Account TODO</a></p> }
                 <p class="card__meta"><strong>{{o.amount | nc}} NC</strong> · {{payment(o)}} · {{o.status.toLowerCase().replaceAll('_', ' ')}}</p>
                 @if (o.message) { <p class="card__desc">{{o.message}}</p> }
                 <div class="offer-actions">
@@ -141,7 +143,7 @@ export class OffersPage {
       await this.api.acceptOffer(offer.id, newIdempotencyKey());
       this.toasts.ok(competing > 0
         ? `Accepted. ${competing} competing ${competing === 1 ? 'offer was' : 'offers were'} closed as not selected.`
-        : 'Accepted.');
+        : 'Accepted. Work or delivery is now listed in My Account TODO.');
       if (this.notifyAccepted) {
         const recipient = this.session.household().find((u) => u.account === offer.offerer);
         if (!recipient?.mastodon_id) {

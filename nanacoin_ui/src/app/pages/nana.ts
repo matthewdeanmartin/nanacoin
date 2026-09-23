@@ -35,6 +35,20 @@ export class NanaPage {
 
   protected readonly ledger = signal<Transaction[]>([]);
   protected readonly loadingLedger = signal(false);
+  protected readonly resolvingLotto = signal(false);
+  private lottoResolveKey: string | null = null;
+
+  protected async resolveLottos(): Promise<void> {
+    if (!this.isDemo || !this.session.isNana() || this.resolvingLotto()) return;
+    this.resolvingLotto.set(true);
+    try {
+      const result = await this.api.resolveDemoLottos(this.lottoResolveKey ??= newIdempotencyKey());
+      this.lottoResolveKey = null;
+      await Promise.all([this.session.refresh(), this.loadLedger()]);
+      this.toasts.ok(result.resolved ? `Resolved ${result.resolved} lottos. Prizes, returned savings, and interest have been paid.` : 'No pending lottos to resolve.');
+    } catch (e) { this.toasts.fromError(e); }
+    finally { this.resolvingLotto.set(false); }
+  }
   protected readonly storage = signal<StorageStatus | null>(null);
   protected readonly storageBusy = signal(false);
   protected readonly storageError = signal('');

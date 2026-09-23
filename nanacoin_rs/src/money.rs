@@ -60,6 +60,9 @@ impl State {
         for o in &self.offers {
             amount(o.amount)?;
         }
+        for f in &self.fulfillments {
+            amount(f.payment.amount)?;
+        }
         for t in &self.history {
             if !t.usd {
                 amount(t.amount)?;
@@ -116,6 +119,9 @@ impl State {
         }
         for o in &mut self.offers {
             convert(&mut o.amount);
+        }
+        for f in &mut self.fulfillments {
+            convert(&mut f.payment.amount);
         }
         for t in &mut self.history {
             if !t.usd {

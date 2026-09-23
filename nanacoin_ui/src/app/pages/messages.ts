@@ -62,9 +62,9 @@ export class MessagesPage {
  private readonly seen = signal<Record<string,string[]>>({});
  private scope(): string { return `${this.base.current()}:${this.session.me()?.account ?? ''}`; }
  protected readonly book = resource({ params: () => this.session.me()?.account ? {account:this.session.me()!.account,source:this.base.current()} : undefined, loader: async ({params}) => {
-   const [history,offers,loans] = await Promise.allSettled([this.api.accountHistory(params.account,100),this.api.offers(),this.api.loans()]);
-   return { rows: mailRows(params.account, history.status === 'fulfilled' ? history.value.transactions : [], offers.status === 'fulfilled' ? offers.value.offers : [], loans.status === 'fulfilled' ? loans.value.loans : []),
-     errors: [history.status === 'rejected' ? 'transactions' : '', offers.status === 'rejected' ? 'offers' : '', loans.status === 'rejected' ? 'loans' : ''].filter(Boolean) };
+   const [history,offers,loans,fulfillments] = await Promise.allSettled([this.api.accountHistory(params.account,100),this.api.offers(),this.api.loans(),this.api.fulfillments()]);
+   return { rows: mailRows(params.account, history.status === 'fulfilled' ? history.value.transactions : [], offers.status === 'fulfilled' ? offers.value.offers : [], loans.status === 'fulfilled' ? loans.value.loans : [], fulfillments.status === 'fulfilled' ? fulfillments.value.fulfillments : []),
+     errors: [history.status === 'rejected' ? 'transactions' : '', offers.status === 'rejected' ? 'offers' : '', loans.status === 'rejected' ? 'loans' : '', fulfillments.status === 'rejected' ? 'fulfillment activity' : ''].filter(Boolean) };
  }});
  protected readonly visible = computed(() => (this.book.value()?.rows ?? []).filter(row => {
    const folder = this.filter(), q = this.search().toLocaleLowerCase();

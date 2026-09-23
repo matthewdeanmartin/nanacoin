@@ -33,4 +33,19 @@ describe('demo lotto accounting',()=>{
     expect(()=>ledger.lotto.buy(alice,draw.id,1,100)).toThrow();
     expect(ledger.balanceOf(alice.account)).toBe(100);expect(ledger.lotto.book(alice)[0].tickets).toBe(0);
   });
+  for(const kind of ['SIMPLE','DELAYED','SAVINGS'] as const) it(`allows only active Nana to force ${kind} and never pays twice`,()=>{
+    const {ledger,nana,alice,draw}=setup(kind);
+    ledger.lotto.buy(alice,draw.id,2,1);
+    expect(()=>ledger.lotto.resolveNow(alice,2)).toThrow();
+    expect(()=>ledger.lotto.resolveNow({...nana,status:'DISABLED'},2)).toThrow();
+    if(kind==='DELAYED') ledger.lotto.tick(100); // Include already waiting draws.
+    expect(ledger.lotto.resolveNow(nana,101)).toBe(1);
+    expect(ledger.lotto.book(alice)[0]).toMatchObject({status:'SETTLED',winner:alice.account,due_at:101,interest:kind==='SIMPLE'?0:2});
+    expect(ledger.balanceOf(alice.account)).toBe(kind==='SIMPLE'?100:102);
+    const before=ledger.ledger(100).transactions.length;
+    expect(ledger.lotto.resolveNow(nana,102)).toBe(0);
+    ledger.lotto.tick(draw.due_at+1);
+    expect(ledger.ledger(100).transactions.length).toBe(before);
+    expect(()=>ledger.lotto.buy(alice,draw.id,1,102)).toThrow();
+  });
 });

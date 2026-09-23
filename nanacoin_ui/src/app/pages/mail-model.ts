@@ -1,7 +1,8 @@
-import { Loan, Offer, Transaction } from '../api/models';
+import { fulfillmentLabel } from './fulfillment';
+import { Fulfillment, Loan, Offer, Transaction } from '../api/models';
 import { offerSentence, offerPayment } from './offer-language';
-export interface MailRow { id: string; revision: string; at: number; sender: string; subject: string; body: string; kind: 'Message' | 'Offer' | 'Loan' | 'Transaction'; sent: boolean; attention: boolean; amount?: number; route?: string; replyTo?: string }
-export function mailRows(account: string, transactions: Transaction[], offers: Offer[], loans: Loan[]): MailRow[] {
+export interface MailRow { id: string; revision: string; at: number; sender: string; subject: string; body: string; kind: 'Message' | 'Offer' | 'Loan' | 'Transaction' | 'Fulfillment'; sent: boolean; attention: boolean; amount?: number; route?: string; replyTo?: string }
+export function mailRows(account: string, transactions: Transaction[], offers: Offer[], loans: Loan[], fulfillments: Fulfillment[] = []): MailRow[] {
   if (!account) return [];
   const rows: MailRow[] = transactions.filter(t => t.postings.some(p => p.account === account)).map(t => {
     const message = t.kind === 'MESSAGE';
@@ -29,6 +30,16 @@ export function mailRows(account: string, transactions: Transaction[], offers: O
       sender: sent ? `To ${l.borrower_name}` : `From ${l.lender_name}`, subject: `Loan · ${l.status.toLowerCase()}`,
       body: `${l.lender_name} lends to ${l.borrower_name}.${l.memo ? '\n'+l.memo : ''}`, kind: 'Loan', sent,
       attention: !sent && (l.status === 'OFFERED' || l.overdue > 0), amount: l.amount, route: '/loans', replyTo: sent ? l.borrower : l.lender });
+  }
+  for (const f of fulfillments) {
+    if (f.provider !== account && f.recipient !== account) continue;
+    for (const u of f.updates) {
+      const sent = u.actor === account;
+      rows.push({id:`fulfillment:${f.transaction}:${u.id}`,revision:`fulfillment:${f.transaction}:${u.id}`,at:u.at,
+        sender:u.actor_name,subject:`${f.description} · ${fulfillmentLabel({...f,status:u.status})}`,
+        body:`${f.provider_name} → ${f.recipient_name}. ${u.reason}`,kind:'Fulfillment',sent,
+        attention:u.id === f.updates.at(-1)?.id && (f.status==='TODO' || f.status==='DISPUTED'),route:'/history'});
+    }
   }
   return rows.sort((a,b) => b.at-a.at || b.id.localeCompare(a.id,undefined,{numeric:true}));
 }

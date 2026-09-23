@@ -180,6 +180,8 @@ pub(super) fn route<J: Journal>(
             .ok_or(Error::StaleRequest)?;
         let mut transaction = transaction(&s.state, tx);
         transaction.reversed_by = None;
+        // Acceptance retries describe the payment at acceptance; fetch live fulfillment separately.
+        transaction.fulfillment = None;
         transaction.created_at = timestamp;
         #[derive(Serialize)]
         struct ResultView<'a> {

@@ -1,3 +1,4 @@
+import { Fulfillment, FulfillmentAction } from './models';
 // The NanaCoin API client.
 //
 // One service, HttpClient, no state beyond the bearer token. Everything the
@@ -9,6 +10,7 @@ import { Injectable, inject } from '@angular/core';
 import { Observable, catchError, firstValueFrom, throwError, timeout, TimeoutError, tap } from 'rxjs';
 
 import { Accounts } from './accounts';
+import { IS_DEMO } from '../demo/demo';
 import { Log } from './log';
 import { digestSha256, hasNativeDigest } from './sha256';
 import { ApiBase } from './api-base';
@@ -437,6 +439,11 @@ export class NanacoinService {
     return this.post<Transaction>('/admin/retire', { from, amount, reason }, idempotencyKey);
   }
 
+  fulfillments(): Promise<{ fulfillments: Fulfillment[] }> { return this.get('/fulfillments'); }
+  setFulfillment(id: string, action: FulfillmentAction, reason: string, key: string): Promise<Fulfillment> {
+    return this.post(`/transactions/${encodeURIComponent(id)}/fulfillment`, {action, reason}, key);
+  }
+
   reverse(id: TransactionId, reason: string, idempotencyKey: string): Promise<Transaction> {
     return this.post<Transaction>(
       `/transactions/${encodeURIComponent(id)}/reverse`,
@@ -618,6 +625,10 @@ export class NanacoinService {
   }
   createLotto(terms: LottoTerms, key: string): Promise<Lotto> { return this.post('/lottos', terms, key); }
   buyTickets(id: number, count: number, key: string): Promise<Lotto> { return this.post(`/lottos/${id}/tickets`, { count }, key); }
+  resolveDemoLottos(key: string): Promise<{resolved: number}> {
+    if (!IS_DEMO) return Promise.reject(new Error('This action is only available in the demo.'));
+    return this.post('/demo/lottos/resolve', {}, key);
+  }
   async loans(): Promise<LoanBook> {
     const source = this.base;
     const result = await this.get<LoanBook>('/loans');
