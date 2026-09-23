@@ -903,8 +903,14 @@ textarea {
   align-items: start;
 }
 
+.loan-stats {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
+}
+
 @media (max-width: 480px) {
   .economy-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .loan-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 .members {
