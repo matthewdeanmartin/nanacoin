@@ -76,7 +76,7 @@ export class MessagesPage {
  protected readonly current = computed(() => this.book.value()?.rows.find(r => r.id === this.selected()));
  constructor() {
    try { const saved = JSON.parse(localStorage.getItem('nanacoin-mail-seen') ?? '{}'); if (saved && typeof saved === 'object' && !Array.isArray(saved)) this.seen.set(saved); } catch { /* local-only read markers */ }
-   const timer = setInterval(() => this.book.reload(),15_000); inject(DestroyRef).onDestroy(() => clearInterval(timer));
+   const timer = setInterval(() => { if (!document.hidden && !this.book.isLoading()) this.book.reload(); }, 30_000); inject(DestroyRef).onDestroy(() => clearInterval(timer));
  }
  protected unread(row: MailRow): boolean { const seen = this.seen()[this.scope()]; return !row.sent && !(Array.isArray(seen) && seen.includes(row.revision)); }
  protected open(row: MailRow): void {

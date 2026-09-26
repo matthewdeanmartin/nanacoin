@@ -48,6 +48,7 @@ fn aliases(key: &str) -> &'static [&'static str] {
     match key {
         "NANACOIN_WIFI_SSID" => &["NANACOIN_WIFI_SSID", "WIFI_SSID"],
         "NANACOIN_WIFI_PASSWORD" => &["NANACOIN_WIFI_PASSWORD", "WIFI_PASSWORD"],
+        "NANACOIN_STATUS_LED_PIN" => &["NANACOIN_STATUS_LED_PIN"],
         "NANACOIN_ORIGINS" => &["NANACOIN_ORIGINS"],
         "NANACOIN_NTP_SERVER" => &["NANACOIN_NTP_SERVER", "NTP_SERVER"],
         _ => &[],
@@ -95,6 +96,7 @@ fn main() {
     for key in [
         "NANACOIN_WIFI_SSID",
         "NANACOIN_WIFI_PASSWORD",
+        "NANACOIN_STATUS_LED_PIN",
         "NANACOIN_ORIGINS",
         "NANACOIN_NTP_SERVER",
     ] {

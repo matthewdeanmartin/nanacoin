@@ -94,7 +94,7 @@ export class LoansPage {
   protected credit = false; protected memo = '';
   private readonly keys = new Map<string, string>();
   constructor() {
-    const timer = setInterval(() => this.book.reload(), 10_000);
+    const timer = setInterval(() => { if (!document.hidden && !this.book.isLoading()) this.book.reload(); }, 30_000);
     inject(DestroyRef).onDestroy(() => clearInterval(timer));
   }
   protected period(days: number): string { return days === 1 ? 'day' : days === 7 ? 'week' : days === 365 ? 'year (365 days)' : `${days} days`; }

@@ -98,7 +98,7 @@ export class LottoPage {
   protected principal(lotto: Lotto): number { return lotto.terms.kind === 'SAVINGS' ? lotto.my_tickets*lotto.terms.ticket_price : lotto.winner === this.session.me()?.account ? lotto.pool : 0; }
   protected title = ''; protected kind: LottoKind = 'SIMPLE'; protected price = '1'; protected rate = '1'; protected closes = '';
   private readonly keys = new Map<string,string>();
-  constructor() { const timer = setInterval(() => this.book.reload(), 10_000); inject(DestroyRef).onDestroy(() => clearInterval(timer)); }
+  constructor() { const timer = setInterval(() => { if (!document.hidden && !this.book.isLoading()) this.book.reload(); }, 30_000); inject(DestroyRef).onDestroy(() => clearInterval(timer)); }
   protected label(kind: LottoKind): string { return kind === 'SIMPLE' ? 'Simple lotto' : kind === 'DELAYED' ? 'Delayed lotto' : 'Savings lotto'; }
   private async run(identity: string, action: (key: string) => Promise<unknown>): Promise<void> {
     if (this.busy()) return;

@@ -150,6 +150,7 @@ describe('Session change check', () => {
     vi.spyOn(api, 'users').mockResolvedValue({ users: [] } as never);
     vi.spyOn(api, 'listings').mockResolvedValue({ listings: [] } as never);
     await session.checkForChanges();
+    expect(api.status).toHaveBeenCalledTimes(1);
     expect(session.balance()).toBe(100);
     expect(session.revision()).toBe(8);
   });
@@ -171,5 +172,35 @@ describe('Session change check', () => {
     session.status.set({ sequence: 9 } as Status);
     TestBed.tick();
     expect(reload).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('status polling budget', () => {
+  afterEach(() => { TestBed.resetTestingModule(); vi.useRealTimers(); vi.restoreAllMocks(); });
+  it('coalesces checks, waits after failure, skips hidden tabs and cleans up', async () => {
+    vi.useFakeTimers();
+    TestBed.configureTestingModule({providers:[provideHttpClient(),provideHttpClientTesting()]});
+    const session = TestBed.inject(Session);
+    const api = TestBed.inject(NanacoinService);
+    session.me.set(user({})); session.status.set({sequence:7} as Status);
+    const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(false);
+    const status = vi.spyOn(api, 'status').mockResolvedValue({sequence:7} as Status);
+    await session.checkForChanges();
+    for(let n=0;n<20;n++) await session.checkForChanges();
+    expect(status).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(30_000);
+    status.mockRejectedValueOnce(new Error('offline'));
+    await session.checkForChanges(); await session.checkForChanges();
+    expect(status).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(30_000);
+    hidden.mockReturnValue(true); await session.checkForChanges();
+    expect(status).toHaveBeenCalledTimes(2);
+    hidden.mockReturnValue(false);
+    session.watch(); session.watch();
+    expect(vi.getTimerCount()).toBe(1);
+    TestBed.resetTestingModule();
+    expect(vi.getTimerCount()).toBe(0);
+    window.dispatchEvent(new Event('focus'));
+    expect(status).toHaveBeenCalledTimes(2);
   });
 });

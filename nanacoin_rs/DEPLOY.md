@@ -245,3 +245,111 @@ A deployment report should state:
 
 Do not include credentials, tokens, private-key material, or household transaction
 contents in the report.
+
+## Optional RGB boot and health diagnostics
+
+Set `NANACOIN_STATUS_LED_PIN=48` (or `38` for that board's documented RGB
+pin) in ignored `nanacoin_rs/.env`, then use the ordinary deployment above.
+`off`, an absent setting, or an invalid setting disables the LED. GPIO48 is
+configured for the attached September 26 board; optical confirmation is still
+needed. Never probe arbitrary pins: WS2812 has no acknowledgement, so firmware
+cannot detect a missing pixel or validate the physical pin automatically.
+Choose `off` before deploying to a board that uses that pin for something else.
+
+The optional low-priority RMT task starts before ledger/incident initialization,
+uses dim output (maximum 12/255), and never takes the ledger or network lock.
+Driver/task failure disables only the LED. A missing pixel does not prevent the
+website from working. The boot marker begins once the application runs, not in
+the ROM bootloader; an unpowered/stuck-in-download CPU cannot light it.
+
+| Light | Meaning |
+|---|---|
+| White for 1.5 seconds, 0.5-second gap, short white flashes | Application started; flashes identify the previous reset. |
+| Pulsing blue | Waiting for Wi-Fi/DHCP or reconnecting. |
+| Dim white | Wi-Fi acquired; service initialization continues. |
+| Dim green with a short dark beat every 2 seconds | Both real TLS and HTTP workers are making progress, Wi-Fi is up, and mDNS initialized. |
+| Amber | mDNS initialization failed (use the IP), or an allocation/TLS initialization error occurred within 10 seconds. |
+| Red | Startup/storage failure, or a server worker has stopped progressing for 2 seconds. |
+
+Reset flashes: 1 power-on; 2 software/reset-pin/USB; 3 panic; 4 watchdog;
+5 brownout; 6 other. A panic may reset before a live red indication is possible.
+The heartbeat observes server workers, not every ledger invariant or the
+scheduled-payment task; use Board Health and the strict probe for those checks.
+A healthy mDNS indicator means initialization succeeded, not that every client
+can receive multicast packets.
+
+If only the red power lamp lights, check the USB cable and power connector.
+A similar Mastomini board booted only when powered through its other USB port;
+the power lamp alone did not prove the application had started.
+
+Capture a restart and boot log with the ESP-IDF Python (no flash write):
+
+```bash
+/c/Espressif/python_env/idf5.5_py3.11_env/Scripts/python.exe scripts/boot-log.py --port COM9
+```
+
+Use the identified port. `--no-reset` passively listens. The restart uses the RTC
+watchdog because ordinary USB reset can leave an S3 in download mode. A ready
+boot log supplements, and does not replace, the strict live-board probe.
+
+### September 26, 2026 deployment record
+
+- Started from clean revision `2f010fa`; deployment includes the uncommitted LED
+  changes in this working tree. No pre-existing changes were discarded.
+- Identified native USB COM9 through MAC `AC:A7:04:2C:2C:04`. The live
+  `192.168.1.158` diagnostic uptime reset from 85 seconds to 5 seconds after
+  `read_mac`, confirming this was the running NanaCoin board. COM8 was its
+  additional CH343 adapter; COM9 was used for deployment.
+- Saved only `NANACOIN_STATUS_LED_PIN=48` in the ignored crate `.env`; existing
+  Wi-Fi configuration and certificate inputs were reused.
+- Dry deployment passed. Ordinary `scripts/deploy.sh COM9` then accepted the
+  partition layout and wrote only the 3,213,248-byte application at `0x10000`;
+  esptool verified its hash. Ledger/configuration/bootloader/partitions preserved.
+- `make check` passed: formatting, clippy, 154 Rust tests, and the HTTP/restart
+  smoke. The subsequently added worker-freshness regression also passed
+  (155 tests in total); firmware release build and Python boot-helper syntax
+  check passed. The regression covers both workers, stale heartbeats,
+  concurrent observations, and millisecond counter wrap.
+- Serial restart capture: GPIO48 WS2812 initialized at 1,288 ms, reset class
+  power-on; server ready at 6,728 ms. No LED driver failure was reported.
+  Serial confirms driver operation, not the physical color/pin; owner visual
+  confirmation is still pending.
+- `make probe-board ADDRESS=192.168.1.158` passed strict TLS for `nanacoin.local`,
+  balanced ledger, exact bundled Angular index, anonymous notebook/Board
+  Health, and served CA checks. No payments or provisioning were performed.
+- Browser click-through checks were not performed; the strict automated probe
+  was used instead. No authenticated household/balance view was opened.
+- Local evidence: `.local/nanacoin-led-{check,dry,deploy,boot,probe}.log` at the
+  repository root. No credentials were included in the deployment report.
+
+### September 26, 2026: browser polling audit
+
+The reported all-page `/status` traffic matched Session's five-second change
+watch, plus unthrottled focus/navigation checks. No immediate response-triggered
+loop was found. The UI now allows at most one automatic status check per 30
+seconds after completion, skips hidden/signed-out sessions, and removes its
+timer/listeners on destruction. A changed status is reused for the subsequent
+household refresh instead of requesting `/status` twice. Explicit user edits
+still refresh immediately. Separate tabs each have their own polling budget.
+
+Fulfillment, loans, lotto, messages, and account commitments also had independent
+10/15-second timers. These now run at 30 seconds, skip hidden tabs and in-flight
+resource loads, and retain their existing destroy cleanup and ledger-change
+refresh. Account commitments can fetch both loans and lottos once per tick.
+Server Logs remains opt-in; follow mode is now five seconds, skips hidden tabs,
+and never overlaps its own request. Board Health already starts paused, waits
+five seconds after a response, pauses hidden tabs, and aborts on page exit.
+
+UI validation: 291 tests passed, including cooldown on success/failure, hidden
+state, listener cleanup, and reuse of changed status. Mastomini's own Angular
+and server-generated pages had no recurring network timer; bots UI had a real
+async-initialization timer leak plus overlapping three-second polling, fixed in
+that repository (see its deployment runbook). Browser traffic was diagnosed
+from source and the owner's observed five-second cadence, not a captured HAR.
+
+Deployment completed on the same identified COM9 board: dry run and ordinary
+application-only flash passed (3,213,920 bytes, verified hash). Boot confirmed
+GPIO48 diagnostics and ready at 6,728 ms. Strict probe at `192.168.1.158` passed,
+including balanced ledger and exact updated Angular index. Browser manual
+checks were not performed. Reload all existing Nanacoin tabs to replace the old
+JavaScript timers. Evidence is in `.local/nanacoin-poll-{dry,deploy,boot,probe}.log`.

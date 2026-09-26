@@ -30,20 +30,59 @@ mod incidents;
 mod nvs_journal;
 use nvs_journal::NvsJournal;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+#[path = "esp32/status_led.rs"]
+mod status_led;
+
+#[allow(non_upper_case_globals)] // ESP-IDF generated constant names.
+fn reset_reason(reason: esp_idf_svc::sys::esp_reset_reason_t) -> &'static str {
+    use esp_idf_svc::sys::*;
+    match reason {
+        esp_reset_reason_t_ESP_RST_POWERON => "power on",
+        esp_reset_reason_t_ESP_RST_EXT => "reset pin",
+        esp_reset_reason_t_ESP_RST_SW => "software restart",
+        esp_reset_reason_t_ESP_RST_PANIC => "crash",
+        esp_reset_reason_t_ESP_RST_INT_WDT
+        | esp_reset_reason_t_ESP_RST_TASK_WDT
+        | esp_reset_reason_t_ESP_RST_WDT => "watchdog",
+        esp_reset_reason_t_ESP_RST_DEEPSLEEP => "deep sleep",
+        esp_reset_reason_t_ESP_RST_BROWNOUT => "brownout (power dipped)",
+        esp_reset_reason_t_ESP_RST_USB => "USB",
+        _ => "other",
+    }
+}
+
+fn main() {
+    if let Err(error) = run() {
+        log::error!("Startup failed: {error}");
+        status_led::fatal();
+        loop {
+            std::thread::sleep(Duration::from_secs(1));
+        }
+    }
+}
+
+fn run() -> Result<(), Box<dyn std::error::Error>> {
     esp_idf_svc::sys::link_patches();
     esp_idf_svc::log::EspLogger::initialize_default();
-    incidents::start()?;
     let peripherals = Peripherals::take()?;
+    status_led::start(peripherals.pins);
+    incidents::start()?;
     let event_loop = EspSystemEventLoop::take()?;
     let _wifi_events = event_loop.subscribe::<esp_idf_svc::wifi::WifiEvent, _>(|event| {
         if let esp_idf_svc::wifi::WifiEvent::StaDisconnected(info) = event {
+            status_led::wifi(false);
             incidents::record(
                 nanacoin::incidents::Kind::WifiDown,
                 i32::from(info.reason()),
             );
         }
     })?;
+    let _ip_events =
+        event_loop.subscribe::<esp_idf_svc::netif::IpEvent, _>(|event| match event {
+            esp_idf_svc::netif::IpEvent::DhcpIpAssigned(_) => status_led::wifi(true),
+            esp_idf_svc::netif::IpEvent::DhcpIpDeassigned(_) => status_led::wifi(false),
+            _ => {}
+        })?;
     // Never auto-erase NVS on a version/full error: it may contain data.
     let system_nvs = EspDefaultNvsPartition::take_with(false)?;
     // The svc custom-partition convenience constructor auto-erases on some
@@ -111,24 +150,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         shared: Arc::clone(&shared),
         diagnostics: Arc::clone(&diagnostics),
     })?;
-    let mut mdns = EspMdns::take()?;
-    // The legacy standalone UI board must not advertise this name concurrently.
-    mdns.set_hostname("nanacoin")?;
-    mdns.set_instance_name("NanaCoin Rust household ledger")?;
-    mdns.add_service(
-        Some("NanaCoin setup"),
-        "_http",
-        "_tcp",
-        80,
-        &[("path", "/trust")],
-    )?;
-    mdns.add_service(
-        Some("NanaCoin"),
-        "_https",
-        "_tcp",
-        443,
-        &[("path", "/api/v1/status")],
-    )?;
+    let _mdns = (|| -> Result<EspMdns, esp_idf_svc::sys::EspError> {
+        let mut mdns = EspMdns::take()?;
+        // The legacy standalone UI board must not advertise this name concurrently.
+        mdns.set_hostname("nanacoin")?;
+        mdns.set_instance_name("NanaCoin Rust household ledger")?;
+        mdns.add_service(
+            Some("NanaCoin setup"),
+            "_http",
+            "_tcp",
+            80,
+            &[("path", "/trust")],
+        )?;
+        mdns.add_service(
+            Some("NanaCoin"),
+            "_https",
+            "_tcp",
+            443,
+            &[("path", "/api/v1/status")],
+        )?;
+        Ok(mdns)
+    })()
+    .map_err(|error| {
+        log::warn!("mDNS unavailable: {error}; server continues by IP");
+        error
+    })
+    .ok();
     // Core 0 owns live probes. Only a small snapshot copy uses the independent
     // diagnostics mutex; ledger work and sockets never hold that mutex.
     let sampler = Arc::clone(&diagnostics);
@@ -170,6 +217,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         unsafe { esp_idf_svc::sys::esp_timer_get_time() / 1000 } as u32,
         Ordering::Relaxed,
     );
+    status_led::ready(_mdns.is_some());
     incidents::record(nanacoin::incidents::Kind::Ready, 0);
     log::info!(
         "Ready at https://nanacoin.local; bundled UI + API; HTTP/API core 1 (8 TLS + 4 HTTP clients), TLS handshakes/Wi-Fi/diag core 0"

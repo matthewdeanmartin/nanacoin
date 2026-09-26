@@ -70,5 +70,5 @@ export class AccountCommitments {
  protected readonly upcoming=computed(()=>(this.lottos.value()?.lottos ?? []).filter(l=>l.my_tickets>0 && l.status!=='SETTLED').sort((a,b)=>a.due_at-b.due_at));
  protected readonly results=computed(()=>(this.lottos.value()?.lottos ?? []).filter(l=>l.my_tickets>0 && l.status==='SETTLED').sort((a,b)=>b.due_at-a.due_at));
  protected outcome(l: Lotto) { return lottoOutcome(l,this.session.me()?.account ?? ''); }
- constructor() { const timer=setInterval(()=>{this.loans.reload();this.lottos.reload();},15_000);inject(DestroyRef).onDestroy(()=>clearInterval(timer)); }
+ constructor() { const timer=setInterval(()=>{if(document.hidden)return;if(!this.loans.isLoading())this.loans.reload();if(!this.lottos.isLoading())this.lottos.reload();}, 30_000);inject(DestroyRef).onDestroy(()=>clearInterval(timer)); }
 }

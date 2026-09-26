@@ -4,7 +4,7 @@
 // Signals rather than a store library: this is four pieces of state and a
 // reload function.
 
-import { EffectRef, Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
+import { DestroyRef, EffectRef, Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
 
 import { Accounts } from './accounts';
 import { Log } from './log';
@@ -12,7 +12,7 @@ import { ApiError, NanacoinService } from './nanacoin.service';
 import { Listing, Status, User } from './models';
 
 /** How often an open, visible screen asks whether anything changed. */
-export const WATCH_MS = 5000;
+export const WATCH_MS = 30_000;
 
 @Injectable({ providedIn: 'root' })
 export class Session {
@@ -49,6 +49,8 @@ export class Session {
    */
   readonly revision = computed(() => this.status()?.sequence ?? 0);
 
+  private readonly lifetime = inject(DestroyRef);
+  private nextCheck = 0;
   private watching = false;
   private checking = false;
 
@@ -84,8 +86,8 @@ export class Session {
    * Without this, a balance only moved when this browser did something: Nana
    * reversing a purchase left the child's screen showing the old balance
    * until they pressed F5. The check is one small status request, made every
-   * few seconds while the page is visible and again the moment it becomes
-   * visible or focused; the full reload only happens when the ledger moved.
+   * 30 seconds while the page is visible; focus/navigation checks share
+   * the same cooldown; the full reload only happens when the ledger moved.
    */
   watch(): void {
     if (this.watching) return;
@@ -93,27 +95,33 @@ export class Session {
     const check = () => {
       if (document.visibilityState === 'visible') void this.checkForChanges();
     };
-    window.setInterval(check, WATCH_MS);
+    const timer = window.setInterval(check, WATCH_MS);
     document.addEventListener('visibilitychange', check);
     window.addEventListener('focus', check);
+    this.lifetime.onDestroy(() => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', check);
+      window.removeEventListener('focus', check);
+    });
   }
 
   /** Reloads if the ledger changed since the last refresh. */
   async checkForChanges(): Promise<void> {
-    if (!this.me() || this.checking || this.loading()) return;
+    if (document.hidden || !this.me() || this.checking || this.loading() || Date.now() < this.nextCheck) return;
     this.checking = true;
     try {
       const status = await this.api.status(true);
       const seen = this.status()?.sequence;
       if (status.sequence === undefined || status.sequence !== seen) {
         this.log.info('session', 'the ledger changed; reloading', { from: seen, to: status.sequence });
-        await this.refresh();
+        await this.refresh(status);
       }
     } catch (e) {
       // The next tick tries again; a board that stays unreachable is reported
       // by whatever the person does next.
       this.log.debug('session', 'change check failed', { error: String(e) });
     } finally {
+      this.nextCheck = Date.now() + WATCH_MS;
       this.checking = false;
     }
   }
@@ -265,14 +273,14 @@ export class Session {
    * is authoritative about balances and listing status, and re-reading is both
    * simpler and correct when someone else in the house is also clicking.
    */
-  async refresh(): Promise<void> {
+  async refresh(knownStatus?: Status): Promise<void> {
     if (!this.me()) return;
     this.loading.set(true);
     try {
       // Status first: its sequence then never claims more than the rest shows,
       // so a change that lands mid-refresh is caught by the next check rather
       // than hidden behind a sequence that already counts it.
-      const status = await this.api.status();
+      const status = knownStatus ?? await this.api.status();
       const [me, users, listings] = await Promise.all([
         this.api.me(),
         this.api.users(),
@@ -282,6 +290,7 @@ export class Session {
       this.household.set(users.users);
       this.listings.set(listings.listings);
       this.status.set(status);
+      this.nextCheck = Date.now() + WATCH_MS;
     } finally {
       this.loading.set(false);
     }

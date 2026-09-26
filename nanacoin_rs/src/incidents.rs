@@ -249,6 +249,19 @@ impl Recorder {
         self.connections[slot].store(count, Relaxed);
         self.high_water[slot].store(self.high_water[slot].load(Relaxed).max(count), Relaxed);
     }
+    pub fn workers_healthy(&self, now: u64) -> bool {
+        (0..2).all(|i| {
+            if self.active[i].load(Relaxed) == 0 {
+                return false;
+            }
+            let gap = (now as u32).wrapping_sub(self.beats[i].load(Relaxed));
+            gap < STALL_MS || gap > i32::MAX as u32
+        })
+    }
+
+    pub fn count(&self, kind: Kind) -> u32 {
+        self.counts[kind as usize].load(Relaxed)
+    }
     pub fn handshake(&self, ms: u32) {
         self.last_handshake_ms.store(ms, Relaxed);
         self.max_handshake_ms
@@ -411,6 +424,21 @@ mod tests {
         log.beat(1, u32::MAX as u64 - 100);
         log.beat(1, u32::MAX as u64 + 50);
         assert!(log.snapshot().events.is_empty());
+    }
+
+    #[test]
+    fn status_requires_both_workers_to_make_progress() {
+        let log = Recorder::new();
+        assert!(!log.workers_healthy(0));
+        log.beat(0, 100);
+        assert!(!log.workers_healthy(100));
+        log.beat(1, 101);
+        assert!(log.workers_healthy(100)); // concurrent newer beat
+        assert!(!log.workers_healthy(2100));
+        log.beat(0, u32::MAX as u64 - 100);
+        log.beat(1, u32::MAX as u64 - 100);
+        assert!(log.workers_healthy(u32::MAX as u64 + 50));
+        assert!(!log.workers_healthy(u32::MAX as u64 + 1900));
     }
 
     #[test]

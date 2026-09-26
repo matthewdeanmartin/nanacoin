@@ -315,7 +315,7 @@ export class AccountTodos {
     this.changed.emit();
   }
   constructor() {
-    const timer = setInterval(() => this.book.reload(), 15_000);
+    const timer = setInterval(() => { if (!document.hidden && !this.book.isLoading()) this.book.reload(); }, 30_000);
     inject(DestroyRef).onDestroy(() => clearInterval(timer));
   }
 }

@@ -24,3 +24,5 @@ pub mod incidents;
 
 pub mod commerce;
 pub mod ledger;
+
+pub mod board_status;

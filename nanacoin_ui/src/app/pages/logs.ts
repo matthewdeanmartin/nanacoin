@@ -111,6 +111,7 @@ export class LogsPage {
   }
 
   protected async load(): Promise<void> {
+    if (this.loading()) return;
     this.loading.set(true);
     try {
       const page = await this.api.logs(60);
@@ -136,7 +137,7 @@ export class LogsPage {
       this.following.set(false);
       return;
     }
-    this.timer = window.setInterval(() => void this.load(), 2000);
+    this.timer = window.setInterval(() => { if (!document.hidden) void this.load(); }, 5000);
     this.following.set(true);
   }
 
