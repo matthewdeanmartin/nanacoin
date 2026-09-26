@@ -103,6 +103,15 @@ export interface Transaction {
   quantity_milli?: number;
   unit?: EconomicUnit;
   postings: Posting[];
+  /** Original immutable facts retained when the UI uses current-unit postings. */
+  original_postings?: Posting[];
+  current_postings?: Posting[] | null;
+  current_money_epoch?: number;
+  money_epoch?: number;
+  decimals?: number;
+  refunded?: number;
+  gift_request?: number;
+  art?: number;
 }
 
 export interface Listing {
@@ -253,13 +262,22 @@ export interface Config {
   currency: string;
 }
 
-export interface AccountHistory {
+export interface HistoryPageMetadata {
+  state_sequence?: number;
+  snapshot_upper?: number;
+  next_before?: number | null;
+  next_cursor?: string | null;
+  history_truncated?: boolean;
+  archive_first_page?: number;
+}
+
+export interface AccountHistory extends HistoryPageMetadata {
   account: AccountId;
   balance: number;
   transactions: Transaction[];
 }
 
-export interface LedgerPage {
+export interface LedgerPage extends HistoryPageMetadata {
   transactions: Transaction[];
   circulation: number;
 }

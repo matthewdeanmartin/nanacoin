@@ -2,6 +2,7 @@ use crate::domain::{Command, Error, Event, MemberId, Receipt, State};
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
+pub mod archive;
 pub mod checkpoint;
 
 pub const FRAME_SIZE: usize = 1024;
@@ -10,6 +11,19 @@ pub const MAX_RECORDS: usize = 4096;
 /// A successful append means durable storage. An error may be ambiguous;
 /// Service latches read-only until restart/replay instead of reusing the slot.
 pub trait Journal {
+    fn supports_archive(&self) -> bool {
+        false
+    }
+    fn read_archive(
+        &mut self,
+        _: usize,
+        _: &mut [u8; archive::PAGE_BYTES],
+    ) -> Result<usize, Error> {
+        Err(Error::Storage)
+    }
+    fn write_archive(&mut self, _: usize, _: &[u8]) -> Result<(), Error> {
+        Err(Error::Storage)
+    }
     fn https_only(&self) -> bool {
         false
     }
@@ -53,7 +67,9 @@ pub struct Service<J> {
     // growing inline state through the small firmware startup stack.
     pub(crate) state: Box<State>,
     pub(crate) auth: crate::auth::Auth,
-    journal: J,
+    pub(crate) journal: J,
+    pub(crate) page_rows: std::vec::Vec<crate::domain::Transaction>,
+    pub(crate) audit_rows: std::vec::Vec<crate::ledger::Audit>,
     records: usize,
     storage_failed: bool,
     https_only: bool,
@@ -110,6 +126,8 @@ impl<J: Journal> Service<J> {
             state,
             auth: crate::auth::Auth::default(),
             journal,
+            page_rows: std::vec::Vec::with_capacity(100),
+            audit_rows: std::vec::Vec::with_capacity(16),
             records,
             storage_failed: false,
             https_only,
@@ -170,6 +188,16 @@ impl<J: Journal> Service<J> {
             + self.state.fulfillments.capacity()
                 * core::mem::size_of::<crate::fulfillment::Fulfillment>()
             + self.keyed.capacity() * core::mem::size_of::<KeyReceipt>()
+            + self.state.ledger.corrections.capacity()
+                * core::mem::size_of::<crate::ledger::Correction>()
+            + self.state.ledger.epochs.capacity() * core::mem::size_of::<crate::ledger::Epoch>()
+            + self.state.ledger.audit.capacity() * core::mem::size_of::<crate::ledger::Audit>()
+            + self.page_rows.capacity() * core::mem::size_of::<crate::domain::Transaction>()
+            + self.audit_rows.capacity() * core::mem::size_of::<crate::ledger::Audit>()
+            + self.state.commerce.requests.capacity()
+                * core::mem::size_of::<crate::commerce::GiftRequest>()
+            + self.state.commerce.artworks.capacity()
+                * core::mem::size_of::<crate::commerce::Artwork>()
     }
 
     /// Caller holds the service mutex. A failed/ambiguous storage operation
@@ -192,7 +220,7 @@ impl<J: Journal> Service<J> {
             return Err(Error::Capacity);
         }
         let result = if reset {
-            checkpoint::save_empty(&mut self.journal)
+            checkpoint::save_empty(&mut self.journal, self.state.archive)
         } else {
             self.state.check_invariants()?;
             checkpoint::save(&mut self.journal, &self.state, &self.keyed)
@@ -200,6 +228,15 @@ impl<J: Journal> Service<J> {
         if result.is_err() {
             self.storage_failed = true;
             return Err(Error::Storage);
+        }
+        self.state.archive = result.unwrap();
+        while self
+            .state
+            .history
+            .front()
+            .is_some_and(|t| t.meta.ordinal < self.state.archive.first_transaction)
+        {
+            self.state.history.pop_front();
         }
         self.records = 0;
         if reset {
@@ -317,8 +354,15 @@ impl<J: Journal> Service<J> {
         }
         let now = self.now();
         self.state.validate_at(actor, &command, now)?;
-        if self.records >= 2048 && self.journal.supports_checkpoint() {
+        if self.journal.supports_checkpoint()
+            && (self.records >= 2048
+                || (self.journal.supports_archive()
+                    && (self.state.transactions - self.state.archive.transactions >= 1024
+                        || self.records >= 1024)))
+        {
             self.rotate(false)?;
+            // Retention may evict an unpinned original: revalidate before append.
+            self.state.validate_at(actor, &command, now)?;
         }
         if self.records == MAX_RECORDS {
             return Err(Error::Capacity);
@@ -453,10 +497,15 @@ fn unix_time() -> u64 {
 
 pub fn encode(event: &Event) -> Result<[u8; FRAME_SIZE], Error> {
     let mut frame = [0; FRAME_SIZE];
-    frame[..4].copy_from_slice(b"NCR1");
-    let len = serde_json_core::to_slice(event, &mut frame[12..]).map_err(|_| Error::Capacity)?;
+    frame[..4].copy_from_slice(b"NCR2");
+    let len = postcard::to_slice(event, &mut frame[12..])
+        .map_err(|_| Error::Capacity)?
+        .len();
     frame[4..8].copy_from_slice(&(len as u32).to_le_bytes());
-    let checksum = crc32fast::hash(&frame[12..12 + len]);
+    let mut crc = crc32fast::Hasher::new();
+    crc.update(&frame[..8]);
+    crc.update(&frame[12..12 + len]);
+    let checksum = crc.finalize();
     frame[8..12].copy_from_slice(&checksum.to_le_bytes());
     Ok(frame)
 }
@@ -464,14 +513,21 @@ pub fn encode(event: &Event) -> Result<[u8; FRAME_SIZE], Error> {
 pub fn decode(frame: &[u8; FRAME_SIZE]) -> Result<Event, Error> {
     let len = u32::from_le_bytes(frame[4..8].try_into().unwrap()) as usize;
     let checksum = u32::from_le_bytes(frame[8..12].try_into().unwrap());
-    if &frame[..4] != b"NCR1"
-        || len > FRAME_SIZE - 12
-        || crc32fast::hash(&frame[12..12 + len]) != checksum
-        || frame[12 + len..].iter().any(|b| *b != 0)
-    {
+    if &frame[..4] != b"NCR2" || len == 0 || len > FRAME_SIZE - 12 {
         return Err(Error::CorruptJournal);
     }
-    crate::json::decode(&frame[12..12 + len]).map_err(|_| Error::CorruptJournal)
+    let mut crc = crc32fast::Hasher::new();
+    crc.update(&frame[..8]);
+    crc.update(&frame[12..12 + len]);
+    if crc.finalize() != checksum || frame[12 + len..].iter().any(|b| *b != 0) {
+        return Err(Error::CorruptJournal);
+    }
+    let (event, remaining) =
+        postcard::take_from_bytes(&frame[12..12 + len]).map_err(|_| Error::CorruptJournal)?;
+    if !remaining.is_empty() {
+        return Err(Error::CorruptJournal);
+    }
+    Ok(event)
 }
 
 #[cfg(feature = "desktop")]

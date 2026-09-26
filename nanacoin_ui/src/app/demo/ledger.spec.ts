@@ -290,11 +290,12 @@ describe('the seeded household', () => {
     }
   });
 
-  it('funds Nana with 1,000 coins and pays the sample lotto interest', () => {
+  it('funds Nana with 1,000 coins, pays lotto interest and funds the sample loan', () => {
     const l = new DemoLedger();
     seed(l);
     const nana = l.userByName('nana')!;
-    expect(l.balanceOf(nana.account)).toBe(10_000_000 - 4_000);
+    expect(l.balanceOf(nana.account)).toBe(10_000_000 - 4_000 - 100_000 + 20_000);
+    expect(l.view(nana,nana).usd_cents).toBe(10_000);
   });
 
   it('leaves an offer waiting for a decision', () => {

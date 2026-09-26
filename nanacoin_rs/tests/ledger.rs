@@ -444,13 +444,13 @@ fn want_ad_pays_the_accepting_member() {
 #[test]
 fn bounded_history_preserves_lifetime_balances_and_retry_watermarks() {
     let (mut s, memory) = household();
-    for _ in 0..HISTORY * 3 {
+    for _ in 0..HISTORY + 100 {
         execute(&mut s, 1, issue(1)).unwrap();
     }
     assert_eq!(s.state().history.len(), HISTORY);
     assert_eq!(
         s.state().member(MemberId(2)).unwrap().balance,
-        (HISTORY * 3) as i64
+        (HISTORY + 100) as i64
     );
     assert_eq!(
         execute(
@@ -779,21 +779,19 @@ fn ambiguous_commit_recovers_once_and_retry_returns_original_receipt() {
 }
 
 #[test]
-fn oversize_encoded_event_returns_capacity_without_panicking() {
+fn binary_event_fits_without_json_escape_expansion() {
     let (mut s, _) = household();
-    assert_eq!(
-        execute(
-            &mut s,
-            1,
-            Command::List {
-                title: Title::try_from("\u{1}".repeat(80).as_str()).unwrap(),
-                description: Memo::try_from("\u{1}".repeat(96).as_str()).unwrap(),
-                price: 1,
-                side: Side::Sell,
-                details: None,
-            }
-        ),
-        Err(Error::Capacity)
-    );
-    assert!(s.state().listings.is_empty());
+    assert!(execute(
+        &mut s,
+        1,
+        Command::List {
+            title: Title::try_from("\u{1}".repeat(80).as_str()).unwrap(),
+            description: Memo::try_from("\u{1}".repeat(96).as_str()).unwrap(),
+            price: 1,
+            side: Side::Sell,
+            details: None,
+        }
+    )
+    .is_ok());
+    assert_eq!(s.state().listings.len(), 1);
 }

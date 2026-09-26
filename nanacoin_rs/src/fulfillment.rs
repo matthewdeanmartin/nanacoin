@@ -112,18 +112,26 @@ impl State {
     }
     pub(crate) fn track_fulfillment(&mut self, tx: &Transaction) {
         if let Some(original) = tx.reverses {
+            if self.ledger.reversed_by(original).is_none() {
+                return;
+            }
             if let Some(f) = self
                 .fulfillments
                 .iter_mut()
                 .find(|f| f.transaction == original)
             {
                 f.status = Status::Reversed;
-                f.payment.reversed = true;
+
                 f.update(tx.id, tx.created_at, tx.actor, Memo::new());
             }
             return;
         }
-        if tx.usd || tx.amount == 0 || tx.loan.is_some() || tx.lotto.is_some() || tx.quote.is_some()
+        if tx.usd
+            || tx.amount == 0
+            || tx.loan.is_some()
+            || tx.lotto.is_some()
+            || tx.quote.is_some()
+            || tx.meta.art.is_some()
         {
             return;
         }
@@ -187,7 +195,8 @@ impl State {
                 || f.payment.amount > MAX_AMOUNT
                 || f.payment.usd
                 || f.payment.reverses.is_some()
-                || f.payment.reversed != (f.status == Status::Reversed)
+                || self.ledger.reversed_by(f.transaction).is_some()
+                    != (f.status == Status::Reversed)
                 || f.transaction == 0
                 || f.transaction > self.sequence
                 || f.provider == f.recipient

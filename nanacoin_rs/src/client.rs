@@ -1,5 +1,7 @@
 //! Wire adapter for the existing nanacoin_web/Angular client. Domain IDs and
 //! commands stay strongly typed; the adapter owns HTTP strings and views.
+mod commerce;
+mod history;
 use crate::{
     api::{parse, serialize},
     domain::*,
@@ -130,6 +132,10 @@ struct Posting<'a> {
 }
 #[derive(Serialize)]
 struct TransactionView<'a> {
+    metadata: crate::ledger::TransactionMeta,
+    current_money_epoch: u64,
+    current_postings: Option<[Posting<'a>; 2]>,
+    refunded: i64,
     fulfillment: Option<fulfillment::View<'a>>,
     id: Id,
     kind: &'static str,
@@ -162,6 +168,23 @@ fn transaction<'a>(state: &'a State, tx: &'a Transaction) -> TransactionView<'a>
         }
     };
     TransactionView {
+        metadata: tx.meta,
+        current_money_epoch: state.money_epoch,
+        current_postings: state.current_amount(tx, tx.amount).ok().map(|amount| {
+            [
+                Posting {
+                    account: currency_account(tx.from, tx.usd),
+                    name: name(tx.from),
+                    amount: -amount,
+                },
+                Posting {
+                    account: currency_account(tx.to, tx.usd),
+                    name: name(tx.to),
+                    amount,
+                },
+            ]
+        }),
+        refunded: state.ledger.refunded(tx.id),
         fulfillment: state
             .fulfillments
             .iter()
@@ -185,11 +208,7 @@ fn transaction<'a>(state: &'a State, tx: &'a Transaction) -> TransactionView<'a>
         actor: id("user-", tx.actor.0 as u64),
         description: &tx.memo,
         reverses: tx.reverses.map(|n| id("tx-", n)),
-        reversed_by: state
-            .history
-            .iter()
-            .find(|t| t.reverses == Some(tx.id))
-            .map(|t| id("tx-", t.id)),
+        reversed_by: state.ledger.reversed_by(tx.id).map(|n| id("tx-", n)),
         reference: tx
             .loan
             .map(|l| id("loan-", l))
@@ -387,6 +406,20 @@ pub(crate) fn route<J: Journal>(
     body: &[u8],
     output: &mut [u8],
 ) -> Result<usize, Error> {
+    if let Some(result) = commerce::route(
+        s,
+        actor,
+        method,
+        uri.split_once('?').map_or(uri, |v| v.0),
+        key,
+        body,
+        output,
+    ) {
+        return result;
+    }
+    if let Some(result) = history::route(s, actor, method, uri, key, body, output) {
+        return result;
+    }
     let (path, query) = uri.split_once('?').unwrap_or((uri, ""));
     if let Some(result) = fulfillment::route(s, actor, method, path, key, body, output) {
         return result;
@@ -1028,4 +1061,12 @@ fn account_balance(state: &State, member: MemberId, usd: bool) -> Result<i64, Er
         let m = state.member(member)?;
         Ok(if usd { m.usd_cents } else { m.balance })
     }
+}
+
+pub(crate) fn ledger_page<J: Journal>(
+    s: &mut Service<J>,
+    query: &str,
+    output: &mut [u8],
+) -> Result<usize, Error> {
+    history::page(s, query, None, None, output)
 }

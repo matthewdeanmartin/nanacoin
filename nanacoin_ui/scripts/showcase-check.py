@@ -40,7 +40,8 @@ def main():
     errors = []
     try:
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True, **({'channel': 'msedge'} if os.name == 'nt' else {}))
+            channel = os.environ.get('SHOWCASE_BROWSER', 'msedge' if os.name == 'nt' else 'chromium')
+            browser = p.chromium.launch(headless=True, **({} if channel == 'chromium' else {'channel': channel}))
             page = browser.new_page(viewport={'width': 1024, 'height': 768})
             page.on('pageerror', lambda e: errors.append(str(e)))
             def network(route):
@@ -80,6 +81,8 @@ def main():
             expect(page.get_by_role('heading', name='Vegan lemon bars (egg-free and dairy-free)')).to_be_visible()
             navigate('The Notebook')
             expect(page.locator('app-public-ledger .ledger-row').first).to_be_visible()
+            for example in ['Partial refund: one damaged sketchbook', 'Watercolor fund: a gift from Dad', 'Digital art: Moonlit garden', 'Loan interest']:
+                expect(page.locator('app-public-ledger .ledger-row').filter(has_text=example).first).to_be_visible()
             page.keyboard.press('j')
             expect(page.locator('app-public-ledger .ledger-row').nth(0)).to_be_focused()
             page.keyboard.press('j')
@@ -133,7 +136,17 @@ def main():
                 navigate(label)
                 expect(page.locator('main h1').first).to_be_visible()
                 expect(page.get_by_role('navigation', name='Main navigation')).not_to_be_visible()
-                assert page.evaluate('document.documentElement.scrollWidth <= innerWidth + 1'), label
+                assert page.evaluate('document.documentElement.scrollWidth <= innerWidth + 1'), (label, page.locator('main *').evaluate_all('els => els.filter(e => e.getBoundingClientRect().right > innerWidth + 1).map(e => ({tag:e.tagName,cls:e.className,text:e.textContent.slice(0,120),width:e.getBoundingClientRect().width}))'))
+            page.set_viewport_size({'width': 1024, 'height': 768})
+            navigate('Loans')
+            expect(page.get_by_text('Tools for the garden', exact=True)).to_be_visible()
+            page.locator('app-loans h1').click()
+            for width in [320, 390, 768, 1024]:
+                page.set_viewport_size({'width': width, 'height': 844})
+                expect(page.get_by_label("Draw once when the borrower's balance reaches exactly zero")).to_be_visible()
+                assert page.evaluate('document.documentElement.scrollWidth <= innerWidth + 1'), ('Loans', width)
+                if width == 320:
+                    page.screenshot(path=str(screenshots / 'loans-mobile.png'), full_page=True)
             page.set_viewport_size({'width': 1024, 'height': 768})
             navigate('Lotto')
             lotto = page.locator('app-lotto')
@@ -152,12 +165,21 @@ def main():
                 expect(open_draw).to_contain_text('Your tickets: 2')
             expect(open_draw).to_contain_text('Principal due back: 2 NC')
             navigate('My Account')
-            expect(page.locator('#my-lotto')).to_contain_text('Save and win interest')
-            expect(page.locator('#my-lotto')).to_contain_text('NC net')
+            page.get_by_role('tab', name=re.compile(r'^Lotto')).click()
+            expect(page.locator('#panel-lotto')).to_contain_text('Save and win interest')
+            expect(page.locator('#panel-lotto')).to_contain_text('NC net')
             page.locator('details.account-menu > summary').filter(has_text='Account').click()
             page.get_by_role('button', name='Sign in another account').click()
             page.get_by_role('button', name=re.compile(r'^Nana\b')).click()
             expect(page.locator('.topbar__who').get_by_text('Nana', exact=True)).to_be_visible()
+            navigate('Nana as Central Bank')
+            bank = page.locator('app-central-bank')
+            expect(bank.locator('#cb-reserve')).to_contain_text('$100.00')
+            bank.locator('.chart-controls select').select_option('all')
+            expect(bank.get_by_role('row').filter(has_text='New coins issued to Nana')).to_contain_text('1,000 NC')
+            expect(bank.get_by_role('row').filter(has_text='Real dollars recorded into the household')).to_contain_text('$300.00')
+            expect(bank.get_by_role('row').filter(has_text='Loans Nana made / repaid to her')).to_contain_text('10 /')
+            page.screenshot(path=str(screenshots / 'central-bank.png'), full_page=True)
             navigate('Household')
             page.set_viewport_size({'width': 390, 'height': 844})
             page.get_by_role('button', name='Resolve all lottos now', exact=True).click()
@@ -179,8 +201,9 @@ def main():
                 expect(result).to_contain_text('Principal returned: 2 NC' if title == draw_titles[2] else 'Prize paid: 2 NC')
             expect(lotto.get_by_role('button', name='Buy tickets', exact=True)).to_have_count(0)
             navigate('My Account')
-            expect(page.locator('#my-lotto')).to_contain_text('No pending tickets.')
-            expect(page.locator('#my-lotto')).to_contain_text('+0.1 NC net')
+            page.get_by_role('tab', name=re.compile(r'^Lotto')).click()
+            expect(page.locator('#panel-lotto')).to_contain_text('No pending tickets.')
+            expect(page.locator('#panel-lotto')).to_contain_text('+0.1 NC net')
             navigate('Economy')
             indicators = page.locator('.economy-stats')
             expect(indicators.locator('app-economy-stat')).to_have_count(6)
@@ -266,7 +289,7 @@ def main():
     finally:
         server.shutdown()
         server.server_close()
-    print('Static showcase passed: public routes, real browser health, notebook/font/mobile, economic indicators/help/mobile, all lotto purchases/draws/payouts, voucher issue/print/redeem/replay; no API or external requests.')
+    print('Static showcase passed: notebook commerce/refunds, Loans at 320/390/768/1024px, Nana reserves and book, public routes, browser health, notebook/font/mobile, economic indicators/help, lotto purchases/draws/payouts, voucher issue/print/redeem/replay; no API or external requests.')
 
 if __name__ == '__main__':
     main()

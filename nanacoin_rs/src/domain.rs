@@ -9,7 +9,7 @@ use subtle::ConstantTimeEq;
 
 pub const MEMBERS: usize = 16;
 pub const LISTINGS: usize = 48;
-pub const HISTORY: usize = 365;
+pub const HISTORY: usize = 3000;
 pub const THINGS: usize = 64;
 pub const MAX_AMOUNT: i64 = 1_000_000_000_000_000;
 pub const MAX_SEQUENCE: u64 = 9_007_199_254_740_991;
@@ -58,6 +58,14 @@ pub enum Error {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum Command {
+    Commerce {
+        action: crate::commerce::Action,
+    },
+    Refund {
+        transaction: u64,
+        amount: i64,
+        memo: Memo,
+    },
     SetFulfillment {
         transaction: u64,
         action: crate::fulfillment::Action,
@@ -162,7 +170,7 @@ pub enum Command {
         description: Memo,
         price: i64,
         side: Side,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[serde(default)]
         details: Option<ListingDetails>,
     },
     ClassifiedList {
@@ -207,7 +215,7 @@ pub enum Command {
         household_name: Name,
         initial_grant: i64,
         currency: Name,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[serde(default)]
         offer_settles_after: Option<u64>,
     },
     UpdateListing {
@@ -365,6 +373,7 @@ pub struct Listing {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Transaction {
+    pub meta: crate::ledger::TransactionMeta,
     pub id: u64,
     pub actor: MemberId,
     pub created_at: u64,
@@ -374,7 +383,6 @@ pub struct Transaction {
     pub amount: i64,
     pub memo: TransactionMemo,
     pub reverses: Option<u64>,
-    pub reversed: bool,
     pub listing: Option<u64>,
     pub usd: bool,
     pub quote: Option<u64>,
@@ -387,6 +395,12 @@ pub struct Transaction {
 
 #[derive(Debug, Serialize)]
 pub struct State {
+    #[serde(skip)]
+    pub ledger: crate::ledger::Ledger,
+    #[serde(skip)]
+    pub archive: crate::journal::archive::ArchiveHead,
+    #[serde(skip)]
+    pub commerce: crate::commerce::Commerce,
     pub fulfillments: std::vec::Vec<crate::fulfillment::Fulfillment>,
     pub decimals: u8,
     pub money_epoch: u64,
@@ -414,6 +428,7 @@ pub struct State {
     pub listings: Vec<Listing, LISTINGS>,
     pub things: Vec<Thing, THINGS>,
     /// Oldest first. Eviction never discards balances or retry watermarks.
+    #[serde(skip)]
     pub history: VecDeque<Transaction>,
 }
 
@@ -421,9 +436,9 @@ pub struct State {
 #[serde(deny_unknown_fields)]
 pub struct Event {
     /// Server time, never supplied by a command. Old journal records omit it.
-    #[serde(default, skip_serializing_if = "is_zero")]
+    #[serde(default)]
     pub timestamp: u64,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub client_key: Option<[u8; 32]>,
     pub version: u8,
     pub sequence: u64,
@@ -448,6 +463,9 @@ pub fn token_hash(token: &str) -> Result<TokenHash, Error> {
 impl Default for State {
     fn default() -> Self {
         Self {
+            ledger: crate::ledger::Ledger::default(),
+            archive: Default::default(),
+            commerce: crate::commerce::Commerce::default(),
             decimals: 4,
             money_epoch: 0,
             credit_blocked: 0,
@@ -477,6 +495,8 @@ impl Default for State {
 impl State {
     /// Reset in place: retain fixed capacities and avoid a large stack copy.
     pub(crate) fn clear_economy(&mut self) {
+        self.ledger.clear();
+        self.commerce.clear();
         self.decimals = 4;
         self.money_epoch = 0;
         self.credit_blocked = 0;
@@ -614,6 +634,17 @@ impl State {
             return Err(Error::Capacity);
         }
         match command {
+            Command::Commerce { action } => self.validate_commerce(actor, action, now)?,
+            Command::Refund {
+                transaction,
+                amount,
+                memo,
+            } => {
+                if memo.chars().any(char::is_control) {
+                    return Err(Error::InvalidInput);
+                }
+                self.validate_refund(actor, *transaction, *amount)?;
+            }
             Command::SetFulfillment {
                 transaction,
                 action,
@@ -949,10 +980,21 @@ impl State {
                 {
                     return Err(Error::Forbidden);
                 }
-                if tx.reversed || tx.reverses.is_some() {
+                if self.ledger.refunded(tx.id) != 0
+                    || self.ledger.reversed_by(tx.id).is_some()
+                    || tx.reverses.is_some()
+                    || tx.meta.art.is_some()
+                {
                     return Err(Error::Conflict);
                 }
-                self.validate_currency_posting(tx.to, tx.from, tx.amount, nana, tx.usd)?;
+                self.correction_room(tx.id)?;
+                self.validate_currency_posting(
+                    tx.to,
+                    tx.from,
+                    self.current_amount(tx, tx.amount)?,
+                    nana,
+                    tx.usd,
+                )?;
             }
             Command::IssueUsd { .. }
             | Command::PostQuote { .. }
@@ -1049,7 +1091,16 @@ impl State {
         let mut posting = None;
         let mut posting_economic = EconomicDetails::default();
         let mut usd = false;
+        let mut quote = None;
+        let mut refund_units = 0;
+        let mut gift_request = None;
         match &event.command {
+            Command::Commerce { action } => self.apply_commerce(event, action),
+            Command::Refund {
+                transaction,
+                amount,
+                memo,
+            } => self.apply_refund(event, *transaction, *amount, memo),
             Command::SetFulfillment {
                 transaction,
                 action,
@@ -1376,15 +1427,15 @@ impl State {
                     })
                     .unwrap()
                     .clone();
-                if let Some(original) = self.history.iter_mut().find(|t| t.id == *transaction) {
-                    original.reversed = true;
-                }
+                gift_request = tx.meta.gift_request;
+                quote = tx.quote;
+                refund_units = tx.amount;
                 usd = tx.usd;
                 posting_economic = tx.economic;
                 posting = Some((
                     tx.to,
                     tx.from,
-                    tx.amount,
+                    self.current_amount(&tx, tx.amount).unwrap(),
                     memo.clone(),
                     Some(*transaction),
                     tx.listing,
@@ -1403,6 +1454,12 @@ impl State {
         }
         if let Some((from, to, amount, memo, reverses, listing)) = posting {
             self.record_transaction(Transaction {
+                meta: crate::ledger::TransactionMeta {
+                    refund_units,
+                    original_amount: refund_units,
+                    gift_request,
+                    ..Default::default()
+                },
                 id: event.sequence,
                 actor,
                 created_at: event.timestamp,
@@ -1411,14 +1468,21 @@ impl State {
                 amount,
                 memo: TransactionMemo::try_from(memo.as_str()).unwrap(),
                 reverses,
-                reversed: false,
                 listing,
                 usd,
-                quote: None,
+                quote,
                 loan: None,
                 lotto: None,
                 economic: posting_economic,
             });
+        }
+        self.ledger.audit(event);
+        if let Some(a) = self.ledger.audit.back_mut() {
+            if let crate::ledger::AuditAction::Identity { member, .. } = &mut a.action {
+                if *member == MemberId(0) {
+                    *member = MemberId(self.members.len() as u8);
+                }
+            }
         }
         self.last_timestamp = event.timestamp;
         self.sequence = event.sequence;
@@ -1431,7 +1495,12 @@ impl State {
         m.last_sequence = event.sequence;
     }
 
-    pub(crate) fn record_transaction(&mut self, tx: Transaction) {
+    pub(crate) fn record_transaction(&mut self, mut tx: Transaction) {
+        tx.meta.ordinal = self.transactions;
+        tx.meta.group = next_sequence(self.sequence).expect("validated event sequence");
+        tx.meta.epoch = self.money_epoch;
+        tx.meta.decimals = if tx.usd { 2 } else { self.decimals };
+        self.ledger_post(&tx);
         self.track_fulfillment(&tx);
         if !tx.usd && tx.amount != 0 {
             for id in [tx.from, tx.to] {
@@ -1471,7 +1540,14 @@ impl State {
     }
 
     pub fn check_invariants(&self) -> Result<(), Error> {
+        self.check_ledger()?;
         self.check_lottos()?;
+        self.check_commerce()?;
+        if self.ledger.epochs.len() != self.money_epoch as usize + 1
+            || self.ledger.corrections.len() > crate::ledger::CORRECTIONS
+        {
+            return Err(Error::CorruptJournal);
+        }
         self.check_fulfillments()?;
         if self.decimals > 8 || self.money_epoch > MAX_SEQUENCE {
             return Err(Error::CorruptJournal);
@@ -1517,16 +1593,18 @@ impl State {
                 return Err(Error::CorruptJournal);
             }
         }
-        let sum =
-            self.members
-                .iter()
-                .try_fold(self.issuance_balance + self.lotto_escrow, |sum, m| {
-                    if m.balance.unsigned_abs() > MAX_SEQUENCE {
-                        None
-                    } else {
-                        sum.checked_add(m.balance)
-                    }
-                });
+        let sum = self.members.iter().try_fold(
+            self.issuance_balance
+                .checked_add(self.lotto_escrow)
+                .ok_or(Error::CorruptJournal)?,
+            |sum, m| {
+                if m.balance.unsigned_abs() > MAX_SEQUENCE {
+                    None
+                } else {
+                    sum.checked_add(m.balance)
+                }
+            },
+        );
         let usd_sum = self
             .members
             .iter()
@@ -1574,10 +1652,6 @@ impl State {
     }
 }
 
-fn is_zero(value: &u64) -> bool {
-    *value == 0
-}
-
 fn valid_name(name: &str) -> Result<(), Error> {
     if name.trim().is_empty() || name.chars().any(char::is_control) {
         Err(Error::InvalidInput)
@@ -1618,7 +1692,8 @@ fn valid_economic(value: &EconomicDetails) -> Result<(), Error> {
 
 pub(crate) fn fingerprint(command: &Command) -> TokenHash {
     let mut buffer = [0; 2048];
-    let len =
-        serde_json_core::to_slice(command, &mut buffer).expect("bounded command fits event buffer");
+    let len = postcard::to_slice(command, &mut buffer)
+        .expect("bounded command fits event buffer")
+        .len();
     Sha256::digest(&buffer[..len]).into()
 }

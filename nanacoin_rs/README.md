@@ -18,18 +18,11 @@ make run
 
 The API listens on `http://127.0.0.1:8080`. Use the Angular client at `http://localhost:4200`; `/` on the API returns JSON 404. A fresh journal is unprovisioned: use the client's household setup and choose a username and PIN/password.
 
-If you ran the earlier Rust prototype, stop that Rust server first, then:
-
-```bash
-make migrate-login
-make run
-```
-
-The interactive migration reads the old credential from ignored `.local/admin-token` (or prompts for it), asks for a username and PIN/password, and appends a migration event. Balances, member identity and history are preserved. It does not delete the journal. Repeat for other legacy accounts with their credentials. This only migrates the earlier Rust prototype, not Go journals.
+Storage uses the current NCR2/NCS2/NCA2 binary schema. Earlier development data must be reset and re-entered; there is no data migration or old-format decoder. See [the storage contract](spec/STORAGE_V2.md).
 
 `NANACOIN_PORT` and `NANACOIN_JOURNAL` override the port and default `nanacoin.journal` path. An exclusive file lock prevents two writers. Desktop transport is loopback HTTP. `NANACOIN_ORIGINS` sets a comma-separated exact CORS allowlist. Defaults include localhost and 127.0.0.1 on port 4200 and HTTP/HTTPS `nanacoin.local` for the separate client board. Add the actual client origin if different.
 
-## Authentication and compatibility
+## Authentication and client APIs
 
 Authentication follows the existing server: salted PBKDF2-HMAC-SHA256 passwords, its 1,000-round work factor and minimum four-byte PIN, S256 PKCE with one-use 60-second codes, and eight-hour RAM-only sessions. Restart clears sessions. Logout, password changes, role changes and disabling a member revoke the relevant sessions. Five failed password attempts lock the username for five minutes. Roles and last-active-Nana protection are enforced in the domain. There are no permanent account access tokens.
 
@@ -37,7 +30,7 @@ Implemented client flows include provisioning/login/logout, status, members and 
 
 Negotiated offers support proposing, accepting, declining, withdrawing and undoing acceptance. Only the listing owner accepts, at the offered price; SELL charges the offerer and BUY charges the listing owner. Proposals need no funds, while acceptance does. Offers are private to the two parties and Nana. Undo is available to either party or Nana until the configured deadline (48 hours by default), creates a reversal even if the payee spent the money, and reopens the listing. Refund, status and reopening commit in one event. Acceptance details survive recent-history eviction, so an unexpired deal can still be undone.
 
-The September 19 parity pass adds USD wallets, a bounded forex quote book, external-currency listing metadata, account/listing reads, balance/ledger privacy, and member/listing timestamps. Recent transactions retain 365 records in a preallocated ring; HTTP ledger pages cap at 100. Old timestamp-less Rust events still report zero. Diagnostic/log streaming and Go journal import remain absent. The Rust server supports loans, scheduled interest and lotto. See [PARITY.md](PARITY.md) for remaining differences. Direct purchases still pay immediately. Nana's manual reversal requires a retained transaction, permits correction overdrafts, and does not reopen listings; reversing an offer's payment prevents a second refund through unaccept.
+The September 19 parity pass adds USD wallets, a bounded forex quote book, external-currency listing metadata, account/listing reads, balance/ledger privacy, and member/listing timestamps. The recent cache retains up to 3,000 transactions, backed by a finite committed archive; cursor pages cap at 100 rows and eight archive pages scanned. Raw `/state` omits history. Diagnostic/log streaming and Go journal import remain absent. The Rust server supports loans, scheduled interest and lotto. See [PARITY.md](PARITY.md) for remaining differences. Direct purchases still pay immediately. Nana's manual reversal requires a cached or retained fulfillment original, permits correction overdrafts, and does not reopen listings; reversing an offer's payment prevents a second refund through unaccept.
 
 Settlement deadlines use server wall time, never browser time or uptime. Firmware starts SNTP after Wi-Fi; optionally set `NANACOIN_NTP_SERVER` at build time for a reachable LAN time server. Until the clock is valid, timed offer mutations return 503 and offers are not advertised as reversible. A clock behind the last durable event also blocks timed mutations. Deadlines and the configuration survive replay; changing the window applies only to future acceptances.
 
@@ -119,8 +112,8 @@ Deployment rebuilds first, reads the board's partition table, and refuses any
 layout other than the current Rust layout. It writes **only** the application
 at `0x10000`, not the ledger, configuration, bootloader or partition table.
 There is no full-chip erase. This is an upgrade script, not a first-install or
-TinyGo migration tool. Deployment resets the board and ends sessions; durable
-household state remains. Back up valuable state before updates.
+TinyGo migration tool. Deployment resets the board and ends sessions; the ledger bytes remain. This binary-schema change requires a separate, scoped
+reset of disposable development ledger data; flashing alone does not migrate it.
 `bash scripts/deploy.sh COM9 --dry-run` builds and prints the plan without
 opening a serial port. Scripts use esptool 4.x through
 `NANACOIN_ESPTOOL_PYTHON`, or the installed Windows ESP-IDF Python environment.
@@ -144,13 +137,16 @@ Rust does not automatically prevent fragmentation. Application collections have 
 
 | Resource | Limit |
 |---|---|
-| Members / listing slots / recent transactions | 16 / 48 / 365 |
+| Members / listing slots / recent transactions | 16 / 48 / 3,000 |
 | Forex quotes | 16; recycle closed/expired quotes, never live quotes |
 | Offer slots / offer message and undo reason | 32 / 140 UTF-8 bytes |
 | Names / titles / descriptions and memos | 40 / 80 / 96 UTF-8 bytes |
 | Request body / reused response buffer | 1 KiB / 512 KiB |
 | Sessions / pending login codes | 64 / 16 |
-| Journal | 1,024-byte records; automatically checkpoint/retire at 2,048 changes; reads legacy logs up to 4,096 |
+| Journal | NCR2 frames up to 1,024 bytes; NVS writes used bytes only |
+| Automatic rotation | Before next event at 2,048 journal records or 1,024 pending transactions/audits |
+| Checkpoint rows / archive slots | NCS2 rows up to 4 KiB; 1,024 NCA2 slots up to 4 KiB, 768 retained and 256 staging |
+| Audit cache / corrections / currency epochs | 1,024 / 4,096 / 32, preallocated |
 | Durable HTTP retry index | 4,096 receipts allocated once; bounded ring, preserved in checkpoints |
 | Established HTTPS + HTTP sockets | 8 + 4; idle sessions expire after 60 seconds |
 | TLS handshake / HTTP task stacks | 24 KiB on core 0 / 32 KiB on core 1 |
@@ -160,7 +156,7 @@ Rust does not automatically prevent fragmentation. Application collections have 
 | Startup stack | 64 KiB |
 | Movement amount | 1 through 1,000,000,000 whole coins |
 
-Allocation tests observe zero allocations after startup across 2,999 financial writes with state reads, and across 1,000 forex trades with retries and quote reads. The larger response buffer is allocated once for the 365-record state view and worst-case JSON escaping; it does not grow per request. The history backing storage also allocates once and overwrites oldest records without shifting the full history. TLS, HTTP headers, Wi-Fi and NVS still allocate. PSRAM and PSRAM-backed NVS cache are enabled, with 64 KiB reserved for internal-RAM allocations. Heap metrics include largest free block. Runtime OOM resilience requires hardware measurement.
+Allocation tests observe zero allocations after startup across 2,999 financial writes with state reads, and across 1,000 forex trades with retries and quote reads. The response buffer is allocated once for bounded API views and JSON escaping; `/state` omits history, and history reads use cursor pages. The history backing storage also allocates once and overwrites oldest records without shifting the full history. TLS, HTTP headers, Wi-Fi and NVS still allocate. PSRAM and PSRAM-backed NVS cache are enabled, with 64 KiB reserved for internal-RAM allocations. Heap metrics include largest free block. Runtime OOM resilience requires hardware measurement.
 
 Offer slots recycle the oldest closed or settled deal, never an open or still-reversible deal. Reversible acceptances also pin their listing slot. Fixed domain state is boxed once at startup so moving the service does not copy the whole state through the firmware stack. Views serialize directly from bounded iterators, without constructing response vectors. A regression test covers a full table, 1,000 offer reads and 1,000 acceptance retries without API/domain allocations after setup.
 
@@ -172,7 +168,9 @@ mbedTLS content buffers are 16 KiB in/out and allocated from PSRAM, preserving i
 
 Validated events append durably before state changes. Failed or ambiguous writes latch the service unavailable until replay. Complete corrupt records fail startup; only an incomplete final desktop frame is truncated. NVS initialization errors do not authorize automatic erasure. The firmware's 8 MiB NVS partition and overall layout differ from Go.
 
-The file and NVS adapters automatically save a durable checkpoint and retire the active log before the next write after 2,048 changes. Nana can close the journal early or reset the entire economy from the Household page. Checkpoints preserve balances, credentials, outstanding deals, retry protection and recent history. Reset removes all household data, revokes sessions and returns to provisioning. Both use two generations and publish the replacement before reclaiming the old data. See [RETENTION.md](RETENTION.md) for recovery, backup files, memory bounds, client retry generations and upgrade compatibility. Archival history export is not implemented. Amounts and IDs stay within JavaScript's exact integer range; money never uses floating point.
+File and NVS adapters stage immutable archive pages and a replacement checkpoint before publishing the new head. Only the committed archive interval is visible; unpublished pages cannot skip event replay. Checkpoints preserve balances, credentials, obligations, correction annotations, exact per-epoch counters and retry protection. The committed transaction floor trims cached originals, and pending commands are revalidated after automatic rotation. Nana can checkpoint early or reset from Household. Reset publishes empty state with a new incarnation, revokes sessions and returns to provisioning. See [retention](spec/RETENTION.md) and [storage v2](spec/STORAGE_V2.md).
+
+Historical transactions keep original units and currency epochs. Transaction responses also expose exact current-unit projections, or null when conversion would round or overflow. Exact lifetime totals remain available after archive pruning. Partial refunds, gift requests and digital-art ownership/sales are implemented as APIs; see [commerce](spec/COMMERCE_API.md). No new commerce screens are included. Money arithmetic remains integer-only; lifetime counters are transmitted as decimal strings.
 
 USD issuance is Nana-only. Quotes support BID/ASK, integer cents per coin, all-or-nothing takes, expiry and owner/Nana cancellation. A take validates both wallets and records both currency legs in one durable event. Balances and quote status replay together; there is no half-trade state. Ordinary disabled accounts cannot send or receive. Currency listings retain descriptive metadata but do not themselves move USD wallets.
 
@@ -227,8 +225,7 @@ Messages cannot be reversed and do not change balances, supply, or loan credit
 eligibility. Negative transfers and blank messages are rejected.
 
 Messages appear in the participants' account transaction histories, and are
-excluded from the public notebook and public transaction reads. Administrative
-state snapshots remain privileged audit data. Messages share the bounded history
+excluded from the public notebook and public transaction reads. The raw state response does not embed transaction history. Messages share the bounded history
 window with payments. Mail combines retained transactions, offers and loan
 requests; its New markers are local to the browser and account. Mastodon is an
 optional copy sent after the NanaCoin record succeeds, never a prerequisite for

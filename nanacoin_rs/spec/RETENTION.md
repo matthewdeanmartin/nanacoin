@@ -1,120 +1,91 @@
-# Checkpoints, journal retirement and economy reset
+# Checkpoints, archive retention and economy reset
 
-The board no longer has a 4,096-change lifetime limit. Before appending a new
-change when the active log contains 2,048 records, the service checkpoints
-its current state and starts a fresh log. Nana can also close the journal
-explicitly from **Household → Journal and economy**. Normal financial changes
-remain durable before acknowledgement; this is not daily write batching.
+The current contract is [STORAGE_V2.md](STORAGE_V2.md). HTTP remains JSON;
+persisted events, checkpoints and archive records use bounded postcard encoding.
+NCR2 frames, NCS2 rows and NCA2 pages checksum critical headers and payloads.
+Old development data requires reset; there is no migration or old-format decoder.
 
-## What survives closing the books
+## Rotation and retained state
 
-The checkpoint contains both currencies' balances and issuance accounts,
-household settings, users and private password verifiers, per-user retry
-watermarks, all listing/offer/quote slots (including outstanding settlement
-deadlines), monotonic IDs and time, lifetime transaction count, the recent
-365-transaction ring, and up to 4,096 recent HTTP retry receipts. The private
-storage serializer is separate from the public API serializer: credentials
-are never added to HTTP state responses.
+Before a new event, the service rotates when journal records reach 2,048,
+unarchived transactions reach 1,024, or pending audits reach 1,024. Nana can
+also checkpoint from Household. Every accepted mutation is durable before
+acknowledgement; rotation does not defer payment persistence.
 
-Old detailed journal events are reclaimed. Closing books is **not an audit
-archive or backup**. The recent history window and balances survive; the app
-cannot reconstruct older descriptions after retirement. There is no historical
-export/import feature in this change.
+Checkpoints retain balances, private credentials, settings, business objects,
+monotonic IDs/time, 4,096 bounded retry receipts, correction annotations and exact
+per-epoch lifetime counters. File/NVS checkpoints omit history rows: committed
+archive pages restore up to 3,000 transactions and 1,024 sanitized business audits
+without reposting balances or totals. Test adapters without archive support keep
+bounded history rows in checkpoints.
+
+Transactions retain original units, epoch, precision and classification.
+Corrections retain original amounts and cumulative refunded units separately.
+Currency reform changes current balances and obligations, not archived facts.
+Transaction APIs provide original postings and exact current-unit projections;
+inexact projections are null. Lifetime counters survive history pruning.
 
 ## Publication and recovery
 
-There are two storage generations. Under the existing service mutex:
+Under the service mutex:
 
-1. Clear only the inactive generation.
-2. Serialize bounded, versioned rows with checksums into that generation,
-   checking each row by reading it back. Flush/commit the checkpoint.
-3. Durably publish a small checksummed head record selecting the generation.
-4. Reclaim the old generation's log and checkpoint.
+1. Stage immutable archive pages outside the committed ring interval.
+2. Write and verify bounded checkpoint rows in the inactive bank. Its header
+   records archive page interval, transaction retention floor, archived counts,
+   audit sequence and incarnation.
+3. Durably publish the head selecting the new bank.
+4. Retire the old bank and trim cached originals below the committed floor.
 
-No live state is changed before durable publication. Failures, including
-ambiguous acknowledgements, latch the running service unavailable until
-restart. Restart follows the committed head and fails closed if its data is
-missing or corrupt; it never silently rolls back to retired history.
+The archive has 1,024 slots of at most 4,096 bytes. At most 768 pages are retained;
+256 slots remain for staging. Capacity is checked before page writes. Pages
+written without head publication are invisible. An ambiguous acknowledgement
+after publication restores the published state. Missing or corrupt committed
+data fails closed; errors latch the live service until replay. Checks include
+logical page ID, incarnation, length and CRC.
 
-The ESP32 uses the existing 8 MiB `ledger` NVS partition, namespaces
-`nanacoin` (legacy/bank zero), `ncnext` and `ncmeta`. No partition layout
-change is needed. NVS provides the atomic blob publication and physical
-page reclamation. Snapshot rows share a batch commit before the head is
-published, although NVS may program flash before that commit. Normal event
-appends still commit individually. Every 32 checkpoint rows the firmware
-allows other tasks to run.
+Automatic rotation revalidates the pending command after pruning. A refund
+cannot depend on an unpinned original that restart could no longer restore.
+Fulfillment and reversible offer obligations retain their own required facts.
 
-Desktop storage retains the original journal as its exclusive lock anchor
-and bank zero. Companion files are `.bank1`, `.checkpoint0`, `.checkpoint1`
-and `.head`; `.head.next` is an unpublished staging file. The checkpoint and
-empty new log are flushed before atomic head replacement (directory sync on
-Unix, write-through replacement on Windows). Back up the original journal
-**and its companions together while the server is stopped**. Do not delete
-the head to "repair" a household: that discards its generation identity.
+The existing 8 MiB ledger NVS partition uses `nanacoin`/`ncnext` for banks,
+`ncmeta` for publication/policy and `ncarch` for archive pages. NVS event blobs
+store only used bytes, up to 1,024; checkpoint rows are at most 4,096 bytes.
+Archive writes commit before checkpoint publication. Physical capacity also
+includes NVS overhead and both banks; logical capacity is not an endurance or
+latency measurement.
 
-Old journals open unchanged as generation zero. Once checkpointed, do not
-downgrade to firmware that knows only the old journal format. No existing
-journal or connected board is automatically migrated by building the code.
+Desktop storage keeps the original file as lock anchor and bank zero. Companions
+include `.bank1`, `.checkpoint0`, `.checkpoint1`, `.head`, `.transport` and a
+bounded `.archive` of at most 4 MiB. `.next` files are unpublished staging files.
+Back up the journal and companions together while stopped. Archive writes and
+replacement checkpoints are synchronized before atomic head publication.
 
-## Memory and IDs
+## Reads and retries
 
-Checkpoint rows have a 2,048-byte bound; no full-state JSON buffer or second
-State is allocated. Serialization and reset use existing capacities. Reset
-clears State and authentication arrays in place rather than copying State
-through the HTTP stack. The retry ring is allocated once for 4,096 receipts
-(hashes, actor, sequence and timestamp); it overwrites oldest receipts.
-NVS/HTTP may still allocate internally. Flash capacity accommodates the old
-generation while the replacement is being written; rotating at 2,048 rather
-than 4,096 records preserves room for checkpoints and NVS overhead.
+The raw `/state` response omits history. Transaction/account routes return at
+most 100 rows and scan at most eight archive pages per request. Follow
+`next_cursor`, including after an empty page. Cursors fix an upper transaction
+ordinal; annotations and balances remain current. Coverage metadata identifies
+pruning. Reset or reclaimed-page cursors are rejected as stale. The Nana-only
+audit API returns up to 16 rows with bounded page continuation. The archive is
+finite and is not an off-board backup or export/import system.
 
-Transaction IDs remain opaque. Legacy forex cash-leg IDs were event ID +
-4,096. Event sequences now skip alternating blocks of 4,096 IDs so new events
-never collide with old or future cash legs. IDs stay within the browser's
-exact integer range and do not reset on checkpoint. A full economy reset
-starts IDs over in a new generation.
+Use `Idempotency-Key: g<generation>:<random-key>` (maximum 80 bytes). Obtain the
+generation from `/status` or `X-Nanacoin-Generation` when creating an operation;
+never replace its key to retry an uncertain payment. Retained receipts deduplicate
+and verify the command hash across rotation. Unknown retired-generation keys
+return `stale_request`. Expired response history may produce stale/not-found
+without moving money again.
 
-## HTTP retries across retirement
+## Reset and validation
 
-Use `Idempotency-Key: g<generation>:<random-key>` (maximum 80 bytes). Obtain
-the generation from public `/status`'s `journal_generation` or the exposed
-`X-Nanacoin-Generation` response header. Capture it when creating an operation;
-never change the key when retrying that operation. Angular implements this.
+Nana-only reset requires `RESET ECONOMY` and the reviewed generation/sequence.
+It publishes empty state with a new archive incarnation, revokes sessions and
+returns to provisioning. Firmware, network configuration and TLS credentials
+remain intact. Old archive pages become unreachable; this is not secure erasure.
+Disposable pre-release data needs no compatibility migration.
 
-A retained receipt still deduplicates an old-generation key and checks the
-command hash. If the response depends on history that has already expired,
-the server can return a stale/not-found response without moving money again.
-An unknown key from a retired generation is rejected as `stale_request`, not
-treated as a new payment. Refresh the client before starting a new operation;
-do not turn an uncertain old payment into a new key automatically. Legacy
-unprefixed keys are generation zero, so older clients must be updated after
-the first checkpoint. The 2,048-record rotation interval is smaller than the
-4,096-receipt ring, preventing eviction of a current-generation receipt.
-
-## Reset economy
-
-`POST /api/v1/admin/reset` is Nana-only. It requires the exact confirmation
-`RESET ECONOMY` plus the generation and sequence the administrator reviewed.
-Any intervening change rejects the request. Reset publishes an empty
-checkpoint using the same protocol, then clears all sessions, pending login
-codes and authentication failure counters. Accounts, coins/USD balances,
-listings, offers, quotes, settings and history are removed. Provisioning is
-available again. Firmware, network configuration and TLS certificates remain.
-
-This is a logical reset, not forensic secure erasure. A disconnected response
-can leave the browser uncertain even if reset committed; reloading and reading
-public status resolves whether setup is needed. The UI does not blindly retry
-an ambiguous reset. No reset is performed by tests against a physical board.
-
-## Verification and remaining hardware validation
-
-Host tests cover 9,000 changes with automatic rotation, restart across both
-file banks, balance/credential/history/offer-deadline preservation, retry
-deduplication and expiry, corrupt checkpoints, injected failures before each
-row/publication and after publication, reset authorization/concurrency/session
-revocation, and allocation-free application checkpoint/reset paths. Angular
-tests cover confirmation cancellation/mismatch, guarded reset payloads,
-account clearing only on success, and generation-aware keys.
-
-These tests and an ESP32 release build do not substitute for physical
-power-cut tests or runtime stack/latency measurements. No board was flashed,
-reset or used for these tests.
+Tests cover rotation, restart, exact totals, retries, archive wrap/pruning,
+committed corruption, staged orphans, lost publication acknowledgements,
+automatic-rotation refund revalidation, cursor continuation and bounded
+allocation paths. These do not establish physical power-cut endurance or latency.

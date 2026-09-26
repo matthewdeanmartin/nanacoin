@@ -31,7 +31,9 @@ if [[ -d /c/Espressif/frameworks/esp-idf-v5.5.3 ]]; then
   export ESP_ROM_ELF_DIR="C:/Espressif/tools/esp-rom-elfs/20241011"
   export PATH="/c/Espressif/frameworks/esp-idf-v5.5.3/tools:/c/Espressif/python_env/idf5.5_py3.11_env/Scripts:/c/Espressif/tools/cmake/3.30.2/bin:/c/Espressif/tools/ninja/1.12.1:/c/Espressif/tools/xtensa-esp-elf/esp-14.2.0_20251107/xtensa-esp-elf/bin:$PATH"
   export LIBCLANG_PATH="$(cygpath -m "$USERPROFILE")/.rustup/toolchains/esp/xtensa-esp32-elf-clang/esp-clang/bin/libclang.dll"
-  export PATH="$(cygpath -u "$USERPROFILE")/.rustup/toolchains/esp/xtensa-esp32-elf-clang/esp-clang/bin:$(cygpath -u "$USERPROFILE")/.rustup/toolchains/esp/xtensa-esp-elf/bin:$PATH"
+  # Keep the compiler selected by this ESP-IDF installation ahead of Rustup's
+  # bundled GCC (which may be newer than the version this IDF release accepts).
+  export PATH="/c/Espressif/tools/xtensa-esp-elf/esp-14.2.0_20251107/xtensa-esp-elf/bin:$(cygpath -u "$USERPROFILE")/.rustup/toolchains/esp/xtensa-esp32-elf-clang/esp-clang/bin:$(cygpath -u "$USERPROFILE")/.rustup/toolchains/esp/xtensa-esp-elf/bin:$PATH"
 fi
 # esp-idf-sys generates a CMake project in its output directory; a relative
 # partition CSV would resolve there rather than beside this Cargo.toml.
@@ -49,8 +51,18 @@ export ESP_IDF_SDKCONFIG_DEFAULTS="$(pwd)/.embuild/board.defaults"
 if command -v cygpath >/dev/null 2>&1; then
   export ESP_IDF_SDKCONFIG_DEFAULTS="$(cygpath -m "$ESP_IDF_SDKCONFIG_DEFAULTS")"
 fi
-cargo +esp build --locked --release --no-default-features --features esp32 \
-  --bin nanacoin-esp32 --target xtensa-esp32s3-espidf -Z build-std=std,panic_abort "$@"
+if [[ -d /c/Espressif/frameworks/esp-idf-v5.5.3 ]]; then
+  # Calling the Rustup proxy adds its newer GCC directory ahead of PATH in
+  # Cargo build-script environments. Use the same installed Rust toolchain
+  # directly so esp-idf-sys inherits the IDF-supported GCC from PATH.
+  esp_toolchain="$(cygpath -u "$USERPROFILE")/.rustup/toolchains/esp/bin"
+  export RUSTC="$(cygpath -m "$esp_toolchain/rustc.exe")"
+  "$esp_toolchain/cargo.exe" build --locked --release --no-default-features --features esp32 \
+    --bin nanacoin-esp32 --target xtensa-esp32s3-espidf -Z build-std=std,panic_abort "$@"
+else
+  cargo +esp build --locked --release --no-default-features --features esp32 \
+    --bin nanacoin-esp32 --target xtensa-esp32s3-espidf -Z build-std=std,panic_abort "$@"
+fi
 esp_python="${NANACOIN_ESPTOOL_PYTHON:-python}"
 if [[ -z "${NANACOIN_ESPTOOL_PYTHON:-}" && -f /c/Espressif/python_env/idf5.5_py3.11_env/Scripts/python.exe ]]; then
   esp_python=/c/Espressif/python_env/idf5.5_py3.11_env/Scripts/python.exe

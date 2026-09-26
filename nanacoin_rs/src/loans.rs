@@ -427,6 +427,7 @@ impl State {
         offset: u64,
     ) {
         self.record_transaction(Transaction {
+            meta: crate::ledger::TransactionMeta::default(),
             id: event.sequence + offset,
             actor: event.actor,
             created_at: event.timestamp,
@@ -440,7 +441,6 @@ impl State {
             })
             .unwrap(),
             reverses: None,
-            reversed: false,
             listing: None,
             usd: false,
             quote: None,

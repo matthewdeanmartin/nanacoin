@@ -154,6 +154,7 @@ impl State {
     pub(crate) fn apply_forex(&mut self, event: &Event) {
         match &event.command {
             Command::IssueUsd { to, cents, memo } => self.record_transaction(Transaction {
+                meta: crate::ledger::TransactionMeta::default(),
                 id: event.sequence,
                 actor: event.actor,
                 created_at: event.timestamp,
@@ -162,7 +163,6 @@ impl State {
                 amount: *cents,
                 memo: TransactionMemo::try_from(memo.as_str()).unwrap(),
                 reverses: None,
-                reversed: false,
                 listing: None,
                 usd: true,
                 quote: None,
@@ -221,6 +221,7 @@ impl State {
                 // their existing meaning for old journals and retry receipts.
                 q.cash_tx = Some(event.sequence + MAX_RECORDS as u64);
                 let coin = Transaction {
+                    meta: crate::ledger::TransactionMeta::default(),
                     id: event.sequence,
                     actor: event.actor,
                     created_at: event.timestamp,
@@ -229,7 +230,6 @@ impl State {
                     amount: q.coins,
                     memo: TransactionMemo::try_from("Exchange").unwrap(),
                     reverses: None,
-                    reversed: false,
                     listing: None,
                     usd: false,
                     quote: Some(q.id),
@@ -238,6 +238,7 @@ impl State {
                     economic: EconomicDetails::default(),
                 };
                 let cash = Transaction {
+                    meta: crate::ledger::TransactionMeta::default(),
                     id: q.cash_tx.unwrap(),
                     from: buyer,
                     to: seller,

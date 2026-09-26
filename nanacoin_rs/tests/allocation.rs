@@ -262,7 +262,10 @@ fn forex_recycling_and_repeated_http_trades_do_not_allocate() {
     assert_eq!(COUNT.with(Cell::get), 0);
     assert_eq!(s.state().members[0].balance, 100);
     assert_eq!(s.state().members[0].usd_cents, 1000);
-    assert_eq!(s.state().history.len(), HISTORY);
+    assert_eq!(
+        s.state().history.len(),
+        HISTORY.min(s.state().transactions as usize)
+    );
     assert_eq!(s.state().transactions, 2004);
     assert_eq!(s.state().quotes.len(), nanacoin::forex::QUOTES);
     s.state().check_invariants().unwrap();
@@ -419,7 +422,10 @@ fn command_and_state_serialization_do_not_allocate_after_startup() {
     );
     ENABLED.with(|enabled| enabled.set(false));
     assert_eq!(COUNT.with(Cell::get), 0);
-    assert_eq!(service.state().history.len(), HISTORY);
+    assert_eq!(
+        service.state().history.len(),
+        HISTORY.min(service.state().transactions as usize)
+    );
     assert_eq!(service.state().transactions, 2999);
     assert_eq!(service.state().member(MemberId(1)).unwrap().balance, 2999);
     println!(

@@ -21,6 +21,7 @@ interface Row {
 
   /** This account's net change: what happened to you, not the gross amount. */
   delta: number;
+  usd: boolean;
   /** The other party's display name, where there is a single one. */
   other: string;
   label: string;
@@ -135,7 +136,7 @@ interface Row {
             </div>
 
             <div class="txn__side">
-              <span class="txn__amount">{{ r.delta >= 0 ? '+' : '' }}{{ r.delta | nc }}</span>
+              <span class="txn__amount">{{ r.delta >= 0 ? '+' : '' }}{{ r.usd ? (r.delta / 100).toFixed(2) + ' USD' : (r.delta | nc) }}</span>
               <span class="txn__when">{{ when(r.txn.created_at) }}</span>
             </div>
 
@@ -164,7 +165,7 @@ interface Row {
                 button at all: the correction exists, and a second one would
                 undo the undo.
               -->
-              @if (session.isNana() && !r.txn.reversed_by && r.txn.kind !== 'REVERSAL' && !r.txn.reference?.startsWith('loan-') && !r.txn.reference?.startsWith('lotto-') && !r.txn.reference?.startsWith('nickle:')) {
+              @if (session.isNana() && !r.usd && !r.txn.art && !r.txn.refunded && !r.txn.reversed_by && r.txn.kind !== 'REVERSAL' && !r.txn.reference?.startsWith('loan-') && !r.txn.reference?.startsWith('lotto-') && !r.txn.reference?.startsWith('nickle:')) {
                 <button
                   class="btn btn--quiet btn--small"
                   type="button"
@@ -257,16 +258,19 @@ export class HistoryPage {
       // Sum this account's own postings: a transaction may touch it more than
       // once, and the net effect is what the user experienced.
       let delta = 0;
-      for (const p of txn.postings) if (p.account === account) delta += p.amount;
+      const usd=txn.postings.some(p=>p.account===`${account}-usd`);
+      const own=usd?`${account}-usd`:account;
+      for (const p of txn.postings) if (p.account === own) delta += p.amount;
 
-      const other = txn.postings.find((p) => p.account !== account);
+      const other = txn.postings.find((p) => p.account !== own);
       return {
         txn,
         delta,
+        usd,
         other: other?.name ?? '',
         label: kindLabel(txn.kind),
         otherAccount: other?.account ?? '',
-        repeatable: txn.kind === 'TRANSFER' && !txn.reference && delta < 0 && !!other?.account,
+        repeatable: !usd && !txn.gift_request && txn.kind === 'TRANSFER' && !txn.reference && delta < 0 && !!other?.account,
       };
     });
   });

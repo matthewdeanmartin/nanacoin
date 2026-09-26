@@ -58,9 +58,13 @@ export class DemoLotto {
       add(`lotto-pool-${l.id}`,-l.pool);
       if (l.terms.kind==='SAVINGS') for(const [account,count] of d.entries) add(account,count*l.terms.ticket_price);
       else add(winner,l.pool);
+      this.host.post(l.id,'Lotto principal payout',Array.from(totals,([account,amount])=>({account,name:this.host.name(account),amount})).filter(p=>p.amount!==0));
       const funded=Math.min(Math.max(0,this.host.balance(l.house)),l.interest);
-      add(l.house,-funded);add('account:system-issuance',-(l.interest-funded));add(winner,l.interest);
-      this.host.post(l.id,'Lotto payout and interest',Array.from(totals,([account,amount])=>({account,name:this.host.name(account),amount})).filter(p=>p.amount!==0));
+      if(l.interest) this.host.post(l.id,'Lotto interest',[
+        {account:l.house,name:this.host.name(l.house),amount:-funded},
+        {account:'account:system-issuance',name:'Issuance',amount:-(l.interest-funded)},
+        {account:winner,name:this.host.name(winner),amount:l.interest},
+      ].filter(p=>p.amount!==0));
       l.winner=winner;l.winner_name=this.host.name(winner);l.status='SETTLED';
     }
   }

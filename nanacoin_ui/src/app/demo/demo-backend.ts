@@ -16,6 +16,7 @@ import { Observable, delay, of, throwError } from 'rxjs';
 
 import { EconomicKind, EconomicUnit } from '../api/models';
 import { DemoError, DemoLedger } from './ledger';
+import { CommerceAction } from './commerce';
 import { seed } from './seed';
 import { LoanOfferInput, ReformInput, LottoTerms } from '../api/models';
 
@@ -174,6 +175,15 @@ function handle(req: HttpRequest<unknown>): unknown {
   // --- everything below needs a session ---
 
   const me = current(req);
+  if (path === '/commerce' && method === 'GET') return demoLedger.commerce.book();
+  if (path === '/commerce/commands' && method === 'POST') {
+    try { return demoLedger.commerce.command(me,req.body as CommerceAction); }
+    catch (error) {
+      if (error instanceof DemoError) throw error;
+      throw new DemoError(400,'invalid_input',error instanceof Error ? error.message : 'Invalid commerce command.');
+    }
+  }
+  if (path.startsWith('/transactions/') && path.endsWith('/refund') && method === 'POST') return demoLedger.refund(me,path.slice('/transactions/'.length,-'/refund'.length),Number(body['amount']),body['reason'] ?? '');
   if (path === '/demo/lottos/resolve' && method === 'POST') {
     if (me.role !== 'nana' || me.status !== 'ACTIVE') throw new DemoError(403,'forbidden','Only Nana can resolve demo lottos.');
     return {resolved:demoLedger.lotto.resolveNow(me,Math.floor(Date.now()/1000))};
@@ -234,7 +244,7 @@ function handle(req: HttpRequest<unknown>): unknown {
   if (path.startsWith('/transactions/') && path.endsWith('/fulfillment') && method === 'POST') return demoLedger.setFulfillment(me,path.slice('/transactions/'.length,-'/fulfillment'.length),body['action'] as FulfillmentAction,body['reason'] ?? '');
 
   if (path === '/transactions' && method === 'GET') {
-    return demoLedger.ledger(Number(query.get('limit') ?? 100));
+    return demoLedger.ledgerPage(Number(query.get('limit') ?? 100),query.get('cursor'));
   }
 
   if (path.startsWith('/transactions/') && path.endsWith('/reverse') && method === 'POST') {

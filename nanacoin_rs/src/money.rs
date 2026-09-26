@@ -6,6 +6,9 @@ pub fn scale(decimals: u8) -> i64 {
 }
 
 pub fn rescale(value: i64, exponent: i16, limit: i64) -> Result<i64, Error> {
+    if value == 0 {
+        return Ok(0);
+    }
     let factor = 10i128
         .checked_pow(exponent.unsigned_abs() as u32)
         .ok_or(Error::Overflow)?;
@@ -30,10 +33,11 @@ impl State {
         {
             return Err(Error::InvalidInput);
         }
-        if self.money_epoch >= MAX_SEQUENCE {
+        if self.ledger.epochs.len() == crate::ledger::EPOCHS {
             return Err(Error::Overflow);
         }
         let exponent = decimals as i16 - self.decimals as i16 - power as i16;
+        self.commerce.validate_rescale(exponent)?;
         let amount = |v| rescale(v, exponent, MAX_AMOUNT);
         let balance = |v| rescale(v, exponent, MAX_SEQUENCE as i64);
         balance(self.lotto_escrow)?;
@@ -59,14 +63,6 @@ impl State {
         }
         for o in &self.offers {
             amount(o.amount)?;
-        }
-        for f in &self.fulfillments {
-            amount(f.payment.amount)?;
-        }
-        for t in &self.history {
-            if !t.usd {
-                amount(t.amount)?;
-            }
         }
         for q in &self.quotes {
             amount(q.coins)?;
@@ -99,6 +95,9 @@ impl State {
 
     pub(crate) fn apply_reform(&mut self, decimals: u8, power: i8) {
         let exponent = decimals as i16 - self.decimals as i16 - power as i16;
+        self.commerce
+            .rescale(|v| rescale(v, exponent, MAX_SEQUENCE as i64))
+            .unwrap();
         let convert =
             |value: &mut i64| *value = rescale(*value, exponent, MAX_SEQUENCE as i64).unwrap();
         convert(&mut self.lotto_escrow);
@@ -119,14 +118,6 @@ impl State {
         }
         for o in &mut self.offers {
             convert(&mut o.amount);
-        }
-        for f in &mut self.fulfillments {
-            convert(&mut f.payment.amount);
-        }
-        for t in &mut self.history {
-            if !t.usd {
-                convert(&mut t.amount);
-            }
         }
         for q in &mut self.quotes {
             q.nc_scale = scale(decimals);
@@ -151,6 +142,11 @@ impl State {
             l.interest = (converted / denominator) as i64;
             l.remainder = (converted % denominator) as u64;
         }
+        self.ledger.epochs.push(crate::ledger::Epoch {
+            decimals,
+            exponent,
+            flows: [0; crate::ledger::FLOW_COUNT],
+        });
         self.decimals = decimals;
         self.money_epoch += 1;
     }

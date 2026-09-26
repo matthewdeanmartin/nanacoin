@@ -30,6 +30,7 @@ export function seed(ledger: DemoLedger): void {
   // can inject currency on demand. Keep a visible reserve in her own account
   // rather than making every issuance start from an empty balance.
   ledger.issue(nanaUser, nanaUser.account, 1000, 'Central-bank warchest');
+  ledger.issueUSD(nanaUser, nanaUser.account, 10_000, 'Foreign currency reserve: $100');
 
   // Opening balances. The parents hold the float; the children start small,
   // which is what makes the first few weeks of allowance visible on a chart.
@@ -221,6 +222,25 @@ export function seed(ledger: DemoLedger): void {
     quantity_milli: 1000, unit: 'TASK',
   });
   ledger.reform(nanaUser, {decimals:4,power:0,expected_epoch:ledger.moneyEpoch,expected_sequence:ledger.revision,preview:false});
+  // Recent examples remain in the public notebook's latest 100 rows.
+  const supplies=ledger.transfer(dad,mom.account,120_000,'Art supplies: two sketchbooks',{
+    economic_kind:'GOOD',thing:'thing-demo-sketchbooks',quantity_milli:2000,unit:'EACH'});
+  ledger.refund(mom,supplies.id,40_000,'Partial refund: one damaged sketchbook');
+  const request=ledger.commerce.command(ivy,{create_request:{title:'Help me buy watercolor paints',description:'A gift toward my next art project',target:300_000,deadline:null}}).sequence;
+  ledger.commerce.command(dad,{contribute:{request,amount:50_000,memo:'Watercolor fund: a gift from Dad'}});
+  ledger.commerce.command(mom,{contribute:{request,amount:30_000,memo:'Watercolor fund: a gift from Mom'}});
+  const art=ledger.commerce.command(ivy,{mint_art:{title:'Moonlit garden',license:'Personal profile display; artist retains copyright',sha256:'a'.repeat(64),locator:'https://example.org/demo/moonlit-garden.svg'}}).sequence;
+  const listed=ledger.commerce.command(ivy,{list_art:{art,price:60_000}}).sequence;
+  ledger.commerce.command(sam,{buy_art:{art,expected_owner:5,expected_revision:listed,expected_price:60_000}});
+  ledger.commerce.command(sam,{equip_art:{art,equipped:true}});
+  const giftArt=ledger.commerce.command(sam,{mint_art:{title:'Nana’s sunshine badge',license:'Personal profile display; artist retains copyright',sha256:'b'.repeat(64),locator:'https://example.org/demo/sunshine.svg'}}).sequence;
+  ledger.commerce.command(sam,{gift_art:{art:giftArt,to:1}});
+  ledger.commerce.command(nanaUser,{equip_art:{art:giftArt,equipped:true}});
+  const forSale=ledger.commerce.command(ivy,{mint_art:{title:'Little comet',license:'Personal profile display; artist retains copyright',sha256:'c'.repeat(64),locator:'https://example.org/demo/comet.svg'}}).sequence;
+  ledger.commerce.command(ivy,{list_art:{art:forSale,price:80_000}});
+  // Nana's open reserve-backed quotes make the central-bank book useful.
+  ledger.postQuote(nanaUser,'BID',20,100_000);
+  ledger.postQuote(nanaUser,'ASK',30,100_000);
   ledger.startLive();
   const now = Math.floor(Date.now()/1000);
   // Finished examples and open ticket sales for each kind of lotto.
@@ -235,4 +255,7 @@ export function seed(ledger: DemoLedger): void {
   }
   ledger.lending.offer(nanaUser,{borrower:sam.account,amount:200000,rate_bps:500,rate_days:7,payment_days:7,installment:50000,credit:false,memo:'A little help for your next project'},now);
   ledger.lending.offer(mom,{borrower:ivy.account,amount:150000,rate_bps:0,rate_days:365,payment_days:7,installment:30000,credit:true,memo:'An interest-free cushion at zero'},now);
+  const loan=ledger.lending.offer(nanaUser,{borrower:dad.account,amount:100_000,rate_bps:500,rate_days:365,payment_days:30,installment:20_000,credit:false,memo:'Tools for the garden'},now-7*DAY);
+  ledger.lending.accept(dad,loan.id,now-7*DAY);
+  ledger.lending.repay(dad,loan.id,20_000,now);
 }

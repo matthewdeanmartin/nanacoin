@@ -43,6 +43,7 @@ import {
 import { sha256 } from '../api/sha256';
 import { DemoLending } from './lending';
 import { DemoLotto } from './lotto';
+import { DemoCommerce } from './commerce';
 import { MAX_MONEY } from '../api/money';
 import { ReformInput, ReformResult } from '../api/models';
 
@@ -71,10 +72,28 @@ export class DemoLedger {
   moneyEpoch = 0;
   revision = 0;
   private liveClock = false;
+  readonly commerce = new DemoCommerce({
+    user: id => this.userById(`user-${id}`),
+    now: () => this.now(),
+    sequence: () => ++this.revision,
+    pay: (actor, to, amount, memo, reference) => {
+      const user = this.userById(actor.id)!;
+      this.requireActive(user); this.requireUserAccount(to); this.requireAmount(amount);
+      return this.append(reference.art ? 'PURCHASE' : 'TRANSFER', user.id, memo, [
+        {account:user.account,name:'',amount:-amount}, {account:to,name:'',amount}],
+        {...reference,economic_kind:reference.art ? 'GOOD' : 'GIFT',quantity_milli:1000,unit:'EACH'});
+    },
+  });
+  private epochExponents: number[] = [0];
+  private currentPostings(t: Transaction): Posting[] {
+    const exponent = this.epochExponents[t.money_epoch ?? 0];
+    return t.postings.map(p => ({...p,amount:this.isUSD(p.account) ? p.amount : p.amount * 10 ** exponent}));
+  }
+  private isUSD(account: string): boolean { return account.endsWith('-usd') || account === 'account:usd-issuance'; }
   readonly lotto = new DemoLotto({
     balance: account => this.balanceOf(account),
     name: account => this.userByAccount(account)?.display_name ?? account,
-    post: (id,memo,postings) => { this.append('TRANSFER','system',memo,postings,{reference:`lotto-${id}`,economic_kind:'OTHER'}); },
+    post: (id,memo,postings) => { this.append('TRANSFER','system',memo,postings,{reference:`lotto-${id}`,economic_kind:memo==='Lotto interest'?'INTEREST':'OTHER'}); },
   });
   readonly lending = new DemoLending({
     balance: account => this.balanceOf(account),
@@ -100,7 +119,7 @@ export class DemoLedger {
       return Number(v);
     };
     const changes: (()=>void)[] = [];
-    for (const t of this.transactions) for (const p of t.postings) { const v = convert(p.amount,exponent,MAX_MONEY); changes.push(()=>{p.amount=v;}); }
+    for (const t of this.transactions) for (const p of this.currentPostings(t)) if (!this.isUSD(p.account)) convert(p.amount,exponent,MAX_MONEY);
     for (const l of this.listings) { const v=convert(l.price,exponent,MAX_MONEY); changes.push(()=>{l.price=v;}); }
     for (const o of this.offers) { const v=convert(o.amount,exponent,MAX_MONEY); changes.push(()=>{o.amount=v;}); }
     for (const q of this.quotes) { const coins=convert(q.coins,exponent,MAX_MONEY),rate=convert(q.cents_per_coin,input.power,MAX_MONEY); changes.push(()=>{q.coins=coins;q.cents_per_coin=rate;}); }
@@ -109,7 +128,8 @@ export class DemoLedger {
     const circulation=convert(-this.balanceOf(SYSTEM_ISSUANCE));
     const loans = this.lending.reform(exponent);
     const lotto = this.lotto.reform(value=>convert(value,exponent,MAX_MONEY));
-    if (!input.preview) { for (const change of changes) change(); loans();lotto();this.decimals=input.decimals;this.moneyEpoch++;this.revision++; }
+    const commerce = this.commerce.reform(value=>convert(value,exponent,MAX_MONEY));
+    if (!input.preview) { for (const change of changes) change(); loans();lotto();commerce();this.epochExponents=this.epochExponents.map(e=>e+exponent);this.epochExponents.push(0);this.decimals=input.decimals;this.moneyEpoch++;this.revision++; }
     return {decimals:input.decimals,money_epoch:this.moneyEpoch,sequence:this.revision,circulation,preview:input.preview};
   }
   private users: DemoUser[] = [];
@@ -213,7 +233,7 @@ export class DemoLedger {
   balanceOf(account: string): number {
     let total = 0;
     for (const t of this.transactions) {
-      for (const p of t.postings) {
+      for (const p of this.currentPostings(t)) {
         if (p.account === account) total += p.amount;
       }
     }
@@ -254,7 +274,7 @@ export class DemoLedger {
 
   history(account: string, limit: number): AccountHistory {
     const txns = this.transactions
-      .filter((t) => t.postings.some((p) => p.account === account))
+      .filter((t) => t.postings.some((p) => p.account === account || p.account === `${account}-usd`))
       .slice(-limit)
       .reverse();
     return { account, balance: this.balanceOf(account), transactions: this.named(txns) };
@@ -268,17 +288,30 @@ export class DemoLedger {
   }
 
   /** Postings carry the other party's display name, as the real views do. */
+  ledgerPage(limit: number, cursor: string | null) {
+    const [epoch, upper, before, page] = cursor ? cursor.split(':').map(Number) : [this.moneyEpoch,this.nextTxn-1,this.nextTxn,0];
+    if (![upper,before,epoch,page].every(Number.isSafeInteger) || epoch!==this.moneyEpoch || before<1 || upper>=this.nextTxn || !Number.isFinite(limit)) throw new DemoError(409,'stale_request','The ledger changed. Reload its history.');
+    const rows=this.transactions.filter(t=>t.kind!=='MESSAGE' && Number(t.id.split('-').at(-1))<=upper && Number(t.id.split('-').at(-1))<before).reverse();
+    const transactions=this.named(rows.slice(0,Math.max(1,Math.min(100,limit))));
+    const next=Number(transactions.at(-1)?.id.split('-').at(-1));
+    return {transactions,circulation:-this.balanceOf(SYSTEM_ISSUANCE),snapshot_upper:upper,state_sequence:this.revision,
+      next_cursor:rows.length>transactions.length?`${epoch}:${upper}:${next}:${page+1}`:null,history_truncated:false};
+  }
+
   private named(txns: Transaction[]): Transaction[] {
     return txns.map((t) => ({
       ...t,
-      postings: t.postings.map((p) => ({
+      original_postings: structuredClone(t.postings),
+      current_money_epoch: this.moneyEpoch,
+      postings: this.currentPostings(t).map((p) => ({
         ...p,
         name:
           p.account === SYSTEM_ISSUANCE
             ? 'Issuance'
-            : p.account === NICKLE_RESERVE ? 'Nana-nickle reserve' : (this.userByAccount(p.account)?.display_name ?? p.account),
+            : p.account === 'account:usd-issuance' ? 'USD recorded' : p.account === NICKLE_RESERVE ? 'Nana-nickle reserve' : (this.userByAccount(p.account.replace(/-usd$/, ''))?.display_name ?? p.account),
       })),
-      reversed_by: this.transactions.find((r) => r.reverses === t.id)?.id,
+      refunded: this.refunded(t),
+      reversed_by: this.refunded(t) >= this.originalAmount(t) && this.originalAmount(t) > 0 ? this.transactions.filter(r=>r.reverses===t.id).at(-1)?.id : undefined,
     }));
   }
 
@@ -359,6 +392,9 @@ export class DemoLedger {
       thing_name?: string;
       quantity_milli?: number;
       unit?: EconomicUnit;
+      gift_request?: number;
+      art?: number;
+      refund_units?: number;
     } = {},
   ): Transaction {
     const sum = postings.reduce((a, p) => a + p.amount, 0);
@@ -389,14 +425,16 @@ export class DemoLedger {
       quantity_milli: opts.quantity_milli,
       unit: opts.unit,
       postings,
+      money_epoch: this.moneyEpoch, decimals: this.decimals,
+      gift_request: opts.gift_request, art: opts.art,
     };
     const original = opts.reverses ? this.transactions.find(t=>t.id===opts.reverses) : undefined;
     const user = this.users.find(u=>u.id===actor);
-    if (original?.fulfillment) {
+    if (original?.fulfillment && this.refunded(original) + (opts.refund_units ?? this.originalAmount(original)) === this.originalAmount(original)) {
       original.fulfillment.status='REVERSED';
       original.fulfillment.updates.push({id:txn.id,at:txn.created_at,actor:user?.account ?? actor,actor_name:user?.display_name ?? actor,status:'REVERSED',reason:''});
       original.fulfillment.updates=original.fulfillment.updates.slice(-4);
-    } else if (kind !== 'REVERSAL' && (kind === 'PURCHASE' || opts.economic_kind === 'LABOR' || opts.economic_kind === 'GOOD')) {
+    } else if (!opts.art && kind !== 'REVERSAL' && (kind === 'PURCHASE' || opts.economic_kind === 'LABOR' || opts.economic_kind === 'GOOD')) {
       const provider=postings.find(p=>p.amount>0),recipient=postings.find(p=>p.amount<0);
       const listing=this.listings.find(l=>l.id===opts.reference);
       if (provider && recipient) txn.fulfillment={transaction:txn.id,provider:provider.account,recipient:recipient.account,
@@ -405,6 +443,8 @@ export class DemoLedger {
         updates:[{id:txn.id,at:txn.created_at,actor:user?.account ?? actor,actor_name:user?.display_name ?? actor,status:'TODO',reason:''}]};
     }
     this.transactions.push(txn);
+    if (opts.reverses) this.refundAmounts.set(txn.id, opts.refund_units ?? this.originalAmount(original!));
+    if (original?.gift_request) this.commerce.refunded(original.gift_request,postings.reduce((sum,p)=>sum+Math.max(0,p.amount),0));
     this.revision++;
     this.lending.cashChanged(postings.map(p=>p.account), opts.reference?.startsWith('loan-') ?? false);
     return txn;
@@ -458,11 +498,12 @@ export class DemoLedger {
   // --- foreign exchange ---
 
   issueUSD(actor: DemoUser, to: string, cents: number, reason: string): Transaction {
+    this.requireActive(actor);
     this.requireNana(actor);
     this.requireAmount(cents);
     this.requireUserAccount(to);
     this.usdBalances.set(to, (this.usdBalances.get(to) ?? 0) + cents);
-    return {
+    const transaction: Transaction = {
       id: `usd-txn-${this.nextTxn++}`,
       kind: 'ISSUE',
       created_at: this.now(),
@@ -470,9 +511,12 @@ export class DemoLedger {
       description: reason,
       postings: [
         { account: 'account:usd-issuance', name: 'USD issuance', amount: -cents },
-        { account: to, name: this.userByAccount(to)?.display_name ?? to, amount: cents },
+        { account: `${to}-usd`, name: this.userByAccount(to)?.display_name ?? to, amount: cents },
       ],
     };
+    this.transactions.push(transaction);
+    this.revision++;
+    return transaction;
   }
 
   allQuotes(): Quote[] {
@@ -538,10 +582,11 @@ export class DemoLedger {
       description: 'Exchange',
       reference: quote.id,
       postings: [
-        { account: dollarSeller, name: this.userByAccount(dollarSeller)?.display_name ?? dollarSeller, amount: -quote.cents },
-        { account: dollarBuyer, name: this.userByAccount(dollarBuyer)?.display_name ?? dollarBuyer, amount: quote.cents },
+        { account: `${dollarSeller}-usd`, name: this.userByAccount(dollarSeller)?.display_name ?? dollarSeller, amount: -quote.cents },
+        { account: `${dollarBuyer}-usd`, name: this.userByAccount(dollarBuyer)?.display_name ?? dollarBuyer, amount: quote.cents },
       ],
     };
+    this.transactions.push(cashTransaction);
     quote.status = 'FILLED';
     quote.live = false;
     quote.taker = actor.account;
@@ -572,7 +617,9 @@ export class DemoLedger {
    * as the permanent record.
    */
   reverse(actor: DemoUser, id: string, reason: string): Transaction {
+    this.requireActive(actor);
     const original = this.transactions.find((t) => t.id === id);
+    if (original && (original.art || original.postings.some(p=>this.isUSD(p.account)) || this.refunded(original)>0)) throw new DemoError(409,'conflict','This payment needs its linked settlement or has already been refunded.');
     if (original?.kind === 'MESSAGE' || original?.reference?.startsWith('nickle:') || original?.reference?.startsWith('loan-') || original?.reference?.startsWith('lotto-')) {
       throw new DemoError(409, 'voucher_transaction', 'Bearer voucher transfers cannot be reversed independently of their voucher.');
     }
@@ -594,7 +641,7 @@ export class DemoLedger {
       'REVERSAL',
       actor.id,
       reason,
-      original.postings.map((p) => ({ ...p, amount: -p.amount })),
+      this.currentPostings(original).map((p) => ({ ...p, amount: -p.amount })),
       {
         allowOverdraft: !memberRefund,
         reverses: id,
@@ -603,8 +650,30 @@ export class DemoLedger {
         thing_name: original.thing_name,
         quantity_milli: original.quantity_milli,
         unit: original.unit,
+        reference: original.reference,
+        gift_request: original.gift_request,
       },
     );
+  }
+
+  private refundAmounts = new Map<string, number>();
+  private originalAmount(t: Transaction): number { return t.postings.reduce((sum,p)=>sum+Math.max(0,p.amount),0); }
+  private refunded(t: Transaction): number { return this.transactions.filter(r=>r.reverses===t.id).reduce((sum,r)=>sum+(this.refundAmounts.get(r.id) ?? 0),0); }
+
+  /** Amount is in the original payment's units, even after a currency reform. */
+  refund(actor: DemoUser, id: string, amount: number, reason: string): Transaction {
+    this.requireActive(actor); this.requireAmount(amount);
+    const t=this.transactions.find(t=>t.id===id);
+    if (!t) throw new DemoError(404,'not_found','No such transaction.');
+    if (!['TRANSFER','PURCHASE'].includes(t.kind) || t.art || t.postings.some(p=>this.isUSD(p.account)) || /^(quote-|loan-|lotto-|nickle:)/.test(t.reference ?? '')) throw new DemoError(409,'conflict','This payment requires its linked settlement.');
+    const recipient=t.postings.find(p=>p.amount>0)!,payer=t.postings.find(p=>p.amount<0)!;
+    if (actor.role!=='nana' && actor.account!==recipient.account) throw new DemoError(403,'forbidden','Only the recipient or Nana can refund.');
+    this.requireUserAccount(payer.account);this.requireUserAccount(recipient.account);
+    if (amount>this.originalAmount(t)-this.refunded(t)) throw new DemoError(409,'conflict','Refund exceeds the remaining payment.');
+    const cash=amount*10**this.epochExponents[t.money_epoch ?? 0];this.requireAmount(cash);
+    const refund=this.append('REVERSAL',actor.id,reason,[{...recipient,amount:-cash},{...payer,amount:cash}],
+      {reverses:id,refund_units:amount,economic_kind:t.economic_kind,thing:t.thing,thing_name:t.thing_name,unit:t.unit,quantity_milli:t.quantity_milli,gift_request:t.gift_request});
+    return refund;
   }
 
   fulfillments(actor: DemoUser): {fulfillments: Fulfillment[]} {
@@ -944,7 +1013,7 @@ export class DemoLedger {
    * believable order, and several landing in the same second is exactly the
    * case that made the economy charts collapse onto one point.
    */
-  private clock = Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 395;
+  private clock = Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 400;
   private now(): number {
     if (this.liveClock) return Math.floor(Date.now()/1000);
     return (this.clock += 1);

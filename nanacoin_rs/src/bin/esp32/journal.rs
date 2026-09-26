@@ -13,6 +13,7 @@ use nanacoin::{
 
 pub struct NvsJournal {
     banks: [EspNvs<NvsCustom>; 2],
+    archive: EspNvs<NvsCustom>,
     metadata: EspNvs<NvsCustom>,
     generation: u64,
     rows: usize,
@@ -40,12 +41,14 @@ impl NvsJournal {
             None => (0, 0),
         };
         // Bank zero keeps the legacy namespace; no partition-table change.
+        let archive = EspNvs::new(partition.clone(), "ncarch", true).map_err(|_| Error::Storage)?;
         let banks = [
             EspNvs::new(partition.clone(), "nanacoin", true).map_err(|_| Error::Storage)?,
             EspNvs::new(partition, "ncnext", true).map_err(|_| Error::Storage)?,
         ];
         Ok(Self {
             banks,
+            archive,
             metadata,
             generation,
             rows,
@@ -63,6 +66,45 @@ fn key(prefix: char, index: usize) -> Result<heapless::String<8>, Error> {
     Ok(key)
 }
 impl Journal for NvsJournal {
+    fn supports_archive(&self) -> bool {
+        true
+    }
+    fn read_archive(
+        &mut self,
+        slot: usize,
+        out: &mut [u8; nanacoin::journal::archive::PAGE_BYTES],
+    ) -> Result<usize, Error> {
+        if slot >= nanacoin::journal::archive::SLOTS {
+            return Err(Error::CorruptJournal);
+        }
+        out.fill(0);
+        self.archive
+            .get_blob(&key('p', slot)?, out)
+            .map_err(|_| Error::Storage)?
+            .map(|b| b.len())
+            .ok_or(Error::CorruptJournal)
+    }
+    fn write_archive(&mut self, slot: usize, bytes: &[u8]) -> Result<(), Error> {
+        if slot >= nanacoin::journal::archive::SLOTS
+            || !(32..=nanacoin::journal::archive::PAGE_BYTES).contains(&bytes.len())
+        {
+            return Err(Error::Capacity);
+        }
+        let key = key('p', slot)?;
+        self.archive
+            .set_blob(&key, bytes)
+            .map_err(|_| Error::Storage)?;
+        let mut verify = [0; nanacoin::journal::archive::PAGE_BYTES];
+        if self
+            .archive
+            .get_blob(&key, &mut verify)
+            .map_err(|_| Error::Storage)?
+            != Some(bytes)
+        {
+            return Err(Error::Storage);
+        }
+        Ok(())
+    }
     fn https_only(&self) -> bool {
         self.https_only
     }
@@ -77,22 +119,37 @@ impl Journal for NvsJournal {
         Ok(())
     }
     fn read(&mut self, index: usize, frame: &mut [u8; FRAME_SIZE]) -> Result<bool, Error> {
+        frame.fill(0);
         match self.banks[self.bank()]
             .get_blob(&key('e', index)?, frame)
             .map_err(|_| Error::Storage)?
         {
-            Some(data) if data.len() == FRAME_SIZE => Ok(true),
-            Some(_) => Err(Error::CorruptJournal),
+            Some(data) => {
+                if !(13..=FRAME_SIZE).contains(&data.len()) {
+                    return Err(Error::CorruptJournal);
+                }
+                let len = u32::from_le_bytes(data[4..8].try_into().unwrap()) as usize;
+                if len == 0 || len > FRAME_SIZE - 12 || data.len() != 12 + len {
+                    return Err(Error::CorruptJournal);
+                }
+                Ok(true)
+            }
             None => Ok(false),
         }
     }
     fn append(&mut self, index: usize, frame: &[u8; FRAME_SIZE]) -> Result<(), Error> {
+        let len = u32::from_le_bytes(frame[4..8].try_into().unwrap()) as usize;
+        if &frame[..4] != b"NCR2" || len == 0 || len > FRAME_SIZE - 12 {
+            return Err(Error::CorruptJournal);
+        }
+        let used = 12 + len;
         let key = key('e', index)?;
         let bank = &self.banks[self.bank()];
         if bank.blob_len(&key).map_err(|_| Error::Storage)?.is_some() {
             return Err(Error::Storage);
         }
-        bank.set_blob(&key, frame).map_err(|_| Error::Storage)
+        bank.set_blob(&key, &frame[..used])
+            .map_err(|_| Error::Storage)
     }
     fn generation(&self) -> u64 {
         self.generation

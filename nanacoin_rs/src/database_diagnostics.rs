@@ -40,6 +40,12 @@ fn row<T>(
 
 #[derive(Serialize)]
 pub struct Inventory {
+    pub storage_codec: &'static str,
+    pub archive: crate::journal::archive::ArchiveHead,
+    pub archive_page_slots: usize,
+    pub archive_rotation_pending_limit: usize,
+    pub sample_transaction_json_bytes: Option<usize>,
+    pub sample_transaction_binary_bytes: Option<usize>,
     pub engine: &'static str,
     pub generation: u64,
     pub sequence: u64,
@@ -213,7 +219,16 @@ pub fn inventory<J: Journal>(service: &Service<J>) -> Inventory {
         payload_reserved_bytes: 32 * size_of::<crate::incidents::Sample>(),
         retention: "Five-second sampling on board; about 160 seconds, cleared at reboot",
     });
-    Inventory { engine: "Bounded in-memory model with durable event journal and checkpoints",
+    let mut sample = [0; 2048];
+    let json_bytes = s
+        .history
+        .back()
+        .and_then(|t| serde_json_core::to_slice(t, &mut sample).ok());
+    let binary_bytes = s
+        .history
+        .back()
+        .and_then(|t| postcard::to_slice(t, &mut sample).ok().map(|v| v.len()));
+    Inventory { storage_codec: "postcard-1/NCR2/NCS2/NCA2", archive:s.archive, archive_page_slots:crate::journal::archive::SLOTS, archive_rotation_pending_limit:1024, sample_transaction_json_bytes:json_bytes, sample_transaction_binary_bytes:binary_bytes, engine: "Bounded in-memory model with durable event journal and checkpoints",
         generation: service.generation(), sequence: s.sequence, storage_failed: service.storage_failed(),
         invariants_ok: s.check_invariants().is_ok(), model_reserved_bytes: service.diagnostic_model_bytes(),
         memory_note: "RAM estimates use this build's Rust layouts, not flash sizes. Collection payloads omit container/allocator overhead; metadata is included in model total. Incident recorder, transport buffers, task stacks and native storage allocations are outside the model total. Embedded ticket/update rows are not separate tables. Browser-local caches are outside the board.",
@@ -226,7 +241,7 @@ pub fn inventory<J: Journal>(service: &Service<J>) -> Inventory {
         lifetime_transactions: s.transactions,
         oldest_retained_sequence: s.history.front().map(|t| t.id), newest_retained_sequence: s.history.back().map(|t| t.id),
         oldest_retained_at: s.history.front().map(|t| t.created_at), newest_retained_at: s.history.back().map(|t| t.created_at),
-        collections, indexes: "Primary-key lookups and filters scan bounded arrays/deques. No SQL engine, B-tree, query planner or per-table flash allocation. Checkpoints compact history; logical frame bytes exclude NVS/flash overhead and inactive checkpoint banks." }
+        collections, indexes: "Primary-key lookups and filters scan bounded arrays/deques. No SQL engine, B-tree, query planner or per-table flash allocation. Checkpoints publish the bounded archive; logical frame bytes exclude NVS/flash overhead and inactive checkpoint banks." }
 }
 
 #[derive(Serialize)]

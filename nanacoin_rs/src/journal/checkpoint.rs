@@ -15,10 +15,30 @@ pub const MAX_ROWS: usize = 1
     + crate::loans::LOANS
     + crate::lotto::LOTTOS
     + THINGS
-    + MAX_RECORDS;
+    + MAX_RECORDS
+    + crate::ledger::CORRECTIONS
+    + crate::ledger::EPOCHS
+    + crate::ledger::AUDIT_CACHE
+    + crate::commerce::REQUESTS
+    + crate::commerce::ARTWORKS;
 
-pub(super) fn save_empty<J: Journal>(j: &mut J) -> Result<(), Error> {
+pub(super) fn save_empty<J: Journal>(
+    j: &mut J,
+    _old: archive::ArchiveHead,
+) -> Result<archive::ArchiveHead, Error> {
+    let archive = archive::ArchiveHead {
+        first_page: 0,
+        next_page: 0,
+        incarnation: j.generation() + 1,
+        ..Default::default()
+    };
     let header = Header {
+        archive,
+        corrections: 0,
+        epochs: 0,
+        audits: 0,
+        requests: 0,
+        artworks: 0,
         decimals: 4,
         money_epoch: 0,
         credit_blocked: 0,
@@ -45,11 +65,18 @@ pub(super) fn save_empty<J: Journal>(j: &mut J) -> Result<(), Error> {
     };
     j.begin_checkpoint()?;
     write(j, &mut 0, 0, &header)?;
-    j.commit_checkpoint(1)
+    j.commit_checkpoint(1)?;
+    Ok(archive)
 }
 
 #[derive(Serialize, Deserialize)]
 struct Header {
+    archive: archive::ArchiveHead,
+    corrections: usize,
+    epochs: usize,
+    audits: usize,
+    requests: usize,
+    artworks: usize,
     fulfillments: usize,
     decimals: u8,
     money_epoch: u64,
@@ -99,12 +126,16 @@ fn write<J: Journal>(
     value: &impl Serialize,
 ) -> Result<(), Error> {
     let mut row = [0u8; ROW_BYTES];
-    row[..4].copy_from_slice(b"NCS1");
+    row[..4].copy_from_slice(b"NCS2");
     row[4] = kind;
-    let len = serde_json_core::to_slice(value, &mut row[16..]).map_err(|_| Error::Capacity)?;
+    let len = postcard::to_slice(value, &mut row[16..])
+        .map_err(|_| Error::Capacity)?
+        .len();
     row[8..12].copy_from_slice(&(len as u32).to_le_bytes());
-    let crc = crc32fast::hash(&row[16..16 + len]);
-    row[12..16].copy_from_slice(&crc.to_le_bytes());
+    let mut crc = crc32fast::Hasher::new();
+    crc.update(&row[..12]);
+    crc.update(&row[16..16 + len]);
+    row[12..16].copy_from_slice(&crc.finalize().to_le_bytes());
     j.write_checkpoint(*index, &row[..16 + len])?;
     *index += 1;
     Ok(())
@@ -118,19 +149,23 @@ fn read<J: Journal, T: DeserializeOwned>(
     let mut row = [0; ROW_BYTES];
     let used = j.read_checkpoint(*index, &mut row)?;
     *index += 1;
-    if used < 16 || &row[..4] != b"NCS1" || row[4] != kind || row[5..8] != [0; 3] {
-        return Err(Error::CorruptJournal);
-    }
-    let len = u32::from_le_bytes(row[8..12].try_into().unwrap()) as usize;
-    if len != used - 16
-        || crc32fast::hash(&row[16..used]) != u32::from_le_bytes(row[12..16].try_into().unwrap())
+    if !(16..=ROW_BYTES).contains(&used)
+        || &row[..4] != b"NCS2"
+        || row[4] != kind
+        || row[5..8] != [0; 3]
     {
         return Err(Error::CorruptJournal);
     }
-    let mut scratch = [0; ROW_BYTES];
-    let (value, consumed) = serde_json_core::from_slice_escaped(&row[16..used], &mut scratch)
-        .map_err(|_| Error::CorruptJournal)?;
-    if consumed != len {
+    let len = u32::from_le_bytes(row[8..12].try_into().unwrap()) as usize;
+    let mut crc = crc32fast::Hasher::new();
+    crc.update(&row[..12]);
+    crc.update(&row[16..used]);
+    if len != used - 16 || crc.finalize() != u32::from_le_bytes(row[12..16].try_into().unwrap()) {
+        return Err(Error::CorruptJournal);
+    }
+    let (value, remaining) =
+        postcard::take_from_bytes(&row[16..used]).map_err(|_| Error::CorruptJournal)?;
+    if !remaining.is_empty() {
         return Err(Error::CorruptJournal);
     }
     Ok(value)
@@ -140,8 +175,23 @@ pub(super) fn save<J: Journal>(
     j: &mut J,
     s: &State,
     keys: &VecDeque<KeyReceipt>,
-) -> Result<(), Error> {
+) -> Result<archive::ArchiveHead, Error> {
+    let archive = if j.supports_archive() {
+        archive::prepare(j, s, &s.archive)?
+    } else {
+        s.archive
+    };
     let h = Header {
+        archive,
+        corrections: s.ledger.corrections.len(),
+        epochs: s.ledger.epochs.len(),
+        audits: if j.supports_archive() {
+            0
+        } else {
+            s.ledger.audit.len()
+        },
+        requests: s.commerce.requests.len(),
+        artworks: s.commerce.artworks.len(),
         decimals: s.decimals,
         money_epoch: s.money_epoch,
         credit_blocked: s.credit_blocked,
@@ -160,7 +210,11 @@ pub(super) fn save<J: Journal>(
         usd_issuance_balance: s.usd_issuance_balance,
         members: s.members.len(),
         listings: s.listings.len(),
-        history: s.history.len(),
+        history: if j.supports_archive() {
+            0
+        } else {
+            s.history.len()
+        },
         offers: s.offers.len(),
         quotes: s.quotes.len(),
         things: s.things.len(),
@@ -186,8 +240,10 @@ pub(super) fn save<J: Journal>(
     for x in &s.listings {
         write(j, &mut index, 2, x)?;
     }
-    for x in &s.history {
-        write(j, &mut index, 3, x)?;
+    if !j.supports_archive() {
+        for x in &s.history {
+            write(j, &mut index, 3, x)?;
+        }
     }
     for x in &s.offers {
         write(j, &mut index, 4, x)?;
@@ -210,7 +266,25 @@ pub(super) fn save<J: Journal>(
     for x in keys {
         write(j, &mut index, 6, x)?;
     }
-    j.commit_checkpoint(index)
+    for x in &s.ledger.corrections {
+        write(j, &mut index, 11, x)?;
+    }
+    for x in &s.ledger.epochs {
+        write(j, &mut index, 12, x)?;
+    }
+    if !j.supports_archive() {
+        for x in &s.ledger.audit {
+            write(j, &mut index, 13, x)?;
+        }
+    }
+    for x in &s.commerce.requests {
+        write(j, &mut index, 14, x)?;
+    }
+    for x in &s.commerce.artworks {
+        write(j, &mut index, 15, x)?;
+    }
+    j.commit_checkpoint(index)?;
+    Ok(archive)
 }
 
 pub(super) fn restore<J: Journal>(
@@ -223,7 +297,12 @@ pub(super) fn restore<J: Journal>(
     }
     let mut index = 0;
     let h: Header = read(j, &mut index, 0)?;
-    if h.fulfillments > crate::fulfillment::CAPACITY
+    if h.corrections > crate::ledger::CORRECTIONS
+        || h.epochs > crate::ledger::EPOCHS
+        || h.audits > crate::ledger::AUDIT_CACHE
+        || h.requests > crate::commerce::REQUESTS
+        || h.artworks > crate::commerce::ARTWORKS
+        || h.fulfillments > crate::fulfillment::CAPACITY
         || h.decimals > 8
         || h.money_epoch > MAX_SEQUENCE
         || h.loans > crate::loans::LOANS
@@ -235,7 +314,12 @@ pub(super) fn restore<J: Journal>(
         || h.quotes > crate::forex::QUOTES
         || h.things > THINGS
         || h.keys > MAX_RECORDS
-        || 1 + h.fulfillments
+        || 1 + h.corrections
+            + h.epochs
+            + h.audits
+            + h.requests
+            + h.artworks
+            + h.fulfillments
             + h.members
             + h.listings
             + h.history
@@ -250,6 +334,7 @@ pub(super) fn restore<J: Journal>(
     {
         return Err(Error::CorruptJournal);
     }
+    s.archive = h.archive;
     s.household_name = h.household_name;
     s.decimals = h.decimals;
     s.money_epoch = h.money_epoch;
@@ -322,6 +407,30 @@ pub(super) fn restore<J: Journal>(
             return Err(Error::CorruptJournal);
         }
         keys.push_back(key);
+    }
+    for _ in 0..h.corrections {
+        s.ledger.corrections.push(read(j, &mut index, 11)?);
+    }
+    if h.epochs > 0 {
+        s.ledger.epochs.clear();
+    }
+    for _ in 0..h.epochs {
+        s.ledger.epochs.push(read(j, &mut index, 12)?);
+    }
+    for _ in 0..h.audits {
+        s.ledger.audit.push_back(read(j, &mut index, 13)?);
+    }
+    for _ in 0..h.requests {
+        s.commerce.requests.push(read(j, &mut index, 14)?);
+    }
+    for _ in 0..h.artworks {
+        s.commerce.artworks.push(read(j, &mut index, 15)?);
+    }
+    if j.supports_archive() {
+        if h.archive.transactions != s.transactions || h.archive.audit_sequence != s.sequence {
+            return Err(Error::CorruptJournal);
+        }
+        archive::restore_history(j, &h.archive, s)?;
     }
     s.check_invariants()
 }

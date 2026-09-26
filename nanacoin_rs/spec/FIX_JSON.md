@@ -1,8 +1,13 @@
 # Fix the JSON ledger: binary storage, archive, paging, running totals
 
-Status: plan, not started. Written September 26, 2026. Before starting, export
-the server state (System Info → Export Server State): the storage format
-change needs one erase of the ledger partition.
+Status: original proposal; implementation landed September 26, 2026. See
+[STORAGE_V2.md](STORAGE_V2.md) for the implemented behavior and deliberate limits.
+Read [FIX_JSON_REVIEW.md](FIX_JSON_REVIEW.md) before implementation: its
+source-backed corrections and revised waterfall supersede conflicting details
+below. In particular, archive recovery, reversals, currency reforms and totals
+need the revised design. Root AGENTS.md applies: no migration or mandatory
+export/re-entry of disposable development data. Hardware erase/flash remains
+a separate explicitly authorized operation.
 
 ## What is wrong today
 

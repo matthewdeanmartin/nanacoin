@@ -15,6 +15,7 @@ import { Log } from './log';
 import { digestSha256, hasNativeDigest } from './sha256';
 import { ApiBase } from './api-base';
 import { Money } from './money';
+import { normalizeTransactions } from './transaction-normalization';
 import { Lotto, LottoBook, LottoTerms, Loan, LoanBook, LoanOfferInput, ReformInput, ReformResult } from './models';
 import {
   AccountHistory,
@@ -394,8 +395,26 @@ export class NanacoinService {
     );
   }
 
-  ledger(limit = 100): Promise<LedgerPage> {
-    return this.get<LedgerPage>(`/transactions?limit=${limit}`);
+  async ledger(limit = 100): Promise<LedgerPage> {
+    const wanted = Math.max(1, Math.min(3650, Number.isFinite(limit) ? Math.floor(limit) : 100));
+    const source = this.base;
+    let page = await this.get<LedgerPage>(`/transactions?limit=${Math.min(wanted, 100)}`);
+    const first = page;
+    const transactions = [...page.transactions];
+    const seen = new Set<string>();
+    while (transactions.length < wanted && page.next_cursor) {
+      const cursor = page.next_cursor;
+      if (seen.has(cursor) || !/^\d+:\d+:\d+:\d+$/.test(cursor)) throw new Error('Invalid ledger continuation cursor.');
+      seen.add(cursor);
+      if (this.base !== source) throw new Error('The server changed while reading the ledger. Reload and try again.');
+      page = await this.get<LedgerPage>(`/transactions?limit=${Math.min(wanted - transactions.length, 100)}&cursor=${cursor}`);
+      if (page.snapshot_upper !== first.snapshot_upper || this.base !== source) throw new Error('The ledger changed while reading its history. Reload and try again.');
+      transactions.push(...page.transactions);
+    }
+    const epochs = new Set(transactions.map((t) => t.current_money_epoch).filter((e) => e !== undefined));
+    if (epochs.size > 1) throw new Error('The currency was reformed while reading the ledger. Reload and try again.');
+    return { ...first, transactions, next_cursor: page.next_cursor, next_before: page.next_before,
+      history_truncated: first.history_truncated || page.history_truncated };
   }
 
   transaction(id: TransactionId): Promise<Transaction> {
@@ -734,7 +753,7 @@ export class NanacoinService {
     this.log.debug('http', `${method} ${path}`, body === undefined ? undefined : { body });
 
     try {
-      const result = await this.withBackoff(method, path, run);
+      const result = normalizeTransactions(await this.withBackoff(method, path, run));
       // A quiet success is still recorded, just below the level anyone reads
       // by default; failures are never quiet.
       this.log[quiet ? 'debug' : 'info']('http', `${method} ${path} ok`, {
@@ -763,11 +782,11 @@ export class NanacoinService {
 
   private patch<T>(path: string, body: unknown): Promise<T> {
     const key = newIdempotencyKey();
-    return firstValueFrom(
+    return this.traced('PATCH', path, () => firstValueFrom(
       this.http
         .patch<T>(this.base + path, body, { headers: this.headers(key) })
         .pipe(this.mapError()),
-    );
+    ), body);
   }
 
   /**

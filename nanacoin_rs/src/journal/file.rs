@@ -10,6 +10,7 @@ use std::{
 pub struct FileJournal {
     logs: [File; 2],
     snapshots: [File; 2],
+    archive: File,
     head_path: PathBuf,
     transport_path: PathBuf,
     https_only: bool,
@@ -73,6 +74,10 @@ impl FileJournal {
             open_file(&companion(path, ".checkpoint0"))?,
             open_file(&companion(path, ".checkpoint1"))?,
         ];
+        let archive = open_file(&companion(path, ".archive"))?;
+        if archive.metadata()?.len() > (archive::SLOTS * archive::PAGE_BYTES) as u64 {
+            return Err(std::io::Error::other("archive exceeds capacity"));
+        }
         let active = (generation % 2) as usize;
         let len = logs[active].metadata()?.len();
         if len > (MAX_RECORDS * FRAME_SIZE) as u64 {
@@ -86,6 +91,7 @@ impl FileJournal {
         Ok(Self {
             logs,
             snapshots,
+            archive,
             head_path,
             transport_path,
             https_only,
@@ -99,6 +105,48 @@ impl FileJournal {
     }
 }
 impl Journal for FileJournal {
+    fn supports_archive(&self) -> bool {
+        true
+    }
+    fn read_archive(
+        &mut self,
+        slot: usize,
+        out: &mut [u8; archive::PAGE_BYTES],
+    ) -> Result<usize, Error> {
+        if slot >= archive::SLOTS {
+            return Err(Error::CorruptJournal);
+        }
+        io(self
+            .archive
+            .seek(SeekFrom::Start((slot * archive::PAGE_BYTES) as u64)))?;
+        io(self.archive.read_exact(out))?;
+        let used = u32::from_le_bytes(out[20..24].try_into().unwrap()) as usize;
+        if !(32..=archive::PAGE_BYTES).contains(&used) {
+            return Err(Error::CorruptJournal);
+        }
+        Ok(used)
+    }
+    fn write_archive(&mut self, slot: usize, bytes: &[u8]) -> Result<(), Error> {
+        if slot >= archive::SLOTS || !(32..=archive::PAGE_BYTES).contains(&bytes.len()) {
+            return Err(Error::Capacity);
+        }
+        let mut page = [0; archive::PAGE_BYTES];
+        page[..bytes.len()].copy_from_slice(bytes);
+        io(self
+            .archive
+            .seek(SeekFrom::Start((slot * archive::PAGE_BYTES) as u64)))?;
+        io(self.archive.write_all(&page))?;
+        io(self.archive.sync_all())?;
+        let mut verify = [0; archive::PAGE_BYTES];
+        io(self
+            .archive
+            .seek(SeekFrom::Start((slot * archive::PAGE_BYTES) as u64)))?;
+        io(self.archive.read_exact(&mut verify))?;
+        if verify != page {
+            return Err(Error::Storage);
+        }
+        Ok(())
+    }
     fn https_only(&self) -> bool {
         self.https_only
     }

@@ -1,115 +1,80 @@
-# NVS keys, recovery and retirement
+# NVS keys, recovery and retention
 
-## What database is this?
+The Rust server stores its journal, checkpoints and archive in ESP-IDF NVS.
+The [partition table](../../nanacoin_rs/partitions.csv) assigns `ledger` 8 MiB at
+`0x410000`; device configuration has a separate NVS partition. NVS controls
+physical placement and reclamation. Application slots do not measure erase
+cycles or physical write amplification.
 
-It is an application journal/checkpoint protocol on ESP-IDF's **key/value
-store**, not a filesystem, SQL engine, or hierarchical document database.
-The [partition table](https://github.com/matthewdeanmartin/nanacoin/blob/main/nanacoin_rs/partitions.csv)
-assigns `ledger` an 8 MiB NVS partition at `0x410000`. Device configuration's
-separate `nvs` partition is not the ledger.
+## Namespaces and keys
 
-NVS maps a namespace and short string key to a value. Updating a logical key
-does not imply rewriting one fixed physical address. NVS manages obsolete
-entries, sector reclamation and wear leveling. Its storage-entry statistics
-are not a count of application transactions or remaining erase cycles.
-[NVS documentation](https://docs.espressif.com/projects/esp-idf/en/v5.5/esp32s3/api-reference/storage/nvs_flash.html)
-explains its append-oriented internals.
+[NvsJournal](../../nanacoin_rs/src/bin/esp32/journal.rs) uses these logical keys:
 
-## Exact keys: deliberately simple slot numbers
-
-The implemented [NvsJournal](https://github.com/matthewdeanmartin/nanacoin/blob/main/nanacoin_rs/src/bin/esp32/journal.rs)
-opens three namespaces in the same partition:
-
-| Namespace | Key | Value / meaning |
+| Namespace | Key | Value |
 |---|---|---|
-| `ncmeta` | `head` | 32-byte `NCH1` publication record: generation, checkpoint row count, checksum |
-| `ncmeta` | `https_only` | One-byte device policy: 0/absent allows HTTP; 1 requires HTTPS; survives economy reset |
-| `nanacoin` | `e0000`, `e0001`, … | Bank 0 journal event frames, 1,024 bytes each |
-| `nanacoin` | `c0000`, `c0001`, … | Bank 0 checkpoint rows, at most 2,048 bytes each |
-| `ncnext` | Same `e…` and `c…` keys | Bank 1 journal and checkpoint rows |
+| `ncmeta` | `head` | 32-byte NCH1 generation/checkpoint publication record |
+| `ncmeta` | `https_only` | Transport policy, retained across economy reset |
+| `nanacoin` | `e0000`, `e0001`, … | Bank zero NCR2 events, used bytes only, at most 1,024 |
+| `nanacoin` | `c0000`, `c0001`, … | Bank zero NCS2 rows, at most 4,096 bytes |
+| `ncnext` | Same `e…` and `c…` keys | Bank one events/checkpoints |
+| `ncarch` | `p0000` through `p03ff` | Archive slots, each at most 4,096 bytes |
 
-The key builder is literally:
+Suffixes are hexadecimal slot indexes, not user or transaction IDs.
+`generation % 2` selects the bank. Journal indexes restart after rotation while
+domain sequences continue. Archive logical page IDs map modulo 1,024 to slots;
+page headers verify the logical ID and economy incarnation.
 
-```rust
-fn key(prefix: char, index: usize) -> Result<heapless::String<8>, Error> {
-    let mut key = heapless::String::new();
-    core::fmt::Write::write_fmt(&mut key, format_args!("{prefix}{index:04x}"))
-        .map_err(|_| Error::Capacity)?;
-    Ok(key)
-}
-```
+## Encodings and state
 
-These are hexadecimal **slot indexes**, starting at zero: slot 10 is `e000a`,
-slot 16 is `e0010`. They are not user IDs, transaction IDs, timestamps or
-composite primary keys such as `user-transaction-type`. `ncmeta/head` is notation
-for namespace plus key, not a path containing a slash.
+HTTP uses JSON. NCR2 event, NCS2 checkpoint and NCA2 archive payloads use postcard
+with caller-owned bounded buffers. CRCs cover critical headers and payloads;
+decoders reject extra/truncated bytes. Rust field/enum ordering is part of this
+positional schema. Older development data must be reset; there is no migration
+or old-format decoder.
 
-`generation % 2` selects the active bank. These banks are logical namespaces,
-not fixed physical halves of flash. After retirement, journal slot numbering
-starts at `e0000` again, while domain IDs remain monotonic. A generation and
-slot together locate an event logically; the generation is in `head`, not
-encoded into each key string.
+Checkpoint rows store settings, members/private credentials, business objects,
+retry receipts, correction annotations and per-epoch lifetime counters. On file
+and NVS adapters, transaction and sanitized audit history live in the archive,
+not duplicate checkpoint history rows. Identity commands are redacted in audit.
+Private checkpoints remain sensitive; CRCs are neither encryption nor authentication.
 
-## Where users and balances live
+Stored transactions keep original currency units and classifications. Currency
+reform changes current balances and obligations. APIs expose original postings
+and an exact current-unit projection when possible. Corrections retain original
+amounts and refunded units independently of cached history. Exact integer
+lifetime counters survive archive pruning.
 
-The event payload holds the command and its actor/sequence/retry information.
-An event can change multiple accounts atomically at the application level.
-There are no NVS secondary indexes for “all Alice's transactions.” Boot replays
-the checkpoint and following events into bounded RAM state. API queries inspect
-that RAM state and retained history, rather than searching NVS by user prefix.
+## Commit, rotate and recover
 
-Checkpoint row indexes also run sequentially across types, not per entity.
-[checkpoint.rs](https://github.com/matthewdeanmartin/nanacoin/blob/main/nanacoin_rs/src/journal/checkpoint.rs)
-writes a header followed by members, listings, history, offers, quotes and retry
-receipts. The row's `NCS1` envelope stores kind, payload length and checksum;
-the payload is JSON. Kind 0 is the header, 1 member, 2 listing, 3 history,
-4 offer, 5 quote, 6 retry receipt. Therefore `c0001`'s meaning comes from the
-header counts, row kind and payload—not from a clever key.
+Each mutation validates and appends durably before changing live state. NVS
+appends reject occupied event slots. Failed or ambiguous storage operations
+latch the service until replay. Without a publication head, startup begins at
+generation zero using the current format; this is not a legacy decoder.
 
-Private member rows include recovery credentials; the public member serializer
-does not. Flash dumps and desktop checkpoint files are sensitive. A checksum
-detects accidental corruption; it is not encryption or authentication.
+Rotation occurs before the next event at 2,048 journal records, 1,024 unarchived
+transactions, or 1,024 pending audits. The service stages archive pages, writes
+and verifies an inactive checkpoint, publishes its head, then retires the old
+bank. The checkpoint commits the archive interval, transaction floor, archived
+counts and incarnation. Only that interval is visible. Unpublished orphan pages
+cannot skip journal replay or duplicate balances.
 
-## Commit and recover
+The ring retains at most 768 pages with 256 slots reserved for staging without
+overwriting committed pages. Missing/corrupt committed data fails closed.
+Restore loads up to 3,000 transactions and 1,024 audits without applying postings,
+then replays later events. Pruning also trims live history; commands are
+revalidated after automatic rotation so refunds cannot depend on lost originals.
 
-For each accepted mutation, the service validates, encodes a fixed frame and
-calls `append` before changing live RAM. The NVS adapter rejects an occupied
-event slot, then calls `set_blob`. A persistence error latches the service
-unavailable until restart. This is per-mutation persistence, not daily batching.
+The raw `/state` response omits history. Transaction/account cursor routes scan
+at most eight pages and return at most 100 rows; empty results may still have
+continuations. Nana-only audit reads have bounded continuation too. The finite
+archive is not an off-board backup.
 
-On boot, the adapter reads `ncmeta/head`; its absence selects legacy generation
-0 with no checkpoint. A present invalid head fails. The service restores the
-committed checkpoint, reads numbered events until the first absent slot, then
-checks domain invariants. Invalid present records fail closed. The desktop
-adapter's incomplete-tail truncation is a separate file-specific behavior.
+Reset publishes empty state with a new incarnation, revokes sessions and returns
+to provisioning. Old pages are ignored, not securely erased. Desktop storage
+uses two checkpoint/log banks and a synchronized `.archive` bounded to 4 MiB;
+back up all companions together while stopped.
 
-## Closing books is not deleting balances
-
-Before the next append after 2,048 records, supporting adapters save a new
-checkpoint. Legacy replay can read up to 4,096 records. Under the service lock:
-
-1. Clear the inactive namespace, preserving the active generation.
-2. Write bounded checkpoint rows and read each back for verification.
-3. Commit the replacement namespace, then publish the new `head`.
-4. Only after publication, reclaim the previous namespace.
-
-Balances, live objects, credentials, recent 365 transactions and up to 4,096
-retry receipts survive. Older detailed events are retired; this is not an
-archival accounting export. NVS's physical reclamation is separate from this
-application-level decision about history.
-
-The code calls `nvs_commit` for the completed checkpoint. This does **not** mean
-earlier `nvs_set_blob` calls buffered the entire replacement solely in RAM;
-they may already program flash. Safety comes from keeping the old generation
-authoritative until the new head is published.
-
-Nana's authenticated `/admin/checkpoint` and `/admin/reset` actions include the
-expected generation and sequence to reject stale confirmations. Reset also
-requires `RESET ECONOMY`, publishes empty state, revokes sessions and returns
-the app to provisioning. It is a logical reset, not physical secure erasure.
-
-The [retention contract](https://github.com/matthewdeanmartin/nanacoin/blob/main/nanacoin_rs/RETENTION.md)
-describes retry generations, failure recovery and the desktop companion files.
-The [checkpoint tests](https://github.com/matthewdeanmartin/nanacoin/blob/main/nanacoin_rs/tests/checkpoint.rs)
-exercise reboot/replay, retirement and interrupted publication with test stores.
-Hardware power-cut validation remains distinct from passing those tests.
+See [the storage contract](../../nanacoin_rs/spec/STORAGE_V2.md) and
+[retention/retry rules](../../nanacoin_rs/spec/RETENTION.md). Fault tests cover
+orphans, ambiguous publication, pruning and replay. Physical power-cut testing
+and board endurance measurement are separate from those deterministic checks.

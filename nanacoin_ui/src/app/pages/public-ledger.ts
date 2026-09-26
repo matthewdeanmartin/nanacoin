@@ -80,7 +80,7 @@ export class PublicLedger {
  refundable(txn: Transaction): boolean {
    const account = this.session.me()?.account;
    if (!account || txn.kind === 'MESSAGE' || txn.reversed_by || txn.kind === 'REVERSAL' || txn.kind === 'ISSUE' || txn.kind === 'RETIRE') return false;
-   if (txn.reference?.startsWith('lotto-') || txn.reference?.startsWith('quote-') || txn.reference?.startsWith('nickle:')) return false;
+   if (txn.art || txn.refunded || txn.economic_kind === 'LOAN_PRINCIPAL' || txn.economic_kind === 'INTEREST' || txn.reference?.startsWith('loan-') || txn.reference?.startsWith('lotto-') || txn.reference?.startsWith('quote-') || txn.reference?.startsWith('nickle:')) return false;
    return txn.postings.some((posting) => posting.account === account && posting.amount > 0);
  }
 

@@ -13,6 +13,9 @@ pub struct OfferId(pub u64);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Settlement {
+    pub economic: EconomicDetails,
+    pub epoch: u64,
+    pub original_amount: i64,
     pub transaction: u64,
     pub payer: MemberId,
     pub payee: MemberId,
@@ -167,6 +170,12 @@ impl State {
                 if self.listing(o.listing)?.status != ListingStatus::Sold {
                     return Err(Error::Conflict);
                 }
+                self.correction_room(s.transaction)?;
+                if self.ledger.refunded(s.transaction) != 0
+                    || self.ledger.reversed_by(s.transaction).is_some()
+                {
+                    return Err(Error::Conflict);
+                }
                 self.validate_posting(s.payee, s.payer, o.amount, true)?;
             }
             Command::DeclineOffer { offer } | Command::WithdrawOffer { offer } => {
@@ -232,6 +241,7 @@ impl State {
                     Side::Buy => (o.owner, o.offerer),
                 };
                 let tx = Transaction {
+                    meta: crate::ledger::TransactionMeta::default(),
                     id: event.sequence,
                     actor: event.actor,
                     created_at: event.timestamp,
@@ -240,7 +250,6 @@ impl State {
                     amount: o.amount,
                     memo: TransactionMemo::try_from(l.title.as_str()).unwrap(),
                     reverses: None,
-                    reversed: false,
                     listing: Some(l.id),
                     usd: false,
                     quote: None,
@@ -251,6 +260,9 @@ impl State {
                 let listing_id = l.id;
                 let o = self.offers.iter_mut().find(|o| o.id == *offer).unwrap();
                 o.phase = OfferPhase::Accepted(Settlement {
+                    economic: tx.economic,
+                    epoch: self.money_epoch,
+                    original_amount: tx.amount,
                     transaction: event.sequence,
                     payer,
                     payee,
@@ -272,6 +284,11 @@ impl State {
                 let o = self.offer(*offer).unwrap();
                 let s = o.settlement().unwrap();
                 let tx = Transaction {
+                    meta: crate::ledger::TransactionMeta {
+                        refund_units: s.original_amount,
+                        original_amount: s.original_amount,
+                        ..Default::default()
+                    },
                     id: event.sequence,
                     actor: event.actor,
                     created_at: event.timestamp,
@@ -280,23 +297,15 @@ impl State {
                     amount: o.amount,
                     memo: reason.clone(),
                     reverses: Some(s.transaction),
-                    reversed: false,
                     listing: Some(o.listing),
                     usd: false,
                     quote: None,
                     loan: None,
                     lotto: None,
-                    economic: self
-                        .history
-                        .iter()
-                        .find(|t| t.id == s.transaction)
-                        .map(|t| t.economic)
-                        .unwrap_or_default(),
+                    economic: s.economic,
                 };
                 let listing_id = o.listing;
-                if let Some(original) = self.history.iter_mut().find(|t| t.id == s.transaction) {
-                    original.reversed = true;
-                }
+
                 self.mark_offer_reversed(s.transaction, now);
                 let listing = self
                     .listings
