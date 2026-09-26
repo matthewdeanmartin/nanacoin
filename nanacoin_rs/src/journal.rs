@@ -154,6 +154,24 @@ impl<J: Journal> Service<J> {
         self.journal.supports_checkpoint()
     }
 
+    pub(crate) fn diagnostic_storage(&self) -> (usize, usize, usize, usize) {
+        (
+            self.journal.checkpoint_rows(),
+            self.keyed.len(),
+            self.keyed.capacity(),
+            core::mem::size_of::<KeyReceipt>(),
+        )
+    }
+
+    pub(crate) fn diagnostic_model_bytes(&self) -> usize {
+        core::mem::size_of::<Self>()
+            + core::mem::size_of::<State>()
+            + self.state.history.capacity() * core::mem::size_of::<crate::domain::Transaction>()
+            + self.state.fulfillments.capacity()
+                * core::mem::size_of::<crate::fulfillment::Fulfillment>()
+            + self.keyed.capacity() * core::mem::size_of::<KeyReceipt>()
+    }
+
     /// Caller holds the service mutex. A failed/ambiguous storage operation
     /// latches the service until restart; never continue from uncertain state.
     pub fn checkpoint(&mut self, actor: MemberId) -> Result<(), Error> {

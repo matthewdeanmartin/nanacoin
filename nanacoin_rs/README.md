@@ -129,7 +129,7 @@ Assets live under ignored `.embuild/web`, with identity and gzip versions.
 The packaged index selects same-origin `/api/v1`; standalone Angular source
 defaults remain unchanged. An explicitly remembered API choice still wins:
 use the connection screen or `?api=` to select this site again. Serving uses
-borrowed flash slices and 2 KiB writes, not runtime compression, a filesystem,
+borrowed flash slices and bounded nonblocking writes, not runtime compression, a filesystem,
 or the ledger response buffer. Hashed JS/CSS use immutable caching; index
 revalidates and ETags permit 304 responses. Only known Angular routes fall back
 to index; missing assets remain 404. Static routes support GET; other methods,
@@ -152,7 +152,11 @@ Rust does not automatically prevent fragmentation. Application collections have 
 | Sessions / pending login codes | 64 / 16 |
 | Journal | 1,024-byte records; automatically checkpoint/retire at 2,048 changes; reads legacy logs up to 4,096 |
 | Durable HTTP retry index | 4,096 receipts allocated once; bounded ring, preserved in checkpoints |
-| HTTPS + HTTP sockets / handler stacks | 4 + 2 / 24 KiB each; one reusable response buffer per worker |
+| Established HTTPS + HTTP sockets | 8 + 4; idle sessions expire after 60 seconds |
+| TLS handshake / HTTP task stacks | 24 KiB on core 0 / 32 KiB on core 1 |
+| Pending handshakes / completed handoffs | 2 / 2; handshakes expire after 4 seconds |
+| Request headers / body | 4 KiB (32 headers) / 1 KiB; partial requests expire after 5 seconds |
+| Pending response memory | Dispatch pauses at 2 MiB; at most one additional 512 KiB reply plus headers |
 | Startup stack | 64 KiB |
 | Movement amount | 1 through 1,000,000,000 whole coins |
 
@@ -160,11 +164,11 @@ Allocation tests observe zero allocations after startup across 2,999 financial w
 
 Offer slots recycle the oldest closed or settled deal, never an open or still-reversible deal. Reversible acceptances also pin their listing slot. Fixed domain state is boxed once at startup so moving the service does not copy the whole state through the firmware stack. Views serialize directly from bounded iterators, without constructing response vectors. A regression test covers a full table, 1,000 offer reads and 1,000 acceptance retries without API/domain allocations after setup.
 
-Wi-Fi/lwIP and the diagnostics sampler use core 0; HTTPS and domain work use core 1. Financial writes have one owner. The service mutex now covers only the domain call: each httpd worker owns a response buffer, so serializing a reply and writing it to the socket happens outside the lock. Four TLS sockets are served concurrently; requests beyond that queue rather than being refused, so slow clients still delay others.
+Wi-Fi/lwIP, diagnostics and a bounded asynchronous TLS handshake task use core 0. One nonblocking connection loop serves established HTTP/HTTPS clients on core 1, using one reusable 512 KiB serialization buffer. The service mutex covers the API call including JSON encoding; socket I/O and handshakes happen outside it. Pending API responses own only their encoded bytes, with a global memory budget; large static bodies remain borrowed flash slices. Each client gets one bounded I/O turn, so partial requests and slow readers yield to others. Financial writes remain serialized and durable. Persistent HTTP/1.1, TCP_NODELAY, TLS session tickets, disabled Wi-Fi modem sleep and 240 MHz operation avoid repeated setup and packet delays. New handshakes do not occupy the serving task.
 
-`GET /api/v1/diag` is unauthenticated and reads a small, coherent snapshot published by the core 0 sampler. Its separate mutex covers only copying the snapshot, never the ledger, probes or socket I/O. Memory, temperature, network, clock, tasks/stack, server counters and NVS capacity feed Angular's Nana-only **Machine health** page. `/api/v1/diag/static` adds hardware/build/reset information and the partition map. Both routes use a 4 KiB request-local response buffer and bypass the ledger response buffer. The shared diagnostics object is capped at 288 bytes, with a 4 KiB sampler stack and a startup temperature-driver handle. History stays in the browser. See [API.md](API.md#diagnostics) for field semantics and differences from MicroPython.
+`GET /api/v1/diag` is unauthenticated and reads a small, coherent snapshot published by the core 0 sampler. Its separate mutex covers only copying the snapshot, never the ledger, probes or socket I/O. Memory, temperature, network, clock, tasks/stack, server counters and NVS capacity feed Angular's Nana-only **Machine health** page. `/api/v1/diag/static` adds hardware/build/reset information and the partition map. Both serialize using the serving task's reusable buffer without taking the ledger lock. The shared diagnostics object is capped at 288 bytes, with a 4 KiB sampler stack and a startup temperature-driver handle. History stays in the browser. API responses expose `Server-Timing` for application, lock and total handler time; these exclude handshake, network and response transmission. See [API.md](API.md#diagnostics) for field semantics and differences from MicroPython.
 
-mbedTLS content buffers are 4 KiB in / 2 KiB out: request bodies are capped at 1 KiB, and the previous 16 KiB input buffer could not be allocated four times inside the reserved internal RAM.
+mbedTLS content buffers are 16 KiB in/out and allocated from PSRAM, preserving internal RAM for networking and stacks. HTTP request bodies remain capped at 1 KiB regardless of TLS record size.
 
 Validated events append durably before state changes. Failed or ambiguous writes latch the service unavailable until replay. Complete corrupt records fail startup; only an incomplete final desktop frame is truncated. NVS initialization errors do not authorize automatic erasure. The firmware's 8 MiB NVS partition and overall layout differ from Go.
 

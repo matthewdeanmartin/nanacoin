@@ -157,10 +157,29 @@ pub fn handle_keyed<J: Journal>(
         if body.len() > BODY_LIMIT {
             return Err(Error::Capacity);
         }
+        let (route_path, query) = path.split_once('?').unwrap_or((path, ""));
+        // Public, sanitized, immutable views remain available during a storage
+        // fault. Never call tick/execute or mutate authentication state here.
+        if method == "GET" {
+            match route_path {
+                "/api/v1/diag/events" => {
+                    return serialize(&crate::incidents::LOG.snapshot(), output)
+                }
+                "/api/v1/configuration" => {
+                    return serialize(&crate::database_diagnostics::configuration(service), output)
+                }
+                "/api/v1/diag/database" => {
+                    return serialize(&crate::database_diagnostics::inventory(service), output)
+                }
+                "/api/v1/diag/database/benchmark" => {
+                    return crate::database_diagnostics::benchmark(service, output)
+                }
+                _ => {}
+            }
+        }
         if service.storage_failed() {
             return Err(Error::Storage);
         }
-        let (route_path, query) = path.split_once('?').unwrap_or((path, ""));
         // Like a Bitcoin explorer or Nana's paper notebook, the ledger is
         // readable without a session. Mutations and account administration
         // remain authenticated below.

@@ -392,12 +392,18 @@ fn http_status_account_scope_and_durable_keys() {
 
 #[test]
 fn recipient_can_record_delivery_without_moving_money() {
-    let (mut s,m)=house();
-    let tx=purchase(&mut s,Side::Sell,"service");
-    let before=(balance(&s,2),balance(&s,3),s.state().transactions);
-    exec(&mut s,3,change(tx,Action::Complete)).unwrap();
-    assert_eq!(s.state().fulfillments[0].status,Status::Done);
-    assert_eq!(before,(balance(&s,2),balance(&s,3),s.state().transactions));
-    let s=Service::open_with_clock(m,now).unwrap();
-    assert_eq!(s.state().fulfillments[0].updates.last().unwrap().actor,MemberId(3));
+    let (mut s, m) = house();
+    let tx = purchase(&mut s, Side::Sell, "service");
+    let before = (balance(&s, 2), balance(&s, 3), s.state().transactions);
+    exec(&mut s, 3, change(tx, Action::Complete)).unwrap();
+    assert_eq!(s.state().fulfillments[0].status, Status::Done);
+    assert_eq!(
+        before,
+        (balance(&s, 2), balance(&s, 3), s.state().transactions)
+    );
+    let s = Service::open_with_clock(m, now).unwrap();
+    assert_eq!(
+        s.state().fulfillments[0].updates.last().unwrap().actor,
+        MemberId(3)
+    );
 }

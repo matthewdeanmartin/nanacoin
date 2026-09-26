@@ -7,8 +7,9 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 
 import { ApiBase } from './api-base';
-import { Listing, User } from './models';
-import { Session } from './session';
+import { Listing, Status, User } from './models';
+import { NanacoinService } from './nanacoin.service';
+import { Session, reloadOnLedgerChange } from './session';
 
 function user(partial: Partial<User>): User {
   return {
@@ -129,5 +130,46 @@ describe('Session', () => {
     expect(session.me()).toBeNull();
     expect(session.household()).toEqual([]);
     expect(session.listings()).toEqual([]);
+  });
+});
+
+describe('Session change check', () => {
+  let session: Session;
+  let api: NanacoinService;
+  beforeEach(() => {
+    TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting(), ApiBase] });
+    session = TestBed.inject(Session);
+    api = TestBed.inject(NanacoinService);
+    session.me.set(user({ balance: 65 }));
+    session.status.set({ sequence: 7 } as Status);
+  });
+
+  it('reloads balances when someone else changed the ledger', async () => {
+    vi.spyOn(api, 'status').mockResolvedValue({ sequence: 8 } as Status);
+    vi.spyOn(api, 'me').mockResolvedValue(user({ balance: 100 }));
+    vi.spyOn(api, 'users').mockResolvedValue({ users: [] } as never);
+    vi.spyOn(api, 'listings').mockResolvedValue({ listings: [] } as never);
+    await session.checkForChanges();
+    expect(session.balance()).toBe(100);
+    expect(session.revision()).toBe(8);
+  });
+
+  it('does nothing more than the status check when nothing changed', async () => {
+    const status = vi.spyOn(api, 'status').mockResolvedValue({ sequence: 7 } as Status);
+    const me = vi.spyOn(api, 'me');
+    await session.checkForChanges();
+    expect(status).toHaveBeenCalledWith(true);
+    expect(me).not.toHaveBeenCalled();
+    expect(session.balance()).toBe(65);
+  });
+
+  it('reloads page data when the revision moves', () => {
+    const reload = vi.fn(() => true);
+    TestBed.runInInjectionContext(() => reloadOnLedgerChange({ reload }));
+    TestBed.tick();
+    expect(reload).not.toHaveBeenCalled();
+    session.status.set({ sequence: 9 } as Status);
+    TestBed.tick();
+    expect(reload).toHaveBeenCalledTimes(1);
   });
 });

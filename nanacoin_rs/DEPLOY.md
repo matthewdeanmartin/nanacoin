@@ -70,6 +70,34 @@ Do not choose based only on an old example in documentation.
 
 Close serial monitors and other programs holding the port before continuing.
 
+### Prove the port is the live NanaCoin board
+
+"A board is plugged in" does not mean "the NanaCoin server is plugged in". On
+September 26, 2026 the only USB board present (COM11) was a different
+ESP32-S3 with an unrelated partition table (`store`, `media`, `coredump`),
+while the real server kept running untouched over Wi-Fi. `deploy.py`'s
+partition check caught it, but identify the board before relying on that:
+
+1. Note the live server's uptime:
+   `curl -s http://<board-ip>/api/v1/diag` → `uptime_seconds` (`/diag` is
+   served over HTTP too; find `<board-ip>` as in step 4).
+2. Read the attached chip's MAC. This resets that board:
+   `python -m esptool --chip esp32s3 --port "$PORT" read_mac`
+3. Read `uptime_seconds` again, retrying for about 30 seconds while it boots.
+   If it restarted near zero, the port is the server. If it kept counting, the
+   port is **another board**: stop and ask. Do not deploy to it.
+
+A quicker hint that needs no reset: the ESP32-S3's composite USB device ID ends
+in its MAC, for example `USB\VID_303A&PID_1001\AC:A7:04:2C:2C:04` in the
+`Win32_PnPEntity` listing above. The live server (September 2026) is
+`AC:A7:04:2C:2C:04` on 192.168.1.158. Its serial port is the
+`USB Serial Device (COMn)` entry with the same instance prefix.
+
+Comparing the esptool MAC with the router or ARP table is only a hint. An ARP
+entry in `Probe`/`Stale` state may be old. The uptime test is decisive.
+Charge-only USB cables power a board without creating a serial port, so a
+powered server can still be absent from the port list.
+
 ## 2. Record the tree and run a dry deployment
 
 Open Git Bash:
@@ -183,7 +211,8 @@ checks as unavailable rather than claiming they were clicked.
 |---|---|
 | No unambiguous serial port | Stop; reconnect/identify the physical board. |
 | Port access denied/in use | Close monitors and retry. Do not change flash commands. |
-| Partition-layout refusal | Stop. This is not an upgradeable current-layout board. |
+| Partition-layout refusal | Stop. This is not an upgradeable current-layout board, and often not the NanaCoin server at all (see "Prove the port is the live NanaCoin board"). |
+| Live server uptime did not reset after `read_mac` | Stop. The port is a different board. |
 | Firmware image too large | Stop and reduce/review the image. Never enlarge or rewrite partitions casually. |
 | Certificate validation fails | Stop and inspect the existing certificate inputs. Do not use `-k` and do not rotate automatically. |
 | Flash succeeds but strict probe fails | Treat deployment as unverified; check boot, address, Wi-Fi, TLS, and serial evidence. Do not erase the board. |

@@ -7,6 +7,7 @@ import { inject as moneyInject } from '@angular/core';
 
 import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 import { ConnectionSecurity } from './connection-security';
 import { CurrencyReform } from './currency-reform';
 import { Notebook } from '../ui/notebook';
@@ -18,10 +19,11 @@ import { Session } from '../api/session';
 import { Dialogs } from '../ui/dialog';
 import { LiveSeeder, defaultSeed } from '../demo/seed-live';
 import { Toasts } from '../ui/toasts';
+import { SectionLink } from '../ui/section-link';
 
 @Component({
   selector: 'app-nana',
-  imports: [MoneyPipe, FormsModule, ConnectionSecurity, Notebook, CurrencyReform],
+  imports: [MoneyPipe, FormsModule, RouterLink, ConnectionSecurity, Notebook, CurrencyReform, SectionLink],
   templateUrl: './nana.html',
 })
 export class NanaPage {

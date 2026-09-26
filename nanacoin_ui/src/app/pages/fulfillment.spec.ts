@@ -1,3 +1,4 @@
+import { provideRouter } from '@angular/router';
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
@@ -5,7 +6,7 @@ import { Fulfillment } from '../api/models';
 import { Session } from '../api/session';
 import { NanacoinService } from '../api/nanacoin.service';
 import { Dialogs } from '../ui/dialog';
-import { AccountTodos, FulfillmentControl } from './fulfillment';
+import { AccountTodos, CHANGED_MIND, FulfillmentControl } from './fulfillment';
 import { mailRows } from './mail-model';
 const work: Fulfillment = {
   transaction: 'tx-1',
@@ -21,7 +22,7 @@ const work: Fulfillment = {
   ],
 };
 function setup(account: string) {
-  TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting()] });
+  TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])] });
   const session = TestBed.inject(Session);
   session.me.set({
     id: 'user-2',
@@ -109,5 +110,49 @@ describe('fulfillment controls and activity', () => {
     expect(rows.some((r) => r.body.includes('Dirty'))).toBe(true);
     expect(rows.every((r) => !r.attention)).toBe(true);
     expect(mailRows('account-9', [], [], [], [f])).toEqual([]);
+  });
+});
+describe('undoing a purchase', () => {
+  const button = (root: HTMLElement, text: string) =>
+    Array.from(root.querySelectorAll('button')).find((b) => b.textContent?.includes(text));
+  it('lets the buyer say they changed their mind', async () => {
+    const api = setup('account-3');
+    const update = vi.spyOn(api, 'setFulfillment').mockResolvedValue({ ...work, status: 'DISPUTED' });
+    vi.spyOn(TestBed.inject(Dialogs), 'confirm').mockResolvedValue('');
+    const fixture = TestBed.createComponent(FulfillmentControl);
+    fixture.componentRef.setInput('item', work);
+    fixture.detectChanges();
+    button(fixture.nativeElement, 'I changed my mind')!.click();
+    await fixture.whenStable();
+    expect(update).toHaveBeenCalledWith('tx-1', 'DISPUTE', CHANGED_MIND, expect.any(String));
+  });
+  it('lets the seller give the money back and shows why it was asked for', async () => {
+    const api = setup('account-2');
+    const reverse = vi.spyOn(api, 'reverse').mockResolvedValue({} as never);
+    vi.spyOn(TestBed.inject(Dialogs), 'prompt').mockResolvedValue('Bought by mistake');
+    const asked = {
+      ...work,
+      status: 'DISPUTED' as const,
+      updates: [...work.updates, { id: 'event-2', at: 2, actor: 'account-3', actor_name: 'Mom', status: 'DISPUTED' as const, reason: CHANGED_MIND }],
+    };
+    const fixture = TestBed.createComponent(FulfillmentControl);
+    fixture.componentRef.setInput('item', asked);
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.textContent).toContain('Buyer changed their mind');
+    expect(root.textContent).toContain(`Mom says: “${CHANGED_MIND}”`);
+    button(root, 'Give the money back')!.click();
+    await fixture.whenStable();
+    expect(reverse).toHaveBeenCalledWith('tx-1', 'Bought by mistake', expect.any(String));
+  });
+  it('points both sides at Nana', () => {
+    setup('account-3');
+    TestBed.inject(Session).household.set([{ id: 'user-1', account: 'account-1', role: 'nana', status: 'ACTIVE' } as never]);
+    const fixture = TestBed.createComponent(FulfillmentControl);
+    fixture.componentRef.setInput('item', work);
+    fixture.detectChanges();
+    const link = (fixture.nativeElement as HTMLElement).querySelector('a');
+    expect(link?.textContent).toContain('Send Nana a message');
+    expect(link?.getAttribute('href')).toContain('to=account-1');
   });
 });

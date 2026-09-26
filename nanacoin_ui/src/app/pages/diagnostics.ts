@@ -4,6 +4,7 @@ import { MachineDiagnostics, MachineInfo, MachineSnapshot } from '../api/diagnos
 import { ApiBase } from '../api/api-base';
 import { LineChart } from '../economy/line-chart';
 import { Series } from '../economy/series';
+import { IncidentHistory, IncidentHistoryPanel } from './incident-history';
 
 interface Sample { at: number; snapshot: MachineSnapshot }
 export const HISTORY_LIMIT = 120;
@@ -17,7 +18,7 @@ export function appendSample(history: Sample[], snapshot: MachineSnapshot, at: n
 
 @Component({
   selector: 'app-diagnostics',
-  imports: [DatePipe, DecimalPipe, JsonPipe, LineChart],
+  imports: [DatePipe, DecimalPipe, JsonPipe, LineChart, IncidentHistoryPanel],
   templateUrl: './diagnostics.html',
   styles: `
     .toolbar { display:flex; flex-wrap:wrap; gap:.7rem; align-items:center; margin-bottom:1rem }
@@ -39,6 +40,9 @@ export class DiagnosticsPage {
   protected readonly info = signal<MachineInfo | null>(null);
   protected readonly failure = signal('');
   protected readonly infoFailure = signal('');
+  protected readonly incidents = signal<IncidentHistory | null>(null);
+  protected readonly incidentsFailure = signal('');
+  private incidentsBusy = false;
   protected readonly busy = signal(false);
   protected readonly infoBusy = signal(false);
   protected readonly following = signal(false);
@@ -85,6 +89,7 @@ export class DiagnosticsPage {
     if (this.source !== this.base.current()) {
       this.source = this.base.current();
       this.history.set([]); this.snapshot.set(null); this.info.set(null);
+      this.incidents.set(null);
       void this.loadInfo();
     }
     this.busy.set(true);
@@ -108,6 +113,7 @@ export class DiagnosticsPage {
       this.latency.set(Math.round(performance.now() - start));
       this.receivedAt.set(Date.now());
       this.failure.set('');
+      void this.loadIncidents();
     } catch (e) {
       if (!this.lifetime.signal.aborted) this.failure.set(e instanceof Error ? e.message : String(e));
     } finally {
@@ -124,6 +130,23 @@ export class DiagnosticsPage {
   private scheduleVisible(): void {
     // No hidden-tab polling. The visibility listener resumes when shown.
     clearTimeout(this.timer);
+  }
+
+  private async loadIncidents(): Promise<void> {
+    if (this.incidentsBusy || this.lifetime.signal.aborted) return;
+    this.incidentsBusy = true;
+    const source = this.base.current();
+    try {
+      const history = await this.api.read<IncidentHistory>('/events', this.lifetime.signal);
+      if (source !== this.base.current() || this.lifetime.signal.aborted) return;
+      if (!Array.isArray(history.events) || !Array.isArray(history.samples)) throw new Error('Incident history is unavailable on this firmware.');
+      this.incidents.set(history);
+      this.incidentsFailure.set('');
+    } catch (error) {
+      if (source === this.base.current() && !this.lifetime.signal.aborted) {
+        this.incidentsFailure.set(error instanceof Error ? error.message : String(error));
+      }
+    } finally { this.incidentsBusy = false; }
   }
 
   protected async loadInfo(): Promise<void> {

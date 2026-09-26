@@ -11,7 +11,7 @@ import { IS_DEMO } from '../demo/demo';
 import { Transaction } from '../api/models';
 import { NanacoinService, newIdempotencyKey } from '../api/nanacoin.service';
 import { Notebook } from '../ui/notebook';
-import { Session } from '../api/session';
+import { Session, reloadOnLedgerChange } from '../api/session';
 import { Dialogs } from '../ui/dialog';
 import { Toasts } from '../ui/toasts';
 
@@ -55,6 +55,8 @@ export class PublicLedger {
      ? firstValueFrom(this.http.get<{ transactions: Transaction[] }>('/api/v1/public/ledger'))
      : this.api.ledger(100),
  });
+ /** Catch up when someone else changes the ledger while this page is open. */
+ private readonly followLedger = reloadOnLedgerChange(this.data);
  readonly category = signal('ALL');
  readonly query = signal('');
  readonly filtered = computed(() => {

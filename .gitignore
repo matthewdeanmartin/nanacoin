@@ -46,3 +46,6 @@ site/
 
 # Household ledgers are data, not source.
 *.journal
+
+# Local build logs and board investigations.
+/.local/

@@ -11,7 +11,7 @@ import { inject as moneyInject } from '@angular/core';
 import { Component, computed, inject, resource, signal } from '@angular/core';
 
 import { NanacoinService } from '../api/nanacoin.service';
-import { Session } from '../api/session';
+import { Session, reloadOnLedgerChange } from '../api/session';
 import { Quote } from '../api/models';
 import { actualRates } from '../economy/forex-series';
 import { ForexChart } from '../economy/forex-chart';
@@ -190,6 +190,8 @@ export class EconomyPage {
     },
   });
 
+  /** Catch up when someone else changes the ledger while this page is open. */
+  private readonly followLedger = reloadOnLedgerChange(this.data);
   protected readonly txns = computed(() => this.data.value()?.transactions ?? []);
   protected readonly quotes = computed(() => this.data.value()?.quotes ?? []);
   private readonly yearTxns = computed(() => {

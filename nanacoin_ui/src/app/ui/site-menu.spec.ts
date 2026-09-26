@@ -27,6 +27,15 @@ describe('responsive site navigation', () => {
    expect([...loans!.querySelectorAll('a')].map((a: Element)=>a.textContent)).toEqual(['Loans','Lotto']);
    expect(fixture.nativeElement.textContent).toContain('Board Health');
  });
+ it('exposes the new System Info pages without signing in', () => {
+   TestBed.configureTestingModule({ providers: [provideRouter([]), { provide: Session, useValue: {
+     signedIn: signal(false), isNana: signal(false), diagAvailable: signal(false), logsAvailable: signal(false),
+   } }] });
+   const fixture = TestBed.createComponent(SiteMenu); fixture.detectChanges();
+   const links = [...fixture.nativeElement.querySelectorAll('a')].map((a: HTMLAnchorElement) => a.textContent?.trim());
+   expect(links).toContain('Error Log'); expect(links).toContain('Database'); expect(links).toContain('Configuration');
+   expect(links).not.toContain('Household');
+ });
  it('toggles expanded state and dismisses on Escape or outside click', () => {
    const fixture = setup(true);
    const button = fixture.nativeElement.querySelector('button');

@@ -48,6 +48,7 @@ import { IS_DEMO } from '../demo/demo';
          <summary>Accounting</summary>
          <div class="menu-group__items">
            <a routerLink="/economy" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Economy</a>
+           <a routerLink="/central-bank" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Nana as Central Bank</a>
            <a routerLink="/ledger" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">The Notebook</a>
          </div>
        </details>
@@ -55,6 +56,12 @@ import { IS_DEMO } from '../demo/demo';
          <summary>System Info</summary>
          <div class="menu-group__items">
            <a routerLink="/clientlog" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Browser Log</a>
+           <a routerLink="/error-log" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Error Log</a>
+           <a routerLink="/database" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Database</a>
+           <a routerLink="/configuration" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Configuration</a>
+           @if (session.isNana()) {
+             <a routerLink="/export-state" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Export Server State</a>
+           }
            @if (demo) {
              <a routerLink="/diagnostics" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Board Health</a>
            } @else if (session.diagAvailable()) {
@@ -67,14 +74,15 @@ import { IS_DEMO } from '../demo/demo';
        </details>
      } @else {
        <a routerLink="/ledger" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">The Notebook</a>
-       @if (demo || session.diagAvailable()) {
          <details class="menu-group">
            <summary>System Info</summary>
            <div class="menu-group__items">
-             <a routerLink="/diagnostics" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Board Health</a>
+             @if (demo || session.diagAvailable()) { <a routerLink="/diagnostics" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Board Health</a> }
+             <a routerLink="/error-log" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Error Log</a>
+             <a routerLink="/database" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Database</a>
+             <a routerLink="/configuration" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Configuration</a>
            </div>
          </details>
-       }
      }
      <a class="about-link" routerLink="/about" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">About</a>
    </nav>

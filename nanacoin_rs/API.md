@@ -116,14 +116,21 @@ cash-leg range. Checkpointing never resets IDs; economy reset does.
 
 ## Diagnostics
 
+`GET /api/v1/diag/events` returns bounded, sanitized RAM incident history:
+48 events, 32 five-second samples, boot ID, counters and connection high-water
+marks. It uses the same public diagnostics/origin policy and a separate 32 KiB
+wire limit. No secrets or request contents are retained; history clears on
+reboot. See [diagnostics](../docs/rust/diagnostics.md#retained-incident-history-rust-firmware).
+
 `GET /api/v1/diag` and `GET /api/v1/diag/static` need no authentication, retain
-the normal origin policy, and take no ledger lock. They use a 4096-byte
-request-local response buffer, bypassing the large ledger response buffer.
+the normal origin policy, and take no ledger lock. They reuse the serving
+task's serialization buffer; diagnostic wire tests enforce a 4096-byte bound.
 Serialization overflow returns an error, never truncated successful JSON.
 The Angular Machine health page is in Nana's administrator navigation.
 
-Live readings are sampled every two seconds on core 0, away from HTTPS and
-ledger work on core 1. A separate mutex protects only copying the small,
+Live readings are sampled every two seconds on core 0, alongside the separate
+TLS handshake task. Established HTTP/HTTPS and ledger work run on core 1.
+A separate mutex protects only copying the small,
 fixed snapshot (the complete shared object is compile-time capped at 288
 bytes). Probes, serialization and socket writes run outside that mutex.
 The sampler has a 4096-byte stack and one temperature-driver handle created
@@ -232,3 +239,23 @@ activity events; older activity is discarded at journal compaction. Checkpoints
 use 4096-byte rows for the current schema. No old development-data migration is
 provided. Currency reforms rescale retained refund amounts, and an economy reset
 clears obligations with the rest of the economy.
+
+## Public System Info
+
+These read-only GET endpoints require no login, respect the normal transport
+policy, and remain available when a storage failure has latched:
+
+* `/api/v1/configuration`: household name, currency/decimal scale, grants,
+  settlement timing and economy policies. No configuration mutation endpoint is
+  added; changes still require Nana's existing administrative authorization.
+* `/api/v1/diag/database`: aggregate persistent/RAM collection occupancy,
+  capacities, retention, memory estimates, journal/checkpoint usage and invariant
+  status. Does not expose credentials, tokens or record contents.
+* `/api/v1/diag/database/benchmark`: bounded existing read queries, with run counts,
+  min/mean/max microseconds, response sizes and query errors. No service mutation,
+  cleanup or writes. Maximum three runs per query and a 250 ms budget for starting
+  queries; server timing excludes network and lock wait.
+* `/api/v1/diag/events`: bounded RAM incident history, counters and health samples;
+  clears at reboot. Also available on the desktop server.
+
+See [diagnostics](../docs/rust/diagnostics.md) for measurement limits and UI details.

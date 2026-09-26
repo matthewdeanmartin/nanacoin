@@ -103,9 +103,12 @@ export class App {
     }
     this.router.events.pipe(takeUntilDestroyed()).subscribe(event => {
       if (event instanceof NavigationEnd) {
+        // Opening a page should show today's numbers, not the ones from
+        // whenever this browser last did something.
+        void this.session.checkForChanges();
         const path = event.urlAfterRedirects.split('?')[0];
         this.aboutPage.set(path === '/about');
-        this.publicPage.set(['/about', '/recipes', '/ledger', '/diagnostics'].includes(path));
+        this.publicPage.set(['/about', '/recipes', '/ledger', '/diagnostics', '/error-log', '/database', '/configuration'].includes(path));
         requestAnimationFrame(() => document.getElementById('main-content')?.focus());
       }
     });
@@ -119,6 +122,7 @@ export class App {
       secureContext: window.isSecureContext,
       webCrypto: typeof crypto !== 'undefined' && !!crypto.subtle,
     });
+    this.session.watch();
     void this.boot();
   }
 

@@ -7,12 +7,7 @@ use std::path::{Path, PathBuf};
 /// Both forms are already gitignored repo-wide (`config.py` by name, `.env`
 /// under this crate), so nothing read here is in version control. Searched
 /// nearest-first, and the first file that defines a key supplies it.
-const CREDENTIAL_FILES: [&str; 4] = [
-    ".env",
-    "config.py",
-    "../.env",
-    "../nanacoin_web/config.py",
-];
+const CREDENTIAL_FILES: [&str; 4] = [".env", "config.py", "../.env", "../nanacoin_web/config.py"];
 
 /// Reads `KEY = "value"` / `KEY=value` pairs. Covers both the Python config
 /// files and dotenv syntax: `#` comments, optional `export`, single or double

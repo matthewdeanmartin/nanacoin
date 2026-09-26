@@ -3,7 +3,7 @@ import { DatePipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { MoneyPipe } from '../api/money';
 import { NanacoinService } from '../api/nanacoin.service';
-import { Session } from '../api/session';
+import { Session, reloadOnLedgerChange } from '../api/session';
 import { Loan, Lotto } from '../api/models';
 
 export function lottoOutcome(l: Lotto, account: string): { label: string; net: number } {
@@ -59,6 +59,8 @@ export class AccountCommitments {
  private readonly api=inject(NanacoinService); private readonly session=inject(Session);
  protected readonly loans=resource({params:()=>this.session.me()?.account,loader:()=>this.api.loans()});
  protected readonly lottos=resource({params:()=>this.session.me()?.account,loader:()=>this.api.lottos()});
+ /** Catch up when someone else changes the ledger while this page is open. */
+ private readonly followLedger = reloadOnLedgerChange(this.loans, this.lottos);
  protected readonly loanGroups=computed(()=> {
    const account=this.session.me()?.account, all=this.loans.value()?.loans ?? [];
    return [{title:'Loans · money lent',description:'Money others owe this account.',items:all.filter(l=>l.lender===account)},

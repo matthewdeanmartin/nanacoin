@@ -5,7 +5,7 @@ import { DatePipe } from '@angular/common';
 import { Loan, LoanOfferInput } from '../api/models';
 import { Money, MoneyPipe, parseMoney } from '../api/money';
 import { NanacoinService, newIdempotencyKey } from '../api/nanacoin.service';
-import { Session } from '../api/session';
+import { Session, reloadOnLedgerChange } from '../api/session';
 import { Dialogs } from '../ui/dialog';
 import { Toasts } from '../ui/toasts';
 
@@ -79,6 +79,8 @@ export class LoansPage {
   private readonly toasts = inject(Toasts);
   protected readonly busy = signal('');
   protected readonly book = resource({ params:()=>this.session.me()?.account, loader: () => this.api.loans() });
+  /** Catch up when someone else changes the ledger while this page is open. */
+  private readonly followLedger = reloadOnLedgerChange(this.book);
   protected readonly annualPercent=annualLoanPercent;
   protected readonly offeredRate=computed(()=>averageOfferRate(this.book.value()?.loans ?? [],this.session.me()?.account ?? '', 'lender'));
   protected readonly desiredRate=computed(()=>averageOfferRate(this.book.value()?.loans ?? [],this.session.me()?.account ?? '', 'borrower'));

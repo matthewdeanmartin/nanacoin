@@ -280,11 +280,24 @@ export class MarketPage {
    */
   protected async buy(l: Listing): Promise<void> {
     if (this.buying()) return;
+    // One tap used to pay. A child who tapped "Buy" on a car wash they could
+    // not use had no chance to stop, so every purchase is confirmed first.
+    const price = this.money.format(l.price);
+    const answer = await this.dialogs.confirm({
+      title: `Buy “${l.title}”?`,
+      message: `You pay ${l.seller_name} ${price} NC right now.`,
+      detail: [
+        'Only buy it if you really want it.',
+        `Changed your mind later? Open My account, then TODO, and press “I changed my mind”. ${l.seller_name} or Nana can give the money back.`,
+      ],
+      confirmLabel: `Buy for ${price} NC`,
+    });
+    if (answer === null || this.buying()) return;
     this.buying.set(l.id);
     const key = newIdempotencyKey();
     try {
       const res = await this.api.purchase(l.id, key);
-      this.toasts.ok(`Bought ${res.listing.title} for ${this.money.format(res.listing.price)} coins.`);
+      this.toasts.ok(`Bought ${res.listing.title} for ${this.money.format(res.listing.price)} coins. Find it in My account under TODO.`);
       await this.session.refresh();
     } catch (e) {
       this.toasts.fromError(e);

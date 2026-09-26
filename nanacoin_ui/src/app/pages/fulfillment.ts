@@ -9,14 +9,24 @@ import {
   signal,
 } from '@angular/core';
 import { DatePipe } from '@angular/common';
+import { RouterLink } from '@angular/router';
 import { Fulfillment, FulfillmentAction } from '../api/models';
 import { NanacoinService, newIdempotencyKey } from '../api/nanacoin.service';
-import { Session } from '../api/session';
+import { Session, reloadOnLedgerChange } from '../api/session';
 import { Dialogs } from '../ui/dialog';
 import { Toasts } from '../ui/toasts';
 
-export function fulfillmentLabel(f: Pick<Fulfillment, 'kind' | 'status'>): string {
-  if (f.status === 'REVERSED') return 'Payment reversed';
+/**
+ * The dispute reason sent by "I changed my mind". A dispute is the existing way
+ * a buyer flags a deal for the seller and Nana, so a change of mind reuses it
+ * rather than inventing a second kind of request.
+ */
+export const CHANGED_MIND = 'I changed my mind. Please give my money back.';
+
+export function fulfillmentLabel(f: Pick<Fulfillment, 'kind' | 'status'> & { updates?: Fulfillment['updates'] }): string {
+  if (f.status === 'REVERSED') return 'Money given back';
+  if (f.status === 'DISPUTED' && f.updates?.filter((u) => u.status === 'DISPUTED').at(-1)?.reason === CHANGED_MIND)
+    return 'Buyer changed their mind · asking for the money back';
   const item = f.kind === 'WORK' ? 'Work' : f.kind === 'CASH' ? 'Cash' : 'Goods';
   if (f.status === 'DISPUTED')
     return `Disputed · ${item.toLowerCase()} ${f.kind === 'WORK' ? 'not done' : 'not delivered'}`;
@@ -26,11 +36,18 @@ export function fulfillmentLabel(f: Pick<Fulfillment, 'kind' | 'status'>): strin
 }
 @Component({
   selector: 'app-fulfillment',
+  imports: [RouterLink],
   template: `@if (item(); as f) {
     <p role="status">
       <strong>{{ label(f) }}</strong>
     </p>
     <p class="muted small">{{ f.provider_name }} → {{ f.recipient_name }}</p>
+    @if (f.status === 'DISPUTED' && problem(f); as reason) {
+      <p>{{ f.recipient_name }} says: “{{ reason }}”</p>
+      @if (account() === f.provider) {
+        <p class="small">You can give the money back, or talk to {{ f.recipient_name }} about it. Nana can also decide.</p>
+      }
+    }
     @if (f.status === 'TODO' && account() === f.provider) {
       <button class="btn btn--small" [disabled]="busy()" (click)="act('COMPLETE')">
         {{
@@ -44,6 +61,9 @@ export function fulfillmentLabel(f: Pick<Fulfillment, 'kind' | 'status'>): strin
     }
     @if (f.status === 'TODO' && account() === f.recipient) {
       <button class="btn btn--small" [disabled]="busy()" (click)="act('COMPLETE')">Record as done</button>
+    }
+    @if (f.status === 'TODO' && account() === f.recipient) {
+      <button class="btn btn--quiet btn--small" [disabled]="busy()" (click)="changedMind()">I changed my mind</button>
     }
     @if ((f.status === 'TODO' || f.status === 'DONE') && account() === f.recipient) {
       <button class="btn btn--quiet btn--small" [disabled]="busy()" (click)="act('DISPUTE')">
@@ -66,6 +86,15 @@ export function fulfillmentLabel(f: Pick<Fulfillment, 'kind' | 'status'>): strin
         Withdraw dispute · mark done
       </button>
     }
+    @if ((f.status === 'TODO' || f.status === 'DISPUTED') && account() === f.provider) {
+      <button class="btn btn--quiet btn--small" [disabled]="busy()" (click)="refund()">Give the money back</button>
+    }
+    @if ((f.status === 'TODO' || f.status === 'DISPUTED') && !isNana() && nana(); as n) {
+      <p class="muted small">
+        Made a mistake or stuck? Nana can undo payments.
+        <a [routerLink]="['/send']" [queryParams]="{ to: n.account, amount: '0' }">Send Nana a message</a>.
+      </p>
+    }
   }`,
 })
 export class FulfillmentControl {
@@ -79,6 +108,55 @@ export class FulfillmentControl {
   protected readonly account = computed(() => this.session.me()?.account);
   protected readonly busy = signal(false);
   protected readonly label = fulfillmentLabel;
+  protected readonly nana = computed(() =>
+    this.session.household().find((u) => u.role === 'nana' && u.status === 'ACTIVE'),
+  );
+  /** The reason given with the latest dispute, if any. */
+  protected problem(f: Fulfillment): string {
+    return f.updates.filter((u) => u.status === 'DISPUTED').at(-1)?.reason ?? '';
+  }
+  /** The seller cancels the deal: the payment is reversed back to the buyer. */
+  protected async refund() {
+    const f = this.item();
+    if (!f || this.busy()) return;
+    const reason = await this.dialogs.prompt({
+      title: 'Give the money back?',
+      message: `${f.recipient_name} gets back what they paid for “${f.description}”, and you don't have to do it anymore.`,
+      detail: ['You cannot take this back later.'],
+      required: true,
+      initial: 'Cancelled. Money given back.',
+      placeholder: 'Why? For example: bought by mistake',
+      confirmLabel: 'Give the money back',
+    });
+    if (reason === null) return;
+    this.busy.set(true);
+    try {
+      await this.api.reverse(f.transaction, reason.trim(), newIdempotencyKey());
+      this.toasts.ok(`Money given back to ${f.recipient_name}.`);
+      await this.session.refresh();
+      this.changed.emit();
+    } catch (e) {
+      this.toasts.fromError(e);
+    } finally {
+      this.busy.set(false);
+    }
+  }
+  /** The buyer asks for their money back. Only the seller or Nana can say yes. */
+  protected async changedMind() {
+    const f = this.item();
+    if (!f || this.busy()) return;
+    const answer = await this.dialogs.confirm({
+      title: 'Changed your mind?',
+      message: `This asks ${f.provider_name} to give your money back for “${f.description}”.`,
+      detail: [
+        `Your money comes back when ${f.provider_name} or Nana says yes.`,
+        'Nana can see this too.',
+      ],
+      confirmLabel: 'Ask for my money back',
+    });
+    if (answer === null) return;
+    await this.act('DISPUTE', CHANGED_MIND);
+  }
   protected async reverse() {
     const f = this.item();
     if (!f || this.busy()) return;
@@ -101,11 +179,11 @@ export class FulfillmentControl {
     }
   }
   private pending?: { transaction: string; action: FulfillmentAction; reason: string; key: string };
-  protected async act(action: FulfillmentAction) {
+  protected async act(action: FulfillmentAction, given?: string) {
     const f = this.item();
     if (!f || this.busy()) return;
-    let reason = '';
-    if (action === 'DISPUTE') {
+    let reason = given ?? '';
+    if (action === 'DISPUTE' && given === undefined) {
       const answer = await this.dialogs.prompt({
         title: 'Dispute this transaction',
         message: f.description,
@@ -185,7 +263,7 @@ export class AccountTodos {
     const me = this.session.me()?.account;
     return this.book.value()?.fulfillments.filter(f => (f.provider===me || f.recipient===me || this.session.isNana() && f.status==='DISPUTED') && (f.status==='TODO' || f.status==='DISPUTED')).length;
   });
-  protected activity(status: string) { return ({TODO:'Work or delivery recorded as outstanding',DONE:'Recorded as done or delivered',DISPUTED:'Reported not done or not delivered',REVERSED:'Payment reversed'} as Record<string,string>)[status]; }
+  protected activity(status: string) { return ({TODO:'Work or delivery recorded as outstanding',DONE:'Recorded as done or delivered',DISPUTED:'Reported a problem',REVERSED:'Money given back'} as Record<string,string>)[status]; }
 
   private readonly api = inject(NanacoinService);
   private readonly session = inject(Session);
@@ -194,6 +272,8 @@ export class AccountTodos {
     params: () => this.session.me()?.account,
     loader: () => this.api.fulfillments(),
   });
+  /** Catch up when someone else changes the ledger while this page is open. */
+  private readonly followLedger = reloadOnLedgerChange(this.book);
   protected readonly groups = computed(() => {
     const me = this.session.me()?.account,
       book = this.book.value()?.fulfillments ?? [],

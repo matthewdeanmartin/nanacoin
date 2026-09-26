@@ -8,6 +8,9 @@ import { IS_DEMO } from './demo/demo';
  * and the part most people never open - are not in the initial bundle.
  */
 export const routes: Routes = [
+  { path: 'error-log', loadComponent: () => import('./pages/error-log').then(m => m.ErrorLogPage), title: 'Error Log — NanaCoin' },
+  { path: 'database', loadComponent: () => import('./pages/database').then(m => m.DatabasePage), title: 'Database — NanaCoin' },
+  { path: 'configuration', loadComponent: () => import('./pages/configuration').then(m => m.ConfigurationPage), title: 'Configuration — NanaCoin' },
   { path: 'messages', loadComponent: () => import('./pages/messages').then(m => m.MessagesPage), title: 'Messages — NanaCoin' },
   { path: 'lotto', loadComponent: () => import('./pages/lotto').then(m => m.LottoPage), title: 'Lotto — NanaCoin' },
   { path: 'loans', loadComponent: () => import('./pages/loans').then(m => m.LoansPage), title: 'Loans & credit — NanaCoin' },
@@ -52,6 +55,11 @@ export const routes: Routes = [
     title: 'Economy — NanaCoin',
   },
   {
+    path: 'central-bank',
+    loadComponent: () => import('./pages/central-bank').then((m) => m.CentralBankPage),
+    title: 'Nana as central bank — NanaCoin',
+  },
+  {
     path: 'clientlog',
     loadComponent: () => import('./pages/clientlog').then((m) => m.ClientLogPage),
     title: 'Browser log — NanaCoin',
@@ -60,6 +68,18 @@ export const routes: Routes = [
     path: 'logs',
     loadComponent: () => import('./pages/logs').then((m) => m.LogsPage),
     title: 'Server logs — NanaCoin',
+  },
+  {
+    path: 'export-state',
+    loadComponent: () => import('./pages/export-state').then((m) => m.ExportStatePage),
+    title: 'Export server state — NanaCoin',
+    canActivate: [nanaOnly],
+  },
+  {
+    path: 'nana/market',
+    loadComponent: () => import('./pages/market-maker').then((m) => m.MarketMakerPage),
+    title: 'Market desk — NanaCoin',
+    canActivate: [nanaOnly],
   },
   {
     path: 'nana',

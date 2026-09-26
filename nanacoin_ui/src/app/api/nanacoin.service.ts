@@ -160,11 +160,12 @@ export class NanacoinService {
 
   // --- auth ---
 
-  status(): Promise<Status> {
+  /** `quiet` is for the background change check, which would otherwise fill the log. */
+  status(quiet = false): Promise<Status> {
     const target = this.base;
     return this.traced('GET', '/status', () => firstValueFrom(
       this.http.get<Status>(this.base + '/status').pipe(timeout(6000), this.mapError()),
-    )).then((status) => {
+    ), undefined, quiet).then((status) => {
       if (target === this.base) {
         rememberGeneration(target, status.journal_generation ?? 0);
         moneyEpoch = status.money_epoch ?? 0;
@@ -514,8 +515,8 @@ export class NanacoinService {
     cents_per_coin: number;
     coins: number;
     expires_at?: number;
-  }): Promise<Quote> {
-    return this.post<Quote>('/quotes', input);
+  }, idempotencyKey?: string): Promise<Quote> {
+    return this.post<Quote>('/quotes', input, idempotencyKey);
   }
 
   /** Executes a trade at the quoted rate. */
@@ -727,13 +728,16 @@ export class NanacoinService {
     path: string,
     run: () => Promise<T>,
     body?: unknown,
+    quiet = false,
   ): Promise<T> {
     const started = performance.now();
     this.log.debug('http', `${method} ${path}`, body === undefined ? undefined : { body });
 
     try {
       const result = await this.withBackoff(method, path, run);
-      this.log.info('http', `${method} ${path} ok`, {
+      // A quiet success is still recorded, just below the level anyone reads
+      // by default; failures are never quiet.
+      this.log[quiet ? 'debug' : 'info']('http', `${method} ${path} ok`, {
         ms: Math.round(performance.now() - started),
       });
       return result;

@@ -11,13 +11,14 @@ import { Notebook } from '../ui/notebook';
 
 import { Offer, Quote, Transaction } from '../api/models';
 import { ApiError, NanacoinService, newIdempotencyKey } from '../api/nanacoin.service';
-import { Session } from '../api/session';
+import { Session, reloadOnLedgerChange } from '../api/session';
 import { Dialogs } from '../ui/dialog';
 import { Toasts } from '../ui/toasts';
 
 /** One row, already reduced to what this account actually experienced. */
 interface Row {
   txn: Transaction;
+
   /** This account's net change: what happened to you, not the gross amount. */
   delta: number;
   /** The other party's display name, where there is a single one. */
@@ -230,6 +231,8 @@ export class HistoryPage {
     },
   });
 
+  /** Catch up when someone else changes the ledger while this page is open. */
+  private readonly followLedger = reloadOnLedgerChange(this.history, this.offers, this.quotes);
   /** Offers made by this account, plus offers awaiting its decision. */
   protected readonly myOffers = computed(() => {
     const account = this.session.me()?.account;

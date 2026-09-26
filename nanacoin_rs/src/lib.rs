@@ -2,6 +2,7 @@
 pub mod api;
 pub mod auth;
 mod client;
+pub mod database_diagnostics;
 pub mod diagnostics;
 pub mod domain;
 pub mod events;
@@ -18,3 +19,5 @@ pub mod forex;
 pub mod lotto;
 
 pub mod fulfillment;
+pub mod http_transport;
+pub mod incidents;

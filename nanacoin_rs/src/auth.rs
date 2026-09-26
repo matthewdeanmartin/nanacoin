@@ -89,6 +89,43 @@ impl Default for Auth {
 }
 
 impl Auth {
+    /// Counts only; never expose credential hashes or identities in diagnostics.
+    pub(crate) fn inventory(&self) -> [(usize, usize, usize, usize); 3] {
+        let now = self.now();
+        [
+            (
+                self.sessions.iter().flatten().count(),
+                self.sessions
+                    .iter()
+                    .flatten()
+                    .filter(|s| s.expires > now)
+                    .count(),
+                MAX_SESSIONS,
+                core::mem::size_of_val(&self.sessions),
+            ),
+            (
+                self.codes.iter().flatten().count(),
+                self.codes
+                    .iter()
+                    .flatten()
+                    .filter(|s| s.expires > now)
+                    .count(),
+                MAX_CODES,
+                core::mem::size_of_val(&self.codes),
+            ),
+            (
+                self.failures.iter().flatten().count(),
+                self.failures
+                    .iter()
+                    .flatten()
+                    .filter(|s| s.until > now)
+                    .count(),
+                64,
+                core::mem::size_of_val(&self.failures),
+            ),
+        ]
+    }
+
     pub(crate) fn clear(&mut self) {
         self.sessions.fill(None);
         self.codes.fill(None);

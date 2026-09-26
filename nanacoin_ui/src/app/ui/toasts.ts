@@ -4,6 +4,7 @@
 import { Injectable, inject, signal } from '@angular/core';
 
 import { Log } from '../api/log';
+import { InputError } from '../api/money';
 import { ApiError, BusyError } from '../api/nanacoin.service';
 
 export interface Toast {
@@ -45,6 +46,14 @@ export class Toasts {
       // retries. Saying "busy" is both true and actionable.
       this.log.warn('ui', 'the board is busy', { retryAfterMs: e.retryAfterMs });
       this.push('NanaCoin is busy right now. Try again in a moment.', 'error');
+      return;
+    }
+    if (e instanceof InputError) {
+      // Something the person typed. The message already says what to fix and
+      // quotes what they typed, so show it and log it rather than hiding it
+      // behind the generic line below.
+      this.log.warn('ui', 'showing an input problem to the user', { message: e.message });
+      this.push(e.message, 'error');
       return;
     }
     if (e instanceof ApiError) {

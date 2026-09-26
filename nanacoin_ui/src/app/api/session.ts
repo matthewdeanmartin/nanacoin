@@ -4,12 +4,15 @@
 // Signals rather than a store library: this is four pieces of state and a
 // reload function.
 
-import { Injectable, computed, inject, signal } from '@angular/core';
+import { EffectRef, Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
 
 import { Accounts } from './accounts';
 import { Log } from './log';
 import { ApiError, NanacoinService } from './nanacoin.service';
 import { Listing, Status, User } from './models';
+
+/** How often an open, visible screen asks whether anything changed. */
+export const WATCH_MS = 5000;
 
 @Injectable({ providedIn: 'root' })
 export class Session {
@@ -40,6 +43,16 @@ export class Session {
   readonly isNana = computed(() => this.me()?.role === 'nana');
 
   /**
+   * The server's journal sequence as of the last refresh. It moves on every
+   * change to the ledger by anyone, so pages that load their own data reload
+   * when it does (see reloadOnLedgerChange).
+   */
+  readonly revision = computed(() => this.status()?.sequence ?? 0);
+
+  private watching = false;
+  private checking = false;
+
+  /**
    * Whether the server has server logs to show.
    *
    * Undefined means a server built before the capability was reported, which
@@ -64,6 +77,46 @@ export class Session {
 
   /** Everything no longer for sale, kept out of the way but not hidden. */
   readonly closed = computed(() => this.listings().filter((l) => l.status !== 'ACTIVE'));
+
+  /**
+   * Keeps this screen in step with changes made by someone else.
+   *
+   * Without this, a balance only moved when this browser did something: Nana
+   * reversing a purchase left the child's screen showing the old balance
+   * until they pressed F5. The check is one small status request, made every
+   * few seconds while the page is visible and again the moment it becomes
+   * visible or focused; the full reload only happens when the ledger moved.
+   */
+  watch(): void {
+    if (this.watching) return;
+    this.watching = true;
+    const check = () => {
+      if (document.visibilityState === 'visible') void this.checkForChanges();
+    };
+    window.setInterval(check, WATCH_MS);
+    document.addEventListener('visibilitychange', check);
+    window.addEventListener('focus', check);
+  }
+
+  /** Reloads if the ledger changed since the last refresh. */
+  async checkForChanges(): Promise<void> {
+    if (!this.me() || this.checking || this.loading()) return;
+    this.checking = true;
+    try {
+      const status = await this.api.status(true);
+      const seen = this.status()?.sequence;
+      if (status.sequence === undefined || status.sequence !== seen) {
+        this.log.info('session', 'the ledger changed; reloading', { from: seen, to: status.sequence });
+        await this.refresh();
+      }
+    } catch (e) {
+      // The next tick tries again; a board that stays unreachable is reported
+      // by whatever the person does next.
+      this.log.debug('session', 'change check failed', { error: String(e) });
+    } finally {
+      this.checking = false;
+    }
+  }
 
   /** Reads the public status. Safe before provisioning and before logging in. */
   async loadStatus(): Promise<Status> {
@@ -216,11 +269,14 @@ export class Session {
     if (!this.me()) return;
     this.loading.set(true);
     try {
-      const [me, users, listings, status] = await Promise.all([
+      // Status first: its sequence then never claims more than the rest shows,
+      // so a change that lands mid-refresh is caught by the next check rather
+      // than hidden behind a sequence that already counts it.
+      const status = await this.api.status();
+      const [me, users, listings] = await Promise.all([
         this.api.me(),
         this.api.users(),
         this.api.listings(),
-        this.api.status(),
       ]);
       this.me.set(me);
       this.household.set(users.users);
@@ -236,6 +292,25 @@ export class Session {
     const u = this.household().find((h) => h.account === accountId);
     return u?.display_name ?? accountId;
   }
+}
+
+/**
+ * Reloads a page's own resources whenever the ledger changes, so a screen that
+ * is already open catches up with what someone else did. Call from a field
+ * initializer or constructor. reload() keeps the current value on screen while
+ * the new one loads, so nothing flashes to "Loading…".
+ */
+export function reloadOnLedgerChange(...resources: { reload(): boolean }[]): EffectRef {
+  const session = inject(Session);
+  let first = true;
+  return effect(() => {
+    session.revision();
+    if (first) {
+      first = false;
+      return;
+    }
+    untracked(() => resources.forEach((r) => r.reload()));
+  });
 }
 
 /** True when an error means the session is gone and the user must log in again. */

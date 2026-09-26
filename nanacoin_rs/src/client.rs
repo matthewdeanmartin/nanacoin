@@ -479,10 +479,6 @@ pub(crate) fn route<J: Journal>(
             );
         }
         ("GET", "/api/v1/listings") => {
-            #[derive(Serialize)]
-            struct Response<T> {
-                listings: T,
-            }
             let wanted = query
                 .split('&')
                 .find_map(|p| p.strip_prefix("status="))
@@ -490,19 +486,7 @@ pub(crate) fn route<J: Journal>(
             if wanted.is_some_and(|s| !["ACTIVE", "SOLD", "CANCELLED"].contains(&s)) {
                 return Err(Error::InvalidInput);
             }
-            let mut sorted: heapless::Vec<&Listing, LISTINGS> = s.state.listings.iter().collect();
-            sorted.sort_unstable_by_key(|l| (core::cmp::Reverse(l.created_at), l.id));
-            return serialize(
-                &Response {
-                    listings: Rows(
-                        sorted
-                            .iter()
-                            .map(|l| listing(&s.state, l))
-                            .filter(|l| wanted.is_none_or(|w| l.status == w)),
-                    ),
-                },
-                output,
-            );
+            return listings_query(&s.state, wanted, output);
         }
         ("GET", "/api/v1/things") => {
             #[derive(Serialize)]
@@ -923,6 +907,31 @@ pub(crate) fn route<J: Journal>(
     } else {
         transaction_response(&s.state, receipt.sequence, output)
     }
+}
+
+/// Shared immutable query used by the listings route and read-only benchmarks.
+pub(crate) fn listings_query(
+    state: &State,
+    wanted: Option<&str>,
+    output: &mut [u8],
+) -> Result<usize, Error> {
+    #[derive(Serialize)]
+    struct Response<T> {
+        listings: T,
+    }
+    let mut sorted: heapless::Vec<&Listing, LISTINGS> = state.listings.iter().collect();
+    sorted.sort_unstable_by_key(|l| (core::cmp::Reverse(l.created_at), l.id));
+    serialize(
+        &Response {
+            listings: Rows(
+                sorted
+                    .iter()
+                    .map(|l| listing(state, l))
+                    .filter(|l| wanted.is_none_or(|w| l.status == w)),
+            ),
+        },
+        output,
+    )
 }
 
 /** The household notebook is public by design. Authentication still protects

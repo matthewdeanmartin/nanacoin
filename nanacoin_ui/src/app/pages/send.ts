@@ -7,7 +7,7 @@ import { ActivatedRoute } from '@angular/router';
 import { EconomicKind, EconomicUnit, User } from '../api/models';
 import { Mastodon } from '../api/mastodon';
 import { NanacoinService, newIdempotencyKey } from '../api/nanacoin.service';
-import { Session } from '../api/session';
+import { Session, reloadOnLedgerChange } from '../api/session';
 import { Toasts } from '../ui/toasts';
 import { Dialogs } from '../ui/dialog';
 import { toggleCaps } from './message-caps';
@@ -189,6 +189,8 @@ export class SendPage {
       ? this.api.accountHistory(params.account, 100)
       : Promise.resolve({ account: '', balance: 0, transactions: [] }),
   });
+  /** Catch up when someone else changes the ledger while this page is open. */
+  private readonly followLedger = reloadOnLedgerChange(this.history);
 
   protected readonly recentSends = computed<RecentSend[]>(() => {
     const account = this.session.me()?.account;

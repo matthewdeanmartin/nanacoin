@@ -6,7 +6,7 @@ import { NanacoinService } from '../api/nanacoin.service';
 import { Session } from '../api/session';
 import { Lotto } from '../api/models';
 import { Dialogs } from '../ui/dialog';
-import { LottoPage } from './lotto';
+import { LottoDraft, LottoPage, checkLotto, rateHint } from './lotto';
 
 const draw: Lotto = { id: 1, terms: { kind: 'SAVINGS', title: 'Family savings', ticket_price: 10000, closes_at: 1900000000, rate_bps: 100 }, house: 'account-1', pool: 40000, interest: 400, tickets: 4, my_tickets: 1, winner: null, winner_name: null, due_at: 1902592000, status: 'OPEN' };
 async function render(role: 'nana' | 'user' = 'user', lotto: Lotto = draw) {
@@ -51,5 +51,39 @@ describe('lotto page', () => {
     const page = fixture.componentInstance as unknown as { buy(lotto: Lotto): Promise<void> };
     await page.buy(draw); await page.buy(draw);
     expect(keys).toHaveLength(2); expect(keys[0]).toBe(keys[1]);
+  });
+});
+describe('create-lotto checks', () => {
+  const now = Date.UTC(2026, 8, 26);
+  const good: LottoDraft = { title: 'Summer', kind: 'SAVINGS', price: '1', closes: '2026-10-01T12:00', rate: '10' };
+  it('reads 10, 10% and 10 % as ten percent', () => {
+    for (const rate of ['10', '10%', '10 %']) expect(checkLotto({ ...good, rate }, 4, 'en-US', now).terms?.rate_bps).toBe(1000);
+  });
+  it('names each bad box and quotes what was typed', () => {
+    const { terms, problems } = checkLotto({ title: ' ', kind: 'DELAYED', price: '1,000', closes: '2020-01-01T00:00', rate: '150' }, 4, 'en-US', now);
+    expect(terms).toBeUndefined();
+    expect(problems.title).toContain('name');
+    expect(problems.price).toContain('"1,000"');
+    expect(problems.closes).toContain('already passed');
+    expect(problems.rate).toContain('"150"');
+  });
+  it('asks for both the date and the time', () => {
+    expect(checkLotto({ ...good, closes: '' }, 4, 'en-US', now).problems.closes).toContain('both the date and the time');
+  });
+  it('ignores the rate box for a simple lotto', () => {
+    expect(checkLotto({ ...good, kind: 'SIMPLE', rate: 'lots' }, 4, 'en-US', now).terms?.rate_bps).toBe(0);
+  });
+  it('explains the rate and questions a rate that looks like a fraction', () => {
+    expect(rateHint('10', 'en-US')).toContain('10 NC for every 100 NC');
+    expect(rateHint('0.10', 'en-US')).toContain('Did you mean 10%');
+  });
+  it('shows problems on the page instead of only in the console', async () => {
+    const { fixture, element } = await render('nana');
+    const page = fixture.componentInstance as unknown as { create(): Promise<void>; rate: string; kind: string };
+    page.kind = 'DELAYED'; page.rate = 'ten';
+    await page.create(); fixture.detectChanges();
+    expect(element.querySelector('.form-problems')?.textContent).toContain('boxes need fixing');
+    expect(element.textContent).toContain('You typed "ten"');
+    expect(element.querySelector('input[name="title"]')?.getAttribute('aria-invalid')).toBe('true');
   });
 });

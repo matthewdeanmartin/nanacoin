@@ -3,7 +3,7 @@ import { DatePipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { NanacoinService } from '../api/nanacoin.service';
 import { ApiBase } from '../api/api-base';
-import { Session } from '../api/session';
+import { Session, reloadOnLedgerChange } from '../api/session';
 import { MoneyPipe } from '../api/money';
 import { mailRows, MailRow } from './mail-model';
 
@@ -66,6 +66,8 @@ export class MessagesPage {
    return { rows: mailRows(params.account, history.status === 'fulfilled' ? history.value.transactions : [], offers.status === 'fulfilled' ? offers.value.offers : [], loans.status === 'fulfilled' ? loans.value.loans : [], fulfillments.status === 'fulfilled' ? fulfillments.value.fulfillments : []),
      errors: [history.status === 'rejected' ? 'transactions' : '', offers.status === 'rejected' ? 'offers' : '', loans.status === 'rejected' ? 'loans' : '', fulfillments.status === 'rejected' ? 'fulfillment activity' : ''].filter(Boolean) };
  }});
+ /** Catch up when someone else changes the ledger while this page is open. */
+ private readonly followLedger = reloadOnLedgerChange(this.book);
  protected readonly visible = computed(() => (this.book.value()?.rows ?? []).filter(row => {
    const folder = this.filter(), q = this.search().toLocaleLowerCase();
    return (folder === 'all' || (folder === 'attention' && (row.attention || (!row.sent && this.unread(row)))) || (folder === 'messages' && row.kind === 'Message') || (folder === 'sent' && row.sent))

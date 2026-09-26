@@ -106,6 +106,15 @@ function handle(req: HttpRequest<unknown>): unknown {
   // --- open endpoints ---
 
   if (path === '/status') return demoLedger.status();
+  if (path === '/configuration' && method === 'GET') return {
+    household_name: demoLedger.household, currency: 'NanaCoin', decimals: demoLedger.decimals,
+    minor_units_per_coin: 10 ** demoLedger.decimals, money_epoch: demoLedger.moneyEpoch,
+    initial_grant: 20 * 10 ** demoLedger.decimals, offer_settles_after: 48 * 3600,
+    smallest_unit: 'Amounts are stored as integer minor units; decimal precision is the household display scale',
+    usd_decimals: 2, maximum_amount_minor: 1_000_000_000_000_000, lending_enabled: true,
+    lending_policy: 'Cash-funded demo lending', rate_basis_points_per_percent: 100,
+    savings_lotto_holding_seconds: 30 * 86400, terms_policy: 'Loan and lotto terms are set per agreement. Demo data lives only in this browser tab.',
+  };
   if (path === '/public/ledger' && method === 'GET') return demoLedger.ledger(100);
   if (path === '/transport' && method === 'GET') return { https_only: false, supported: false };
 

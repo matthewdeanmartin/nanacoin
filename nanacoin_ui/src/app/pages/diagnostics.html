@@ -121,3 +121,5 @@
   }
 </section>
 <details><summary>Raw diagnostic response</summary><pre>{{ snapshot() | json }}</pre></details>
+@if (incidents(); as incidents) { <app-incident-history [history]="incidents" /> }
+@if (incidentsFailure()) { <p class="warning">Incident history: {{ incidentsFailure() }} Previously loaded history, if shown, may be stale.</p> }

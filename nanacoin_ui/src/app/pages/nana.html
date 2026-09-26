@@ -36,12 +36,13 @@
 </div>
 
 <nav class="section-nav" aria-label="Household sections">
-  @if (!isDemo) { <a href="#security">Security</a> }
-  @if (session.status()?.checkpoint_supported) { <a href="#storage">Storage</a> }
-  <a href="#members">Members</a>
-  <a href="#money">Issue money</a>
-  <a href="#demo-data">Demo data</a>
-  <a href="#full-ledger">Full ledger</a>
+  @if (!isDemo) { <button type="button" appSectionLink="security">Security</button> }
+  @if (session.status()?.checkpoint_supported) { <button type="button" appSectionLink="storage">Storage</button> }
+  <button type="button" appSectionLink="members">Members</button>
+  <button type="button" appSectionLink="money">Issue money</button>
+  <button type="button" appSectionLink="demo-data">Demo data</button>
+  <button type="button" appSectionLink="full-ledger">Full ledger</button>
+  <a class="btn btn--quiet" routerLink="/nana/market">Market desk</a>
 </nav>
 
 <app-currency-reform />

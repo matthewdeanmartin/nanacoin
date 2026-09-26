@@ -26,6 +26,29 @@ unsafe impl GlobalAlloc for Counting {
 #[global_allocator]
 static ALLOCATOR: Counting = Counting;
 
+#[test]
+fn incident_writers_and_sampler_do_not_allocate() {
+    use nanacoin::incidents::{Kind, Recorder};
+    let recorder = Recorder::new();
+    recorder.boot(1, 0, 0);
+    COUNT.with(|c| c.set(0));
+    ENABLED.with(|e| e.set(true));
+    for i in 0..1000 {
+        recorder.record(i * 6000, Kind::TlsFailed, -42, 1000);
+        recorder.beat(0, i * 6000);
+        recorder.beat(1, i * 6000);
+        recorder.sample(i * 6000, 50_000, 20_000, Some(-60));
+    }
+    ENABLED.with(|e| e.set(false));
+    assert_eq!(COUNT.with(Cell::get), 0);
+    let snapshot = recorder.snapshot();
+    let mut output = vec![0; 32768];
+    assert_eq!(
+        nanacoin::diagnostics::response(&snapshot, &mut output).0,
+        200
+    );
+}
+
 #[cfg(feature = "bundled-web")]
 #[test]
 fn static_routes_borrow_assets_without_allocating() {
