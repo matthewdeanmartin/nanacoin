@@ -1,5 +1,5 @@
 :host { display:block; position:relative; z-index:30; }
-.menu-bar { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,44rem) minmax(0,1fr); align-items:center; padding:.8rem 0; background:#fffdf7; border-bottom:2px solid #a26935; }
+.menu-bar { display:grid; grid-template-columns:minmax(max-content,1fr) minmax(0,44rem) minmax(0,1fr); align-items:center; padding:.8rem 0; background:#fffdf7; border-bottom:2px solid #a26935; }
 .brand { color:#422d1c; text-decoration:none; font-family:Georgia,serif; font-size:1.55rem; font-weight:700; white-space:nowrap; line-height:1.15; }
 .brand { justify-self:end; margin-right:1rem; }
 .brand span { display:block; margin-top:.2rem; font: .65rem system-ui,sans-serif; text-transform:uppercase; letter-spacing:.12em; color:#78593e; }

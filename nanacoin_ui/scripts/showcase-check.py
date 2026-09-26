@@ -42,6 +42,7 @@ def main():
         with sync_playwright() as p:
             channel = os.environ.get('SHOWCASE_BROWSER', 'msedge' if os.name == 'nt' else 'chromium')
             browser = p.chromium.launch(headless=True, **({} if channel == 'chromium' else {'channel': channel}))
+            print(f'Showcase browser: {browser.browser_type.name} {browser.version} (channel={channel}); BASE_HREF={PREFIX}')
             page = browser.new_page(viewport={'width': 1024, 'height': 768})
             page.on('pageerror', lambda e: errors.append(str(e)))
             def network(route):
@@ -231,7 +232,8 @@ def main():
                 assert page.evaluate('document.documentElement.scrollWidth <= innerWidth + 1'), ('Nana menu',width)
                 if width>=1024:
                     assert nav.evaluate('e=>e.getBoundingClientRect().bottom-e.getBoundingClientRect().top<70'), ('Wrapped Nana menu',width)
-                    assert page.locator('.brand').evaluate('e=>e.getBoundingClientRect().left>=0'), ('Clipped brand',width)
+                    brand_box = page.locator('.brand').evaluate('e=>{const r=e.getBoundingClientRect();return {left:r.left,right:r.right,width:r.width}}')
+                    assert brand_box['left'] >= 0, ('Clipped brand', width, brand_box)
                 page.keyboard.press('Escape')
                 navigation_closed()
             viewport(1024, 768)
