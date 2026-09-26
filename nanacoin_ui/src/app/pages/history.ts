@@ -10,10 +10,8 @@ import { AccountCommitments } from './account-commitments';
 import { Notebook } from '../ui/notebook';
 
 import { Offer, Quote, Transaction } from '../api/models';
-import { ApiError, NanacoinService, newIdempotencyKey } from '../api/nanacoin.service';
+import { ApiError, NanacoinService } from '../api/nanacoin.service';
 import { Session, reloadOnLedgerChange } from '../api/session';
-import { Dialogs } from '../ui/dialog';
-import { Toasts } from '../ui/toasts';
 
 /** One row, already reduced to what this account actually experienced. */
 interface Row {
@@ -51,9 +49,9 @@ interface Row {
     <p class="lede">Your balances, loans, debts, lotto results, and financial activity.</p>
 
     <p><strong>{{session.balance() | nc}} NC available</strong> · <a routerLink="/messages">Open Mail</a></p>
-    <nav class="account-tabs" role="tablist" aria-label="My Account sections">
+    <nav class="section-nav account-tabs" role="tablist" aria-label="My Account sections">
       @for (tab of tabs; track tab.id) {
-        <button class="btn btn--quiet" type="button" role="tab" [id]="'tab-'+tab.id"
+        <button type="button" role="tab" [id]="'tab-'+tab.id"
           [attr.aria-selected]="activeTab()===tab.id" [attr.aria-controls]="'panel-'+tab.id"
           [attr.tabindex]="activeTab()===tab.id ? 0 : -1" (keydown)="tabKey($event,tab.id)" (click)="activeTab.set(tab.id)">
           {{tab.label}} ({{tab.id==='todos' ? todos.count() ?? '…' : tab.id==='loans' ? commitments.loanCount() ?? '…' : tab.id==='lotto' ? commitments.lottoCount() ?? '…' : tab.id==='offers' ? offers.hasValue() ? myOffers().length : '…' : tab.id==='forex' ? quotes.hasValue() ? myBids().length : '…' : history.hasValue() ? rows().length : '…'}})
@@ -158,22 +156,7 @@ interface Row {
                 >Repeat</a>
               }
 
-              <!--
-                Reversing is Nana's, and the server enforces that regardless of
-                this check - which is only here so everyone else is not shown a
-                button that would 403. An already-reversed transaction has no
-                button at all: the correction exists, and a second one would
-                undo the undo.
-              -->
-              @if (session.isNana() && !r.usd && !r.txn.art && !r.txn.refunded && !r.txn.reversed_by && r.txn.kind !== 'REVERSAL' && !r.txn.reference?.startsWith('loan-') && !r.txn.reference?.startsWith('lotto-') && !r.txn.reference?.startsWith('nickle:')) {
-                <button
-                  class="btn btn--quiet btn--small"
-                  type="button"
-                  title="Append a correcting transaction; the original remains in your history"
-                  [disabled]="reversing() === r.txn.id"
-                  (click)="reverse(r.txn)"
-                >{{ reversing() === r.txn.id ? 'Reversing…' : 'Reverse' }}</button>
-              }
+
             </div>
           </div>
         }
@@ -184,7 +167,7 @@ interface Row {
 })
 export class HistoryPage {
   protected readonly activeTab=signal('todos');
-  constructor() { inject(ActivatedRoute).queryParamMap.pipe(takeUntilDestroyed()).subscribe(params=> { const tab=params.get('tab'); if(tab && this.tabs.some(t=>t.id===tab)) this.activeTab.set(tab); }); }
+  constructor() { inject(ActivatedRoute).queryParamMap.pipe(takeUntilDestroyed()).subscribe(params=> { const tab=params.get('tab'); this.activeTab.set(tab && this.tabs.some(t=>t.id===tab) ? tab : this.session.isNana() ? 'transactions' : 'todos'); }); }
   protected readonly tabs=[{id:'todos',label:'TODO'},{id:'loans',label:'Loans & debts'},{id:'lotto',label:'Lotto'},{id:'transactions',label:'Transactions'},{id:'offers',label:'My offers'},{id:'forex',label:'My forex bids'}];
   protected tabKey(event: KeyboardEvent, id: string) {
     const i=this.tabs.findIndex(t=>t.id===id);
@@ -194,12 +177,8 @@ export class HistoryPage {
 
   protected readonly money = moneyInject(Money);
   private readonly api = inject(NanacoinService);
-  private readonly toasts = inject(Toasts);
-  private readonly dialogs = inject(Dialogs);
   protected readonly session = inject(Session);
 
-  /** The transaction currently being reversed, so only its button is busy. */
-  protected readonly reversing = signal<string | null>(null);
 
   /**
    * Reloads whenever the signed-in account changes. The balance in the top bar
@@ -274,55 +253,6 @@ export class HistoryPage {
       };
     });
   });
-
-  /**
-   * Appends the mirror transaction that undoes one, after asking why.
-   *
-   * The reason is required rather than optional: it becomes the description of
-   * a permanent ledger entry, and "Nana reversed it" without the because is
-   * the audit trail this project exists to avoid. Cancelling the prompt
-   * cancels the reversal.
-   */
-  protected async reverse(txn: Transaction): Promise<void> {
-    if (this.reversing()) return;
-
-    const reason = await this.dialogs.prompt({
-      title: 'Reverse this transaction?',
-      message: 'This appends a correction. Nothing is deleted, and the original stays in the history.',
-      detail: [
-        txn.description || kindLabel(txn.kind),
-        `${txn.postings.length} postings, ${this.when(txn.created_at)}`,
-      ],
-      placeholder: 'Why is this being reversed?',
-      confirmLabel: 'Reverse',
-      required: true,
-      danger: true,
-    });
-    if (reason === null) return;
-
-    this.reversing.set(txn.id);
-    try {
-      await this.api.reverse(txn.id, reason, newIdempotencyKey());
-      this.toasts.ok('Reversed.');
-      // Both the balances and this list changed, so refresh the shared state
-      // and re-read the page's own resource.
-      await this.session.refresh();
-      this.history.reload();
-    } catch (e) {
-      this.toasts.fromError(e);
-    } finally {
-      this.reversing.set(null);
-    }
-  }
-
-  /**
-   * The application uses hash routing, so a literal href="#section" is a
-   * route change rather than an in-page anchor. Keep section navigation out
-   * of the URL and scroll explicitly instead.
-   */
-  protected scrollTo(id: string): void {
-    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
 
   protected when(unixSeconds: number): string {
     return new Date(unixSeconds * 1000).toLocaleString(undefined, {

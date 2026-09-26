@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
 import { NanacoinService } from '../api/nanacoin.service';
 import { Session } from '../api/session';
 import { Dialogs } from '../ui/dialog';
@@ -12,6 +13,7 @@ describe('Nana reset confirmation', () => {
     it(`does not reset for ${JSON.stringify(answer)}`, async () => {
       const resetEconomy = vi.fn();
       TestBed.configureTestingModule({ providers: [
+        provideRouter([]),
         {provide: NanacoinService, useValue: { ledger: async () => ({transactions: []}), storage: async () => ({generation:1, sequence:2}), resetEconomy }},
         {provide: Session, useValue: { status: () => ({checkpoint_supported: true}) }},
         {provide: Dialogs, useValue: { prompt: async () => answer }},

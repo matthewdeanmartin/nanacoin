@@ -1,4 +1,5 @@
-import { Component, DestroyRef, computed, inject, resource, signal } from '@angular/core';
+import { Component, DestroyRef, computed, inject, input, resource, signal } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { DatePipe } from '@angular/common';
 import { Lotto, LottoKind, LottoTerms } from '../api/models';
@@ -11,15 +12,16 @@ import { Toasts } from '../ui/toasts';
 import { lottoOutcome } from './account-commitments';
 
 @Component({
-  selector: 'app-lotto', imports: [FormsModule, MoneyPipe, DatePipe],
+  selector: 'app-lotto', imports: [FormsModule, MoneyPipe, DatePipe, RouterLink],
   template: `
-    <h1>Lotto</h1>
+    @if (administration()) { <h2>Household lottos</h2> } @else { <h1>Lotto</h1> }
     <p>Every ticket has an equal chance. Ticket money is held safely in the pool. Nana is the house and cannot buy tickets in her own draw.</p>
     <p>Simple lotto pays the whole pool when sales close. Delayed lotto draws and pays the pool plus interest 30 days after sales close. Savings lotto returns everyone's ticket money then, and one winner gets all the pool's interest.</p>
     <p>Interest is a fixed simple rate for those 30 days, rounded down to the smallest currency unit. Nana pays interest from her balance; any shortfall is newly issued coins.</p>
     @if (!session.signedIn()) { <p>Sign in to buy tickets.</p> }
     @else {
-      @if (session.isNana()) {
+      @if (session.isNana() && !administration()) { <p><a routerLink="/nana" [queryParams]="{tab:'lotto-admin'}">Manage lottos in Household</a></p> }
+      @if (session.isNana() && administration()) {
         <section class="panel"><h2>Create a lotto</h2>
           <form (ngSubmit)="create()" novalidate>
             <label>Name <input name="title" [(ngModel)]="title" (ngModelChange)="fix('title')" required maxlength="80" [attr.aria-invalid]="!!problems().title" aria-describedby="lotto-title-problem" /></label>
@@ -79,6 +81,7 @@ import { lottoOutcome } from './account-commitments';
   styles: [`.card {margin-block:1rem;} .your-result {border-left:3px solid currentColor;padding-left:1rem;margin-block:1rem;} form {display:grid;gap:.75rem;max-width:32rem;} input,select {max-width:100%;box-sizing:border-box;} [aria-invalid=true] {border-color:var(--warn-ink);outline:2px solid var(--warn-ink);} .field-hint,.field-problem {margin:-.5rem 0 0;font-size:.9rem;} .field-problem,.form-problems {color:var(--warn-ink);font-weight:600;} .form-problems {background:var(--warn-bg);padding:.5rem .75rem;border-radius:8px;margin:0;} .btn {min-height:44px;padding:.6rem 1rem;}`],
 })
 export class LottoPage {
+  readonly administration=input(false);
   protected readonly session = inject(Session);
   private readonly api = inject(NanacoinService);
   private readonly money = inject(Money);

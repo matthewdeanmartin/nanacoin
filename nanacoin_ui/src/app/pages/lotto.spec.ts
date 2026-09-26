@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { ApiBase } from '../api/api-base';
@@ -10,18 +11,25 @@ import { LottoDraft, LottoPage, checkLotto, rateHint } from './lotto';
 
 const draw: Lotto = { id: 1, terms: { kind: 'SAVINGS', title: 'Family savings', ticket_price: 10000, closes_at: 1900000000, rate_bps: 100 }, house: 'account-1', pool: 40000, interest: 400, tickets: 4, my_tickets: 1, winner: null, winner_name: null, due_at: 1902592000, status: 'OPEN' };
 async function render(role: 'nana' | 'user' = 'user', lotto: Lotto = draw) {
-  TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting(), ApiBase] });
+  TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([]), ApiBase] });
   const api = TestBed.inject(NanacoinService);
   api.lottos = () => Promise.resolve({ lottos: [lotto], decimals: 4, money_epoch: 0 });
   const session = TestBed.inject(Session);
   session.me.set({ id: 'user-2', account: role === 'nana' ? 'account-1' : 'account-2', username: 'alice', display_name: 'Alice', role, status: 'ACTIVE', balance: 100000 } as never);
   session.refresh = () => Promise.resolve();
   const fixture = TestBed.createComponent(LottoPage);
+  fixture.componentRef.setInput('administration',role==='nana');
   fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges();
   return { api, fixture, element: fixture.nativeElement as HTMLElement };
 }
 afterEach(() => TestBed.resetTestingModule());
 describe('lotto page', () => {
+  it('keeps Nana creation controls in Household, with a link from the ordinary Lotto page',async()=>{
+    const {fixture,element}=await render('nana');
+    fixture.componentRef.setInput('administration',false);fixture.detectChanges();
+    expect(element.querySelector('form')).toBeNull();
+    expect(element.querySelector('a')?.getAttribute('href')).toContain('tab=lotto-admin');
+  });
   it('explains the savings payout and shows the buyers ticket odds', async () => {
     const { element } = await render();
     expect(element.textContent).toContain('returns everyone');

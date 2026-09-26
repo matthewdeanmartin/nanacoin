@@ -3,7 +3,7 @@
 // ordinary API call the server already validates. The plan itself lives in
 // nana/market-maker-plan.ts.
 
-import { Component, computed, inject, resource, signal } from '@angular/core';
+import { Component, computed, inject, input, resource, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { LottoKind } from '../api/models';
@@ -24,8 +24,8 @@ interface RunRow { step: Step; key: string; state: StepState; error?: string }
   selector: 'app-market-maker',
   imports: [FormsModule, MoneyPipe, RouterLink],
   template: `
-    <p><a routerLink="/nana">← Household</a></p>
-    <h1>Nana's market desk</h1>
+    @if (embedded()) { <h2>Nana's market desk</h2> }
+    @else { <p><a routerLink="/nana">← Household</a></p><h1>Nana's market desk</h1> }
     <p class="lede">Put up standing offers in one batch: buy and sell coins for dollars, lend at set rates, and run a year of lottos. Sizes scale to the coins in circulation, now {{ circulation() | nc }} NC.</p>
     @if (!session.isNana()) { <p class="muted">This is Nana's screen.</p> }
     @else {
@@ -140,6 +140,7 @@ interface RunRow { step: Step; key: string; state: StepState; error?: string }
     @media (max-width: 480px) { .rungs input {width:5rem;} }`],
 })
 export class MarketMakerPage {
+  readonly embedded=input(false);
   protected readonly session = inject(Session);
   private readonly api = inject(NanacoinService);
   private readonly money = inject(Money);

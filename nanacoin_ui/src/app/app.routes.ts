@@ -8,6 +8,7 @@ import { IS_DEMO } from './demo/demo';
  * and the part most people never open - are not in the initial bundle.
  */
 export const routes: Routes = [
+  { path: 'docs', loadComponent: () => import('./pages/docs').then(m => m.DocsPage), title: 'Docs — NanaCoin' },
   { path: 'error-log', loadComponent: () => import('./pages/error-log').then(m => m.ErrorLogPage), title: 'Error Log — NanaCoin' },
   { path: 'database', loadComponent: () => import('./pages/database').then(m => m.DatabasePage), title: 'Database — NanaCoin' },
   { path: 'configuration', loadComponent: () => import('./pages/configuration').then(m => m.ConfigurationPage), title: 'Configuration — NanaCoin' },
@@ -77,9 +78,8 @@ export const routes: Routes = [
   },
   {
     path: 'nana/market',
-    loadComponent: () => import('./pages/market-maker').then((m) => m.MarketMakerPage),
-    title: 'Market desk — NanaCoin',
-    canActivate: [nanaOnly],
+    redirectTo: '/nana?tab=market-desk',
+    pathMatch: 'full',
   },
   {
     path: 'nana',

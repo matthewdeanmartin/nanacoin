@@ -15,11 +15,17 @@ import { IS_DEMO } from '../demo/demo';
    </button>
    <nav id="site-navigation" aria-label="Main navigation" [class.is-open]="open()">
      @if (session.signedIn()) {
-       <a routerLink="/history" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">My Account</a>
        @if (session.isNana()) {
-         <a routerLink="/nana" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Household</a>
+         <details name="site-menu-group" class="menu-group" routerLinkActive="current">
+           <summary>Accounts</summary><div class="menu-group__items">
+             <a routerLink="/history" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">My Account</a>
+             <a routerLink="/nana" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Household</a>
+           </div>
+         </details>
+       } @else {
+         <a routerLink="/history" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">My Account</a>
        }
-       <details class="menu-group" routerLinkActive="current">
+       <details name="site-menu-group" class="menu-group" routerLinkActive="current">
          <summary>Mail</summary><div class="menu-group__items">
            <a routerLink="/send" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Send Money</a>
            <a routerLink="/messages" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Messages</a>
@@ -27,13 +33,13 @@ import { IS_DEMO } from '../demo/demo';
            <a routerLink="/invite" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Invitations</a>
          </div>
        </details>
-       <details class="menu-group" routerLinkActive="current">
-         <summary>Loans and Credit</summary><div class="menu-group__items">
+       <details name="site-menu-group" class="menu-group" routerLinkActive="current">
+         <summary>Loans</summary><div class="menu-group__items">
            <a routerLink="/loans" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Loans</a>
            <a routerLink="/lotto" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Lotto</a>
          </div>
        </details>
-       <details class="menu-group" routerLinkActive="current">
+       <details name="site-menu-group" class="menu-group" routerLinkActive="current">
          <summary>Buy/Sell</summary>
          <div class="menu-group__items">
            <a routerLink="/market" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Market</a>
@@ -44,7 +50,7 @@ import { IS_DEMO } from '../demo/demo';
            }
          </div>
        </details>
-       <details class="menu-group" routerLinkActive="current">
+       <details name="site-menu-group" class="menu-group" routerLinkActive="current">
          <summary>Accounting</summary>
          <div class="menu-group__items">
            <a routerLink="/economy" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Economy</a>
@@ -52,7 +58,7 @@ import { IS_DEMO } from '../demo/demo';
            <a routerLink="/ledger" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">The Notebook</a>
          </div>
        </details>
-       <details class="menu-group" routerLinkActive="current">
+       <details name="site-menu-group" class="menu-group" routerLinkActive="current">
          <summary>System Info</summary>
          <div class="menu-group__items">
            <a routerLink="/clientlog" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Browser Log</a>
@@ -74,7 +80,7 @@ import { IS_DEMO } from '../demo/demo';
        </details>
      } @else {
        <a routerLink="/ledger" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">The Notebook</a>
-         <details class="menu-group">
+         <details name="site-menu-group" class="menu-group">
            <summary>System Info</summary>
            <div class="menu-group__items">
              @if (demo || session.diagAvailable()) { <a routerLink="/diagnostics" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Board Health</a> }
@@ -84,7 +90,12 @@ import { IS_DEMO } from '../demo/demo';
            </div>
          </details>
      }
-     <a class="about-link" routerLink="/about" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">About</a>
+     <details name="site-menu-group" class="menu-group help-group" routerLinkActive="current">
+       <summary>Help</summary><div class="menu-group__items">
+         <a routerLink="/about" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">About</a>
+         <a routerLink="/docs" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Docs</a>
+       </div>
+     </details>
    </nav>
  </header>`,
  styleUrl: './site-menu.css',

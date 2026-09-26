@@ -19,14 +19,26 @@ import { Session } from '../api/session';
 import { Dialogs } from '../ui/dialog';
 import { LiveSeeder, defaultSeed } from '../demo/seed-live';
 import { Toasts } from '../ui/toasts';
-import { SectionLink } from '../ui/section-link';
+import { SectionTabs } from '../ui/section-tabs';
+import { LottoPage } from './lotto';
+import { MarketMakerPage } from './market-maker';
+import { ActivatedRoute } from '@angular/router';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 @Component({
   selector: 'app-nana',
-  imports: [MoneyPipe, FormsModule, RouterLink, ConnectionSecurity, Notebook, CurrencyReform, SectionLink],
+  imports: [MoneyPipe, FormsModule, RouterLink, ConnectionSecurity, Notebook, CurrencyReform, SectionTabs, LottoPage, MarketMakerPage],
   templateUrl: './nana.html',
 })
 export class NanaPage {
+  protected readonly activeTab=signal('full-ledger');
+  protected get tabs() {
+    return [{id:'full-ledger',label:'Ledger'},{id:'members',label:'Members'},{id:'money',label:'Money'},
+      {id:'lotto-admin',label:'Lotto'},{id:'market-desk',label:'Market desk'},
+      ...(!this.isDemo?[{id:'security',label:'Security'}]:[]),
+      ...(this.session.status()?.checkpoint_supported?[{id:'storage',label:'Storage'}]:[]),
+      {id:'demo-data',label:'Demo data'}];
+  }
   protected readonly money = moneyInject(Money);
   protected readonly isDemo = IS_DEMO;
   private readonly api = inject(NanacoinService);
@@ -81,6 +93,9 @@ export class NanaPage {
   protected readonly reversing = signal<string | null>(null);
 
   constructor() {
+    inject(ActivatedRoute).queryParamMap.pipe(takeUntilDestroyed()).subscribe(params=>{
+      const tab=params.get('tab');this.activeTab.set(this.tabs.some(t=>t.id===tab)?tab!:'full-ledger');
+    });
     void this.loadLedger();
     if (this.session.status()?.checkpoint_supported) void this.loadStorage();
   }
@@ -343,7 +358,7 @@ export class NanaPage {
 
   /** A reversal cannot itself be reversed, and issuance is corrected by retiring. */
   protected reversible(t: Transaction): boolean {
-    if (t.reference?.startsWith('lotto-') || t.reference?.startsWith('nickle:')) return false;
+    if (t.art || t.refunded || t.reference?.startsWith('loan-') || t.reference?.startsWith('lotto-') || t.reference?.startsWith('nickle:')) return false;
     return t.kind !== 'MESSAGE' && !t.reversed_by && t.kind !== 'REVERSAL' && t.kind !== 'ISSUE';
   }
 

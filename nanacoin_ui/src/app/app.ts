@@ -4,7 +4,7 @@ import { inject as moneyInject } from '@angular/core';
 // logged out, or running - and renders the frame around the routed page.
 
 import { Component, computed, inject, signal } from '@angular/core';
-import { NavigationEnd, Router, RouterOutlet } from '@angular/router';
+import { NavigationEnd, Router, RouterOutlet, RouterLink } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 import { ApiBase } from './api/api-base';
@@ -30,7 +30,7 @@ type Phase = 'loading' | 'connect' | 'setup' | 'login' | 'app' | 'logs';
 @Component({
   selector: 'app-root',
   imports: [MoneyPipe,
-    RouterOutlet,
+    RouterOutlet, RouterLink,
     SiteMenu,
     KeyboardHelp,
     MastodonConnect,
@@ -108,7 +108,7 @@ export class App {
         void this.session.checkForChanges();
         const path = event.urlAfterRedirects.split('?')[0];
         this.aboutPage.set(path === '/about');
-        this.publicPage.set(['/about', '/recipes', '/ledger', '/diagnostics', '/error-log', '/database', '/configuration'].includes(path));
+        this.publicPage.set(['/about', '/docs', '/recipes', '/ledger', '/diagnostics', '/error-log', '/database', '/configuration'].includes(path));
         requestAnimationFrame(() => document.getElementById('main-content')?.focus());
       }
     });

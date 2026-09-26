@@ -1346,8 +1346,8 @@ app-fulfillment .btn { margin-block:.3rem; }
 .fulfillment-activity { margin-block:.8rem; padding-inline-start:1rem; border-inline-start:2px solid var(--line, #ddd); }
 .fulfillment-activity h4 { margin:0 0 .4rem; font-size:.85rem; }
 .fulfillment-activity p { font-size:.85rem; margin:.35rem 0; }
-.account-tabs { display:flex; flex-wrap:wrap; gap:.5rem; margin-block:1rem; }
-.account-tabs [aria-selected="true"] { background:var(--accent); color:white; }
+.account-tabs { margin-block:1rem; }
+.section-nav [aria-selected="true"] { color:var(--accent); border-bottom-color:var(--accent); font-weight:700; }
 [hidden] { display:none !important; }
 app-invite textarea { height:auto; min-height:8rem; line-height:1.5; resize:vertical; padding:.65rem; }
 

@@ -23,7 +23,7 @@ describe('responsive site navigation', () => {
    expect(buySell?.textContent).not.toContain('Offers');
    const mail = [...fixture.nativeElement.querySelectorAll('details')].find((g: Element) => g.querySelector('summary')?.textContent === 'Mail');
    expect([...mail!.querySelectorAll('a')].map((a: Element)=>a.textContent)).toEqual(['Send Money','Messages','Offers','Invitations']);
-   const loans = [...fixture.nativeElement.querySelectorAll('details')].find((g: Element) => g.querySelector('summary')?.textContent === 'Loans and Credit');
+   const loans = [...fixture.nativeElement.querySelectorAll('details')].find((g: Element) => g.querySelector('summary')?.textContent === 'Loans');
    expect([...loans!.querySelectorAll('a')].map((a: Element)=>a.textContent)).toEqual(['Loans','Lotto']);
    expect(fixture.nativeElement.textContent).toContain('Board Health');
  });
@@ -48,5 +48,9 @@ describe('responsive site navigation', () => {
    document.body.click(); fixture.detectChanges();
    expect(button.getAttribute('aria-expanded')).toBe('false');
    expect(fixture.nativeElement.textContent).toContain('Household');
+   const groups=Array.from(fixture.nativeElement.querySelectorAll('details')) as HTMLDetailsElement[];
+   expect(groups.find(g=>g.querySelector('summary')?.textContent==='Accounts')?.textContent).toContain('My Account');
+   const help=groups.find(g=>g.querySelector('summary')?.textContent==='Help')!;
+   expect(Array.from(help.querySelectorAll('a')).map(a=>a.textContent)).toEqual(['About','Docs']);
  });
 });

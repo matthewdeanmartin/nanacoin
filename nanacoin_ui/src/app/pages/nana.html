@@ -35,20 +35,17 @@
   </div>
 </div>
 
-<nav class="section-nav" aria-label="Household sections">
-  @if (!isDemo) { <button type="button" appSectionLink="security">Security</button> }
-  @if (session.status()?.checkpoint_supported) { <button type="button" appSectionLink="storage">Storage</button> }
-  <button type="button" appSectionLink="members">Members</button>
-  <button type="button" appSectionLink="money">Issue money</button>
-  <button type="button" appSectionLink="demo-data">Demo data</button>
-  <button type="button" appSectionLink="full-ledger">Full ledger</button>
-  <a class="btn btn--quiet" routerLink="/nana/market">Market desk</a>
-</nav>
-
-<app-currency-reform />
+<app-section-tabs [tabs]="tabs" [(selected)]="activeTab" label="Household sections" prefix="household" />
+<p class="muted small">Nana manages the household treasury. <a routerLink="/docs" [queryParams]="{tab:'docs-nana'}">What can Nana do?</a></p>
+<section id="market-desk" role="tabpanel" aria-labelledby="household-tab-market-desk" [hidden]="activeTab()!=='market-desk'">
+  <app-market-maker [embedded]="true" />
+</section>
+<section id="lotto-admin" role="tabpanel" aria-labelledby="household-tab-lotto-admin" [hidden]="activeTab()!=='lotto-admin'">
+  <app-lotto [administration]="true" />
+</section>
 
 @if (isDemo) {
-  <section class="household-section" aria-labelledby="demo-lotto-title">
+  <section class="household-section" [hidden]="activeTab()!=='lotto-admin'" aria-labelledby="demo-lotto-title">
     <h2 id="demo-lotto-title">Try a lotto draw</h2>
     <p>Buy tickets as a household member, then return here as Nana. Resolve all open and pending lottos immediately to see prizes, returned savings, and interest paid.</p>
     <p>This demo shortcut closes ticket sales and pays the full stated 30-day interest now.</p>
@@ -64,14 +61,14 @@
 }
 
 @if (!isDemo) {
-  <section id="security" class="household-section">
+  <section role="tabpanel" aria-labelledby="household-tab-security" [hidden]="activeTab()!=='security'" id="security" class="household-section">
     <h2>Connection security</h2>
     <app-connection-security />
   </section>
 }
 
 @if (session.status()?.checkpoint_supported) {
-  <section id="storage" class="panel household-section">
+  <section role="tabpanel" aria-labelledby="household-tab-storage" [hidden]="activeTab()!=='storage'" id="storage" class="panel household-section">
     <h2>Journal and economy</h2>
     <p>Balances are saved in durable checkpoints. The journal closes automatically after 2,048 changes so the economy can keep running.</p>
     @if (storage(); as s) {
@@ -87,7 +84,7 @@
   </section>
 }
 
-<section id="members" class="household-section">
+<section role="tabpanel" aria-labelledby="household-tab-members" [hidden]="activeTab()!=='members'" id="members" class="household-section">
 <h2>Members</h2>
 <div class="members">
   @for (u of session.household(); track u.id) {
@@ -124,7 +121,7 @@
   }
 </div>
 
-<details class="disclosure">
+<details class="disclosure" open>
   <summary>Add a member</summary>
   <form (ngSubmit)="addMember()">
     <label>
@@ -157,9 +154,10 @@
 </details>
 </section>
 
-<section id="money" class="household-section">
+<section role="tabpanel" aria-labelledby="household-tab-money" [hidden]="activeTab()!=='money'" id="money" class="household-section">
 <h2>Issue money</h2>
-<details class="disclosure">
+<p>These actions change household money. Ordinary payments stay under Send Money.</p>
+<details class="disclosure" open>
   <summary>Issue coins</summary>
   <form (ngSubmit)="issue()">
     <label>
@@ -192,7 +190,7 @@
   exchange has two sides and neither can trade until somebody holds the other
   currency, so this is the form that makes the Forex tab useful at all.
 -->
-<details class="disclosure">
+<details class="disclosure" open>
   <summary>Record dollars held</summary>
   <p class="muted small">
     Records that someone holds dollars. No real money moves — handing over the
@@ -224,6 +222,7 @@
     </button>
   </form>
 </details>
+<app-currency-reform />
 </section>
 
 <!--
@@ -231,8 +230,8 @@
   re-render took the only report of what went wrong with it, which is how a
   stopped run came to look like nothing happening at all.
 -->
-<details id="demo-data" class="disclosure household-section" [open]="seeder.running() || !!seeder.lastError()">
-  <summary>Fill this household with a year of history</summary>
+<section id="demo-data" role="tabpanel" aria-labelledby="household-tab-demo-data" class="household-section" [hidden]="activeTab()!=='demo-data'">
+  <h2>Fill this household with a year of history</h2>
   <p class="muted small">
     Creates members, issues them a float, posts listings and plays out a year of
     chores, purchases and offers — through the ordinary API, so every record is
@@ -265,9 +264,9 @@
       again picks up from where the household is now.
     </p>
   }
-</details>
+</section>
 
-<section id="full-ledger" class="household-section">
+<section role="tabpanel" aria-labelledby="household-tab-full-ledger" [hidden]="activeTab()!=='full-ledger'" id="full-ledger" class="household-section">
 <h2>Full ledger</h2>
 
 @if (loadingLedger()) {
