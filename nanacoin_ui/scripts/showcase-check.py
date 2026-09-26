@@ -52,11 +52,41 @@ def main():
                 else:
                     route.continue_()
             page.route('**/*', network)
+            def viewport(width, height):
+                page.set_viewport_size({'width': width, 'height': height})
+                # Resize acknowledgement can precede the responsive layout update.
+                # Wait for the actual viewport and menu breakpoint, not a timer.
+                page.wait_for_function('''([width, height]) => {
+                    const toggle = document.querySelector('.menu-toggle');
+                    return innerWidth === width && innerHeight === height && toggle
+                        && (getComputedStyle(toggle).display !== 'none') === (width <= 980);
+                }''', arg=[width, height])
+
+            def open_navigation():
+                # Use a DOM locator: the mobile nav is intentionally absent from
+                # the accessibility tree while closed.
+                nav = page.locator('#site-navigation')
+                toggle = page.locator('.menu-toggle')
+                if page.viewport_size['width'] <= 980:
+                    expect(toggle).to_be_visible()
+                    if toggle.get_attribute('aria-expanded') != 'true':
+                        toggle.click()
+                    expect(toggle).to_have_attribute('aria-expanded', 'true')
+                else:
+                    expect(toggle).not_to_be_visible()
+                expect(nav).to_be_visible()
+                return nav
+
+            def navigation_closed():
+                # Escape/click dispatch finishes before Angular necessarily paints
+                # the closed state. A later resize must not sample the old state.
+                expect(page.locator('.menu-toggle')).to_have_attribute('aria-expanded', 'false')
+                expect(page.locator('#site-navigation details[open]')).to_have_count(0)
+                if page.viewport_size['width'] <= 980:
+                    expect(page.locator('#site-navigation')).not_to_be_visible()
+
             def navigate(label):
-                nav = page.get_by_role('navigation', name='Main navigation')
-                if not nav.is_visible():
-                    page.get_by_role('button', name='Open navigation menu').click()
-                    expect(nav).to_be_visible()
+                nav = open_navigation()
                 # Find the link's actual dropdown instead of maintaining a second
                 # menu map here. Native details exposes its state through open.
                 group = nav.locator('details').filter(has=page.locator('a').filter(has_text=re.compile('^' + re.escape(label) + '$')))
@@ -65,6 +95,7 @@ def main():
                 link = nav.get_by_role('link', name=label, exact=True)
                 link.click()
                 expect(page.locator('#site-navigation a').filter(has_text=re.compile('^' + re.escape(label) + '$'))).to_have_attribute('aria-current', 'page')
+                navigation_closed()
             page.goto(base + '#/about')
             expect(page.get_by_role('heading', name='A small bank. A very large notebook.')).to_be_visible()
             page.keyboard.press('?')
@@ -84,11 +115,11 @@ def main():
                 page.get_by_role('tab',name=topic,exact=True).click()
                 expect(page.locator('app-docs [role="tabpanel"]')).to_have_count(1)
                 expect(page.locator('app-docs [role="tabpanel"] h2')).to_be_visible()
-            page.set_viewport_size({'width':320,'height':844})
+            viewport(320, 844)
             page.get_by_role('tab',name='Hardware',exact=True).click()
             expect(page.locator('app-docs')).to_contain_text('ESP32-S3-N16R8')
             assert page.evaluate('document.documentElement.scrollWidth <= innerWidth + 1')
-            page.set_viewport_size({'width':1024,'height':768})
+            viewport(1024, 768)
             navigate('The Notebook')
             page.get_by_role('link', name='Vegetarian and vegan recipes').click()
             expect(page.get_by_role('heading', name='Vegan lemon bars (egg-free and dairy-free)')).to_be_visible()
@@ -112,7 +143,7 @@ def main():
             screenshots = ROOT / '__screenshots__'
             screenshots.mkdir(exist_ok=True)
             page.screenshot(path=str(screenshots / 'notebook.png'))
-            page.set_viewport_size({'width': 390, 'height': 844})
+            viewport(390, 844)
             page.screenshot(path=str(screenshots / 'notebook-mobile.png'))
             assert page.evaluate('document.documentElement.scrollWidth <= innerWidth + 1')
             expect(page.get_by_role('navigation', name='Main navigation')).not_to_be_visible()
@@ -127,7 +158,7 @@ def main():
             expect(page.get_by_role('navigation', name='Main navigation')).not_to_be_visible()
             expect(page.get_by_role('heading', name='Board health')).to_be_visible()
             page.get_by_role('button', name='Refresh readings').click()
-            page.set_viewport_size({'width': 1024, 'height': 768})
+            viewport(1024, 768)
             page.get_by_role('link', name='NanaCoin app', exact=True).click()
             page.get_by_role('button', name='Dad an ordinary member').click()
             expect(page.locator('app-market')).to_be_visible()
@@ -144,23 +175,23 @@ def main():
             for label in ['My Account', 'Forex', 'Offers', 'Send Money', 'Messages', 'Invitations', 'Loans', 'Lotto', 'Economy', 'Market']:
                 navigate(label)
                 expect(page.locator('main h1').first).to_be_visible()
-            page.set_viewport_size({'width': 390, 'height': 844})
+            viewport(390, 844)
             for label in ['Send Money', 'Messages', 'Invitations', 'Loans', 'Lotto', 'Offers']:
                 navigate(label)
                 expect(page.locator('main h1').first).to_be_visible()
                 expect(page.get_by_role('navigation', name='Main navigation')).not_to_be_visible()
                 assert page.evaluate('document.documentElement.scrollWidth <= innerWidth + 1'), (label, page.locator('main *').evaluate_all('els => els.filter(e => e.getBoundingClientRect().right > innerWidth + 1).map(e => ({tag:e.tagName,cls:e.className,text:e.textContent.slice(0,120),width:e.getBoundingClientRect().width}))'))
-            page.set_viewport_size({'width': 1024, 'height': 768})
+            viewport(1024, 768)
             navigate('Loans')
             expect(page.get_by_text('Tools for the garden', exact=True)).to_be_visible()
             page.locator('app-loans h1').click()
             for width in [320, 390, 768, 1024]:
-                page.set_viewport_size({'width': width, 'height': 844})
+                viewport(width, 844)
                 expect(page.get_by_label("Draw once when the borrower's balance reaches exactly zero")).to_be_visible()
                 assert page.evaluate('document.documentElement.scrollWidth <= innerWidth + 1'), ('Loans', width)
                 if width == 320:
                     page.screenshot(path=str(screenshots / 'loans-mobile.png'), full_page=True)
-            page.set_viewport_size({'width': 1024, 'height': 768})
+            viewport(1024, 768)
             navigate('Lotto')
             lotto = page.locator('app-lotto')
             expect(lotto.get_by_role('button', name='Buy tickets', exact=True)).to_have_count(3)
@@ -187,11 +218,11 @@ def main():
             expect(page.locator('.topbar__who').get_by_text('Nana', exact=True)).to_be_visible()
             expect(page.locator('app-login-form')).not_to_be_visible()
             expect(page.locator('app-history')).to_be_visible()
-            for width in [320,390,768,1024,1280]:
-                page.set_viewport_size({'width':width,'height':844})
-                nav=page.locator('#site-navigation')
-                if not nav.is_visible(): page.get_by_role('button',name='Open navigation menu').click()
-                expect(nav).to_be_visible()
+            # Exercise both directions across the breakpoint, including reopening
+            # the mobile menu immediately after Escape and a desktop visit.
+            for width in [320, 390, 768, 1024, 1280, 768, 320, 1024]:
+                viewport(width, 844)
+                nav = open_navigation()
                 group=nav.locator('details:has(a[href="#/nana"])')
                 expect(group).to_have_count(1)
                 if not group.evaluate('e=>e.open'): group.locator('summary').click()
@@ -202,7 +233,8 @@ def main():
                     assert nav.evaluate('e=>e.getBoundingClientRect().bottom-e.getBoundingClientRect().top<70'), ('Wrapped Nana menu',width)
                     assert page.locator('.brand').evaluate('e=>e.getBoundingClientRect().left>=0'), ('Clipped brand',width)
                 page.keyboard.press('Escape')
-            page.set_viewport_size({'width':1024,'height':768})
+                navigation_closed()
+            viewport(1024, 768)
             navigate('My Account')
             expect(page.get_by_role('tab',name=re.compile('^Transactions'))).to_have_attribute('aria-selected','true')
             expect(page.get_by_role('button',name='Reverse',exact=True)).to_have_count(0)
@@ -230,12 +262,12 @@ def main():
             expect(page.get_by_role('button',name='Record dollars held',exact=True)).to_be_visible()
             page.get_by_role('tab',name='Lotto',exact=True).click()
             expect(page.get_by_role('heading',name='Create a lotto',exact=True)).to_be_visible()
-            page.set_viewport_size({'width': 390, 'height': 844})
+            viewport(390, 844)
             page.get_by_role('button', name='Resolve all lottos now', exact=True).click()
             expect(page.get_by_role('status').filter(has_text='Resolved 3 lottos.')).to_be_visible()
             page.get_by_role('button', name='Resolve all lottos now', exact=True).click()
             expect(page.get_by_role('status').filter(has_text='No pending lottos to resolve.')).to_be_visible()
-            page.set_viewport_size({'width': 1024, 'height': 768})
+            viewport(1024, 768)
             page.locator('details.account-menu > summary').filter(has_text='Account').click()
             page.get_by_role('button', name='Sign in another account').click()
             page.get_by_role('button', name=re.compile(r'^Dad\b')).click()
@@ -272,7 +304,7 @@ def main():
             employment.press('Escape')
             expect(employment_help).not_to_be_visible()
             # Phone-width cards and tap toggling must work without label overflow.
-            page.set_viewport_size({'width': 390, 'height': 844})
+            viewport(390, 844)
             interest = indicators.get_by_role('button', name='interest rate', exact=True)
             interest_help = page.locator('#interest-help-description')
             interest.click()
@@ -283,7 +315,7 @@ def main():
             expect(interest_help).not_to_be_visible()
             assert indicators.locator('.stat').evaluate_all('cards => cards.every(e => e.scrollWidth <= e.clientWidth + 1)')
             assert page.evaluate('document.documentElement.scrollWidth <= innerWidth + 1')
-            page.set_viewport_size({'width': 1024, 'height': 768})
+            viewport(1024, 768)
             assert indicators.locator('.stat').evaluate_all('cards => cards.every(e => e.scrollWidth <= e.clientWidth + 1)')
             expect(page.get_by_text('Exchange rates', exact=True)).to_be_visible()
             expect(page.get_by_role('listitem').filter(has_text='Completed trades')).to_be_visible()
