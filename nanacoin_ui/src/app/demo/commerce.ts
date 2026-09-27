@@ -1,8 +1,7 @@
-import { CommerceAction, GiftRequest, Transaction, User } from '../api/models';
-export type { CommerceAction, GiftRequest };
+import { Artwork, CommerceAction, GiftRequest, Transaction, User } from '../api/models';
+export type { Artwork, CommerceAction, GiftRequest };
 import { MAX_MONEY } from '../api/money';
 
-export interface Artwork { id: number; creator: number; owner: number; title: string; license: string; sha256: string; locator: string; price: number | null; revision: number; equipped: boolean; created_at:number }
 interface Host {
   user(id:number): User | undefined;
   now(): number;

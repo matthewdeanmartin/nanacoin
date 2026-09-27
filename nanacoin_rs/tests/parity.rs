@@ -113,7 +113,7 @@ fn quote(s: &mut Service<Memory>, side: QuoteSide, expires_at: u64) -> u64 {
 }
 
 #[test]
-fn balances_and_the_household_ledger_are_shared_but_accounts_stay_scoped() {
+fn balances_account_pages_and_the_household_ledger_are_shared_but_state_stays_scoped() {
     let (mut s, _) = house();
     let alice = common::login_as(&mut s, "alice", "1234");
     let nana = common::login(&mut s);
@@ -121,21 +121,31 @@ fn balances_and_the_household_ledger_are_shared_but_accounts_stay_scoped() {
     assert!(users["users"][0].get("balance").is_some());
     assert!(users["users"][2].get("usd_cents").is_some());
     assert_eq!(users["users"][1]["balance"], 100);
+    assert_eq!(
+        call(&mut s, "GET", "/api/v1/state", &alice, "", json!({})).0,
+        403
+    );
+    assert_eq!(
+        call(&mut s, "GET", "/api/v1/state", &nana, "", json!({})).0,
+        200
+    );
+    // Profiles read other members' public money movements.
     for path in [
-        "/api/v1/state",
         "/api/v1/accounts/account-3",
         "/api/v1/accounts/account-3/transactions",
         "/api/v1/accounts/account-3-usd/transactions",
     ] {
+        for auth in [&alice, &nana] {
+            assert_eq!(
+                call(&mut s, "GET", path, auth, "", json!({})).0,
+                200,
+                "{path}"
+            );
+        }
         assert_eq!(
-            call(&mut s, "GET", path, &alice, "", json!({})).0,
-            403,
-            "{path}"
-        );
-        assert_eq!(
-            call(&mut s, "GET", path, &nana, "", json!({})).0,
-            200,
-            "{path}"
+            call(&mut s, "GET", path, "", "", json!({})).0,
+            401,
+            "anonymous {path}"
         );
     }
     for path in ["/api/v1/transactions", "/api/v1/transactions/tx-5"] {

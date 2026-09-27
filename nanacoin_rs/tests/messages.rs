@@ -46,7 +46,7 @@ fn exec<J: Journal>(s: &mut Service<J>, who: u8, c: Command) -> Result<Receipt, 
 }
 fn setup<J: Journal>(s: &mut Service<J>) {
     common::provision(s);
-    for name in ["Alice", "Bob"] {
+    for name in ["Alice", "Bob", "Carol"] {
         exec(
             s,
             1,
@@ -100,6 +100,7 @@ fn zero_send_is_a_durable_message_not_a_payment() {
     let alice = common::login_as(&mut s, "Alice", "1234");
     let bob = common::login_as(&mut s, "Bob", "1234");
     let nana = common::login(&mut s);
+    let carol = common::login_as(&mut s, "Carol", "1234");
     let before = [
         balance(&s, 1),
         balance(&s, 2),
@@ -167,15 +168,18 @@ fn zero_send_is_a_durable_message_not_a_payment() {
         .0,
         404
     );
-    let (_, other) = call(
-        &mut s,
-        "GET",
-        "/api/v1/accounts/account-2/transactions",
-        &nana,
-        "",
-        json!({}),
-    );
-    assert!(!other.to_string().contains("Please return"));
+    for auth in [&nana, &carol] {
+        let (code, other) = call(
+            &mut s,
+            "GET",
+            "/api/v1/accounts/account-2/transactions",
+            auth,
+            "",
+            json!({}),
+        );
+        assert_eq!(code, 200);
+        assert!(!other.to_string().contains("Please return"));
+    }
     let sequence = s.state().sequence;
     assert_eq!(
         exec(

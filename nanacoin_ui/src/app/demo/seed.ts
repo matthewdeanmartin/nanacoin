@@ -11,6 +11,7 @@
 // exactly what happened the first time this was tested against real data.
 
 import { DemoLedger } from './ledger';
+import { DEMO_ART_BASE } from '../art/art-media';
 
 const DAY = 86_400;
 
@@ -229,14 +230,14 @@ export function seed(ledger: DemoLedger): void {
   const request=ledger.commerce.command(ivy,{create_request:{title:'Help me buy watercolor paints',description:'A gift toward my next art project',target:300_000,deadline:null}}).sequence;
   ledger.commerce.command(dad,{contribute:{request,amount:50_000,memo:'Watercolor fund: a gift from Dad'}});
   ledger.commerce.command(mom,{contribute:{request,amount:30_000,memo:'Watercolor fund: a gift from Mom'}});
-  const art=ledger.commerce.command(ivy,{mint_art:{title:'Moonlit garden',license:'Personal profile display; artist retains copyright',sha256:'a'.repeat(64),locator:'https://example.org/demo/moonlit-garden.svg'}}).sequence;
+  const art=ledger.commerce.command(ivy,{mint_art:{title:'Moonlit garden',license:'Personal profile display; artist retains copyright',sha256:'934cdf9ed396faa1397f4b21e9df651633568aa034afae1765ce506f5895c861',locator:`${DEMO_ART_BASE}moonlit-garden.svg`}}).sequence;
   const listed=ledger.commerce.command(ivy,{list_art:{art,price:60_000}}).sequence;
   ledger.commerce.command(sam,{buy_art:{art,expected_owner:5,expected_revision:listed,expected_price:60_000}});
   ledger.commerce.command(sam,{equip_art:{art,equipped:true}});
-  const giftArt=ledger.commerce.command(sam,{mint_art:{title:'Nana’s sunshine badge',license:'Personal profile display; artist retains copyright',sha256:'b'.repeat(64),locator:'https://example.org/demo/sunshine.svg'}}).sequence;
+  const giftArt=ledger.commerce.command(sam,{mint_art:{title:'Nana’s sunshine badge',license:'Personal profile display; artist retains copyright',sha256:'d4667bd7997ecf8e212e14b8085c1e5d02508e0cd143315ede10b241a80cfab0',locator:`${DEMO_ART_BASE}sunshine-badge.svg`}}).sequence;
   ledger.commerce.command(sam,{gift_art:{art:giftArt,to:1}});
   ledger.commerce.command(nanaUser,{equip_art:{art:giftArt,equipped:true}});
-  const forSale=ledger.commerce.command(ivy,{mint_art:{title:'Little comet',license:'Personal profile display; artist retains copyright',sha256:'c'.repeat(64),locator:'https://example.org/demo/comet.svg'}}).sequence;
+  const forSale=ledger.commerce.command(ivy,{mint_art:{title:'Little comet',license:'Personal profile display; artist retains copyright',sha256:'01281d7bd3ce27aec02078d2eb8f3afd4b7edee919c96aa3689b5d848e9fb6a7',locator:`${DEMO_ART_BASE}little-comet.svg`}}).sequence;
   ledger.commerce.command(ivy,{list_art:{art:forSale,price:80_000}});
   // Nana's open reserve-backed quotes make the central-bank book useful.
   ledger.postQuote(nanaUser,'BID',20,100_000);

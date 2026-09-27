@@ -65,6 +65,7 @@ pub(super) fn route<J: Journal>(
     actor: MemberId,
     method: &str,
     path: &str,
+    query: &str,
     key: &str,
     body: &[u8],
     output: &mut [u8],
@@ -84,6 +85,34 @@ pub(super) fn route<J: Journal>(
                 offers: T,
             }
             let member = s.state.member(actor)?;
+            // A profile shows anyone's outstanding offers. The amount and listing
+            // are household business; the note is only for the two parties.
+            if let Some(subject) = query.split('&').find_map(|p| p.strip_prefix("member=")) {
+                let subject = s.state.member(member_id(subject, "user-")?)?.id;
+                if member.disabled {
+                    return Err(Error::Forbidden);
+                }
+                return serialize(
+                    &Page {
+                        offers: Rows(
+                            s.state
+                                .offers
+                                .iter()
+                                .rev()
+                                .filter(|o| o.offerer == subject)
+                                .map(|o| {
+                                    let mut v = view(&s.state, o, now);
+                                    if !o.visible_to(member) {
+                                        v.message = "";
+                                    }
+                                    v
+                                })
+                                .filter(|v| v.status == "OPEN"),
+                        ),
+                    },
+                    output,
+                );
+            }
             return serialize(
                 &Page {
                     offers: Rows(

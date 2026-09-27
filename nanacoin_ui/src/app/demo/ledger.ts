@@ -254,7 +254,8 @@ export class DemoLedger {
 
   /** A user as the API returns them: balance only where the caller may see it. */
   view(u: DemoUser, viewer: DemoUser | null): User {
-    const maySee = viewer?.role === 'nana' || viewer?.id === u.id;
+    // Like the board: balances are part of the shared household ledger, visible to every member.
+    const maySee = viewer !== null;
     return {
       id: u.id,
       username: u.username,
@@ -868,6 +869,18 @@ export class DemoLedger {
     );
     return this.offers
       .filter((o) => o.offerer === actor.account || mine.has(o.listing))
+      .sort((a, b) => b.created_at - a.created_at);
+  }
+
+  /** A profile's open offers. Like the board, the note is only for the two parties and Nana. */
+  outstandingOffers(viewer: DemoUser, userId: string): Offer[] {
+    const subject = this.userById(userId);
+    if (!subject) throw new DemoError(404, 'not_found', 'No such member.');
+    const owned = new Set(this.listings.filter((l) => l.seller === viewer.account).map((l) => l.id));
+    const active = new Set(this.listings.filter((l) => l.status === 'ACTIVE').map((l) => l.id));
+    return this.offers
+      .filter((o) => o.offerer === subject.account && o.status === 'OPEN' && active.has(o.listing))
+      .map((o) => viewer.role === 'nana' || o.offerer === viewer.account || owned.has(o.listing) ? o : { ...o, message: '' })
       .sort((a, b) => b.created_at - a.created_at);
   }
 

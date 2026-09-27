@@ -114,7 +114,7 @@ export class GiftRequestsPage {
 
   protected readonly book = resource({
     params: () => this.session.me()?.account,
-    loader: () => this.api.giftRequests(),
+    loader: () => this.api.commerceBook(),
   });
   private readonly followLedger = reloadOnLedgerChange(this.book);
 

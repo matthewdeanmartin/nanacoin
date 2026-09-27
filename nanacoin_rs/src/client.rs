@@ -430,7 +430,7 @@ pub(crate) fn route<J: Journal>(
     if let Some(result) = loans::route(s, actor, method, path, key, body, output) {
         return result;
     }
-    if let Some(result) = offers::route(s, actor, method, path, key, body, output) {
+    if let Some(result) = offers::route(s, actor, method, path, query, key, body, output) {
         return result;
     }
     if let Some(result) = forex::route(s, actor, method, path, key, body, output) {
@@ -544,7 +544,7 @@ pub(crate) fn route<J: Journal>(
             .and_then(|p| p.strip_suffix("/transactions"))
         {
             let (member, usd) = parse_account(account_id)?;
-            if !is_admin && actor != member {
+            if !is_admin && actor != member && s.state.member(actor)?.disabled {
                 return Err(Error::Forbidden);
             }
             #[derive(Serialize)]
@@ -590,7 +590,7 @@ pub(crate) fn route<J: Journal>(
         }
         if let Some(value) = path.strip_prefix("/api/v1/accounts/") {
             let (member, usd) = parse_account(value)?;
-            if !is_admin && actor != member {
+            if !is_admin && actor != member && s.state.member(actor)?.disabled {
                 return Err(Error::Forbidden);
             }
             #[derive(Serialize)]

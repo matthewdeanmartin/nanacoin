@@ -358,6 +358,13 @@ export interface Lotto { id: number; terms: LottoTerms; house: string; pool: num
 export interface LottoBook { lottos: Lotto[]; decimals: number; money_epoch: number }
 /** Member IDs here are numeric: request owner 3 is user "user-3". Amounts are current units. */
 export interface GiftRequest { id: number; owner: number; title: string; description: string; target: number | null; deadline: number | null; received: number; closed: boolean; created_at: number }
+/**
+ * One edition of digital art: the board records who owns it, not the picture.
+ * `locator` is where the media lives; `sha256` is the digest the creator
+ * registered. `revision` changes on every sale, listing or gift.
+ */
+export interface Artwork { id: number; creator: number; owner: number; title: string; license: string; sha256: string; locator: string; price: number | null; revision: number; equipped: boolean; created_at:number }
+export interface CommerceBook { requests: GiftRequest[]; artworks: Artwork[] }
 export type CommerceAction =
   | {create_request: {title:string;description:string;target:number|null;deadline:number|null}}
   | {close_request: {request:number}}

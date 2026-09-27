@@ -15,16 +15,15 @@ import { IS_DEMO } from '../demo/demo';
    </button>
    <nav id="site-navigation" aria-label="Main navigation" [class.is-open]="open()">
      @if (session.signedIn()) {
-       @if (session.isNana()) {
-         <details name="site-menu-group" class="menu-group" routerLinkActive="current">
-           <summary>Accounts</summary><div class="menu-group__items">
-             <a routerLink="/history" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">My Account</a>
+       <details name="site-menu-group" class="menu-group" routerLinkActive="current">
+         <summary>Accounts</summary><div class="menu-group__items">
+           <a routerLink="/history" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">My Account</a>
+           <a routerLink="/people" routerLinkActive="current" [routerLinkActiveOptions]="{ exact: true }" ariaCurrentWhenActive="page" (click)="close()">Demographics</a>
+           @if (session.isNana()) {
              <a routerLink="/nana" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Household</a>
-           </div>
-         </details>
-       } @else {
-         <a routerLink="/history" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">My Account</a>
-       }
+           }
+         </div>
+       </details>
        <details name="site-menu-group" class="menu-group" routerLinkActive="current">
          <summary>Mail</summary><div class="menu-group__items">
            <a routerLink="/send" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Send Money</a>
@@ -46,6 +45,7 @@ import { IS_DEMO } from '../demo/demo';
            <a routerLink="/market" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Market</a>
            <a routerLink="/list" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Buy, sell, hire</a>
            <a routerLink="/forex" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Forex</a>
+           <a routerLink="/art" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Digital Art</a>
            @if (demo) {
              <a routerLink="/nickles" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Nana-nickles</a>
            }

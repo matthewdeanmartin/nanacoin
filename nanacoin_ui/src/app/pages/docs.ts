@@ -26,7 +26,8 @@ import { SectionTabs } from '../ui/section-tabs';
             <dt>TODO</dt><dd>Work and deliveries still owed. Record completion, report a problem, or withdraw a dispute. Marking work done does not move money a second time.</dd>
             <dt>Loans & debts / Lotto</dt><dd>See what you owe, what others owe you, upcoming draws and results.</dd>
             <dt>My offers / My forex bids</dt><dd>Find your outstanding deals and open the relevant page to act on them.</dd></dl>
-          <p>Use the account menu beside your name to switch people or sign out. Nana finds My Account and Household inside Accounts.</p>
+          <dl><dt>Demographics</dt><dd>Everyone on the board, with population figures. Open anyone's profile for a read-only report from the public ledger: what came in and went out by kind, who they trade with, their art, gift requests, market listings and open offers. Private messages never appear, and an offer's note shows only to the two people in the deal.</dd></dl>
+          <p>Use the account menu beside your name to switch people or sign out. My Account and Demographics are inside Accounts; Nana also finds Household there.</p>
         }
         @case ('docs-mail') {
           <h2>Mail and payments</h2>
@@ -43,7 +44,7 @@ import { SectionTabs } from '../ui/section-tabs';
             <dt>Forex</dt><dd>Trade coins for recorded dollars at an agreed price. Read both amounts. The app records the deal; it does not send money through a bank.</dd>
             <dt>Nana-nickles</dt><dd>In the demo, create a one-use voucher, print or share it, and let another person redeem it. Keep the code safe: whoever has it can use it.</dd></dl>
           <dl><dt>Gift Requests</dt><dd>Ask the household to chip in for something (“cyberbegging”), with an optional target and last day, or give toward someone else's request. Gifts arrive immediately, can pass the target, and are not returned if the target is missed. Close your request when you are done.</dd></dl>
-          <p>Digital-art ownership has API support and demo examples in the Notebook; its own screen is still to come. Art payments cannot be refunded separately from ownership.</p>
+          <dl><dt>Digital Art</dt><dd>Register an edition of a picture you host somewhere on the web, then sell it, give it away or show it on your profile. The board records who owns each edition and a SHA-256 fingerprint of the file; the picture never lives on the board. This is not an NFT: no crypto, no blockchain, and owning an edition does not transfer copyright. Pictures from other sites load only when you ask, because loading them tells that site you looked. Art payments cannot be refunded separately from ownership.</dd></dl>
         }
         @case ('docs-loans') {
           <h2>Loans and lotto</h2>

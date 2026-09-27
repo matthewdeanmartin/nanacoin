@@ -16,7 +16,7 @@ import { digestSha256, hasNativeDigest } from './sha256';
 import { ApiBase } from './api-base';
 import { Money } from './money';
 import { normalizeTransactions } from './transaction-normalization';
-import { CommerceAction, GiftRequest, Lotto, LottoBook, LottoTerms, Loan, LoanBook, LoanOfferInput, ReformInput, ReformResult } from './models';
+import { CommerceAction, CommerceBook, Lotto, LottoBook, LottoTerms, Loan, LoanBook, LoanOfferInput, ReformInput, ReformResult } from './models';
 import {
   AccountHistory,
   AccountId,
@@ -578,6 +578,11 @@ export class NanacoinService {
     return this.get<{ offers: Offer[] }>('/offers');
   }
 
+  /** A member's open offers, for their profile. Notes are blank unless you are a party. */
+  outstandingOffers(user: UserId): Promise<{ offers: Offer[] }> {
+    return this.get<{ offers: Offer[] }>(`/offers?member=${encodeURIComponent(user)}`);
+  }
+
   /** Offers against one listing. */
   offersFor(listing: ListingId): Promise<{ offers: Offer[] }> {
     return this.get<{ offers: Offer[] }>(
@@ -628,11 +633,11 @@ export class NanacoinService {
     return this.post<Offer>(`/offers/${encodeURIComponent(id)}/withdraw`, {});
   }
 
-  // --- commerce (gift requests) ---
+  // --- commerce (gift requests and digital art) ---
 
-  /** Every gift request on the board, open and closed. Artworks share this endpoint. */
-  giftRequests(): Promise<{ requests: GiftRequest[] }> {
-    return this.get<{ requests: GiftRequest[] }>('/commerce');
+  /** Every gift request and art edition on the board; any member may read them. */
+  commerceBook(): Promise<CommerceBook> {
+    return this.get<CommerceBook>('/commerce');
   }
 
   /**

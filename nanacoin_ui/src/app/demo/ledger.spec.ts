@@ -136,14 +136,26 @@ describe('the demo ledger', () => {
     expect(() => l.reverse(nana, txn.id, 'twice')).toThrow(DemoError);
   });
 
-  it('hides other people\'s balances from an ordinary member', () => {
+  it('shares balances with every member, like the board', () => {
     const { l, nana, alice, bob } = household();
     const asAlice = l.allUsers(alice);
     expect(asAlice.find((u) => u.id === alice.id)?.balance).toBe(100);
-    expect(asAlice.find((u) => u.id === bob.id)?.balance).toBeUndefined();
-
-    // Nana sees everything.
+    expect(asAlice.find((u) => u.id === bob.id)?.balance).toBe(l.balanceOf(bob.account));
     expect(l.allUsers(nana).every((u) => u.balance !== undefined)).toBe(true);
+    expect(l.allUsers(null).every((u) => u.balance === undefined)).toBe(true);
+  });
+
+  it('shows anyone a profile\'s open offers, with the note only for the parties', () => {
+    const { l, nana, alice, bob } = household();
+    const carol = l.addUser('carol', 'Carol', 'demo', 'user');
+    const listing = l.createListing(alice, { title: 'Cookies', description: '', price: 20 });
+    l.makeOffer(bob, listing.id, 15, 'Saturday?');
+    const declined = l.makeOffer(bob, l.createListing(alice, { title: 'Tea', description: '', price: 5 }).id, 4, 'Cheap tea');
+    l.declineOffer(alice, declined.id);
+    expect(l.outstandingOffers(carol, bob.id).map((o) => [o.listing_title, o.amount, o.message])).toEqual([['Cookies', 15, '']]);
+    expect(l.outstandingOffers(alice, bob.id)[0].message).toBe('Saturday?');
+    expect(l.outstandingOffers(nana, bob.id)[0].message).toBe('Saturday?');
+    expect(l.outstandingOffers(carol, alice.id)).toEqual([]);
   });
 });
 

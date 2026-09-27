@@ -718,3 +718,56 @@ fn bounded_wire_input_and_full_table_responses() {
     assert_eq!(response["offers"].as_array().unwrap().len(), OFFERS);
     assert_eq!(response["offers"][0]["message"], "\"\\".repeat(70));
 }
+
+#[test]
+fn profiles_show_anyones_open_offers_but_only_parties_read_the_note() {
+    let (mut s, _) = house();
+    let first = listing(&mut s, Side::Sell);
+    let open = offer(&mut s, first, 20);
+    let second = listing(&mut s, Side::Sell);
+    let declined = offer(&mut s, second, 21);
+    exec(&mut s, 2, Command::DeclineOffer { offer: declined }).unwrap();
+    let alice = common::login_as(&mut s, "alice", "1234");
+    let carol = common::login_as(&mut s, "carol", "1234");
+    let (status, seen_by_carol) = api(
+        &mut s,
+        "GET",
+        "/api/v1/offers?member=user-3",
+        &carol,
+        "",
+        json!(null),
+    );
+    assert_eq!(status, 200);
+    let offers = seen_by_carol["offers"].as_array().unwrap();
+    assert_eq!(offers.len(), 1, "only the open offer is outstanding");
+    assert_eq!(offers[0]["id"], format!("offer-{}", open.0));
+    assert_eq!(offers[0]["amount"], 20);
+    assert_eq!(offers[0]["offerer_name"], "bob");
+    assert_eq!(offers[0]["message"], "");
+    let (_, seen_by_owner) = api(
+        &mut s,
+        "GET",
+        "/api/v1/offers?member=user-3",
+        &alice,
+        "",
+        json!(null),
+    );
+    assert_eq!(seen_by_owner["offers"][0]["message"], "Saturday 🍪");
+    let (_, nobody) = api(
+        &mut s,
+        "GET",
+        "/api/v1/offers?member=user-4",
+        &alice,
+        "",
+        json!(null),
+    );
+    assert!(nobody["offers"].as_array().unwrap().is_empty());
+    for bad in ["user-99", "user-0", "alice"] {
+        let path = format!("/api/v1/offers?member={bad}");
+        assert_ne!(
+            api(&mut s, "GET", &path, &alice, "", json!(null)).0,
+            200,
+            "{bad}"
+        );
+    }
+}

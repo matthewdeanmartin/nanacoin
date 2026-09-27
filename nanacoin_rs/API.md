@@ -48,7 +48,7 @@ IDs use user-1, account-1, listing-5 and tx-6 forms. Roles are nana/user and mem
 | POST `/users` | Nana creates member with username, display_name, password, optional role/grant/mastodon_id |
 | PATCH `/users/user-N` | Name/password/Mastodon ID; Nana can also change role/status or other members |
 | GET `/transactions`, `/transactions/tx-N` | Recent ledger and individual transaction |
-| GET `/accounts/account-N`, `/accounts/account-N/transactions` | Own balance/history, or any account for Nana; `account-N-usd` selects dollars |
+| GET `/accounts/account-N`, `/accounts/account-N/transactions` | Any active member may read any account's balance and money movements (profiles); zero-value messages appear only to their sender and recipient; `account-N-usd` selects dollars |
 | POST `/transfers` | Transfer with to, amount, memo |
 | POST `/admin/issue`, `/admin/retire` | Nana issuance/retirement |
 | POST `/transactions/tx-N/reverse` | Nana reversal with reason |
@@ -58,6 +58,7 @@ IDs use user-1, account-1, listing-5 and tx-6 forms. Roles are nana/user and mem
 | POST `/listings/listing-N/purchase`, `/listings/listing-N/cancel` | Purchase/cancel |
 | GET/PATCH `/admin/config` | household_name, initial_grant, currency, offer_settles_after (seconds; zero restores 48 hours) |
 | GET `/offers`, `/offers/offer-N` | Visible offers, newest first, or one visible offer |
+| GET `/offers?member=user-N` | That member's OPEN offers, for their profile; `message` is empty unless the reader is the offerer, the listing owner or Nana |
 | POST `/listings/listing-N/offers` | Propose amount and optional message (140 UTF-8 bytes); returns 201 |
 | POST `/offers/offer-N/accept` | Owner accepts; requires Idempotency-Key; returns 201 |
 | POST `/offers/offer-N/unaccept` | Either party or Nana undoes before deadline, with reason (140 UTF-8 bytes) and Idempotency-Key |
@@ -69,7 +70,7 @@ IDs use user-1, account-1, listing-5 and tx-6 forms. Roles are nana/user and mem
 | POST `/quotes/quote-N/take` | Keyed, atomic coin/cash exchange; returns quote, coin_transaction, cash_transaction |
 | POST `/quotes/quote-N/cancel` | Maker or Nana cancels |
 
-See `src/client.rs` and `src/client/offers.rs` for bounded schemas and response views. Offer views include id, listing, listing_title, offerer, offerer_name, amount, message, status, created_at, updated_at, reversible, and (after acceptance) settled_tx and settles_at. Accept/unaccept return `{ "offer": {...}, "transaction": {...} }`. Statuses are OPEN, ACCEPTED, SETTLED, DECLINED, WITHDRAWN and REVERSED. Settlement is computed from the persisted deadline; GET never writes a settlement event. `/state` is Nana-only and omits private offers; use the visibility-filtered offer routes. `/transactions` is Nana-only; individual transactions require participation or Nana. `/users` hides other members' balances from ordinary users. Member and listing timestamps persist. Listings retain kind (item/service/currency), currency and minor_units, and include buyer_name when sold.
+See `src/client.rs` and `src/client/offers.rs` for bounded schemas and response views. Offer views include id, listing, listing_title, offerer, offerer_name, amount, message, status, created_at, updated_at, reversible, and (after acceptance) settled_tx and settles_at. Accept/unaccept return `{ "offer": {...}, "transaction": {...} }`. Statuses are OPEN, ACCEPTED, SETTLED, DECLINED, WITHDRAWN and REVERSED. Settlement is computed from the persisted deadline; GET never writes a settlement event. `/state` is Nana-only and omits private offers; use the visibility-filtered offer routes. `/transactions` is the public ledger of money movements; a zero-value message transaction is readable only by its participants. `/users` includes every member's balance: balances are part of the shared ledger. Member and listing timestamps persist. Listings retain kind (item/service/currency), currency and minor_units, and include buyer_name when sold.
 
 Only the owner may accept, including when Nana is another member. SELL debits the offerer; BUY debits the owner. Acceptance checks both accounts and funds and closes the listing. Decline/withdraw move no money. At the exact deadline, unaccept refuses even for Nana. Within the window it allows a correction overdraft and atomically reverses payment, marks the offer REVERSED and reopens the listing. It works even after the original payment leaves recent history. Manual Nana reversals remain separate and prevent duplicate refunds. Reusing an acceptance key after unaccept returns its original acceptance receipt while retained; it does not accept again.
 

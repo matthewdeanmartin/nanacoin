@@ -29,7 +29,7 @@ export class Session {
   /** The signed-in user, or null. */
   readonly me = signal<User | null>(null);
 
-  /** Everyone in the household. Ordinary users see names but not balances. */
+  /** Everyone in the household, with balances: the ledger is shared by every member. */
   readonly household = signal<User[]>([]);
 
   /** The server's own summary, also readable before logging in. */

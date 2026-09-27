@@ -20,6 +20,9 @@ describe('responsive site navigation', () => {
    const buySell = [...fixture.nativeElement.querySelectorAll('details')].find((group: Element) => group.textContent?.includes('Buy/Sell'));
    expect(buySell?.textContent).toContain('Market');
    expect(buySell?.textContent).toContain('Buy, sell, hire');
+   expect(buySell?.textContent).toContain('Digital Art');
+   const accounts = [...fixture.nativeElement.querySelectorAll('details')].find((g: Element) => g.querySelector('summary')?.textContent === 'Accounts');
+   expect([...accounts!.querySelectorAll('a')].map((a: Element)=>a.textContent)).toEqual(['My Account','Demographics']);
    expect(buySell?.textContent).not.toContain('Offers');
    const mail = [...fixture.nativeElement.querySelectorAll('details')].find((g: Element) => g.querySelector('summary')?.textContent === 'Mail');
    expect([...mail!.querySelectorAll('a')].map((a: Element)=>a.textContent)).toEqual(['Send Money','Gift Requests','Messages','Offers','Invitations']);

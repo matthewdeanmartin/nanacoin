@@ -314,8 +314,10 @@ pub(super) fn route<J: Journal>(
         {
             return Some((|| {
                 let a = parse_account(account)?;
-                if actor != a.0 {
-                    s.state.admin(actor)?;
+                // Money movements are the public ledger, so any member may read
+                // another member's page; `page` still hides others' messages.
+                if actor != a.0 && s.state.member(actor)?.disabled {
+                    return Err(Error::Forbidden);
                 }
                 page(s, query, Some(a), Some(actor), output)
             })());
