@@ -1,17 +1,8 @@
-import { Transaction, User } from '../api/models';
+import { CommerceAction, GiftRequest, Transaction, User } from '../api/models';
+export type { CommerceAction, GiftRequest };
 import { MAX_MONEY } from '../api/money';
 
-export interface GiftRequest { id: number; owner: number; title: string; description: string; target: number | null; deadline: number | null; received: number; closed: boolean; created_at:number }
 export interface Artwork { id: number; creator: number; owner: number; title: string; license: string; sha256: string; locator: string; price: number | null; revision: number; equipped: boolean; created_at:number }
-export type CommerceAction =
-  | {create_request: {title:string;description:string;target:number|null;deadline:number|null}}
-  | {close_request: {request:number}}
-  | {contribute: {request:number;amount:number;memo:string}}
-  | {mint_art: {title:string;license:string;sha256:string;locator:string}}
-  | {list_art: {art:number;price:number|null}}
-  | {buy_art: {art:number;expected_owner:number;expected_revision:number;expected_price:number}}
-  | {gift_art: {art:number;to:number}}
-  | {equip_art: {art:number;equipped:boolean}};
 interface Host {
   user(id:number): User | undefined;
   now(): number;

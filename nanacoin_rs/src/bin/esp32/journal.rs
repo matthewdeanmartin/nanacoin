@@ -66,6 +66,37 @@ fn key(prefix: char, index: usize) -> Result<heapless::String<8>, Error> {
     Ok(key)
 }
 impl Journal for NvsJournal {
+    fn light_config(&self) -> Result<nanacoin::board_status::LightConfig, Error> {
+        let mut bytes = [0; 512];
+        match self
+            .metadata
+            .get_blob("led_phrases", &mut bytes)
+            .map_err(|_| Error::Storage)?
+        {
+            Some(bytes) => nanacoin::board_status::LightConfig::decode(bytes),
+            None => Ok(Default::default()),
+        }
+    }
+    fn set_light_config(
+        &mut self,
+        config: &nanacoin::board_status::LightConfig,
+    ) -> Result<(), Error> {
+        let bytes = config.encode()?;
+        self.metadata
+            .set_blob("led_phrases", &bytes)
+            .map_err(|_| Error::Storage)?;
+        let mut verify = [0; 512];
+        if self
+            .metadata
+            .get_blob("led_phrases", &mut verify)
+            .map_err(|_| Error::Storage)?
+            != Some(bytes.as_slice())
+        {
+            return Err(Error::Storage);
+        }
+        Ok(())
+    }
+
     fn supports_archive(&self) -> bool {
         true
     }

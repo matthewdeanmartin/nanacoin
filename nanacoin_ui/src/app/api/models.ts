@@ -356,3 +356,14 @@ export type LottoKind = 'SIMPLE' | 'DELAYED' | 'SAVINGS';
 export interface LottoTerms { kind: LottoKind; title: string; ticket_price: number; closes_at: number; rate_bps: number }
 export interface Lotto { id: number; terms: LottoTerms; house: string; pool: number; interest: number; tickets: number; my_tickets: number; winner: string | null; winner_name: string | null; due_at: number; status: 'OPEN' | 'WAITING' | 'PAYING' | 'SETTLED' }
 export interface LottoBook { lottos: Lotto[]; decimals: number; money_epoch: number }
+/** Member IDs here are numeric: request owner 3 is user "user-3". Amounts are current units. */
+export interface GiftRequest { id: number; owner: number; title: string; description: string; target: number | null; deadline: number | null; received: number; closed: boolean; created_at: number }
+export type CommerceAction =
+  | {create_request: {title:string;description:string;target:number|null;deadline:number|null}}
+  | {close_request: {request:number}}
+  | {contribute: {request:number;amount:number;memo:string}}
+  | {mint_art: {title:string;license:string;sha256:string;locator:string}}
+  | {list_art: {art:number;price:number|null}}
+  | {buy_art: {art:number;expected_owner:number;expected_revision:number;expected_price:number}}
+  | {gift_art: {art:number;to:number}}
+  | {equip_art: {art:number;equipped:boolean}};

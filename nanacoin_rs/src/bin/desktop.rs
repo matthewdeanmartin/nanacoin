@@ -68,7 +68,10 @@ fn serve(
     };
     if let Some(reply) = reply {
         if reply.status == 304 {
-            return not_modified(request, reply.headers.iter().map(|(k, v)| header(k, v)).collect());
+            return not_modified(
+                request,
+                reply.headers.iter().map(|(k, v)| header(k, v)).collect(),
+            );
         }
         return request.respond(Response::new(
             reply.status.into(),
@@ -172,7 +175,9 @@ fn serve(
         "Access-Control-Expose-Headers",
         "X-Nanacoin-Generation, ETag",
     ));
-    if status == 304 { return not_modified(request, headers); }
+    if status == 304 {
+        return not_modified(request, headers);
+    }
     request.respond(Response::new(
         status.into(),
         headers,

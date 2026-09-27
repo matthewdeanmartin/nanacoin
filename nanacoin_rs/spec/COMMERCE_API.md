@@ -1,6 +1,6 @@
 # Commerce API
 
-Authenticated household API; UI integration is intentionally separate. Metadata and ownership live on the board; media never does. Money uses current smallest currency units.
+Authenticated household API. The UI uses the gift-request commands on its Gift Requests screen; art commands have no screen yet. Metadata and ownership live on the board; media never does. Money uses current smallest currency units.
 
 - `GET /api/v1/commerce` returns `requests` and `artworks`.
 - `POST /api/v1/commerce/commands` requires the normal `Idempotency-Key` header and accepts one externally tagged action below. Returns `{ "sequence": 123, "replayed": false }`. Creation IDs are the returned sequence.

@@ -16,13 +16,13 @@ describe('responsive site navigation', () => {
    const fixture = setup();
    expect(fixture.nativeElement.querySelectorAll('nav')).toHaveLength(1);
    expect(fixture.nativeElement.textContent).not.toContain('Household');
-   expect(fixture.nativeElement.textContent).toContain('About');
+   expect(fixture.nativeElement.textContent).toContain('NanaCoin vs Crypto');
    const buySell = [...fixture.nativeElement.querySelectorAll('details')].find((group: Element) => group.textContent?.includes('Buy/Sell'));
    expect(buySell?.textContent).toContain('Market');
    expect(buySell?.textContent).toContain('Buy, sell, hire');
    expect(buySell?.textContent).not.toContain('Offers');
    const mail = [...fixture.nativeElement.querySelectorAll('details')].find((g: Element) => g.querySelector('summary')?.textContent === 'Mail');
-   expect([...mail!.querySelectorAll('a')].map((a: Element)=>a.textContent)).toEqual(['Send Money','Messages','Offers','Invitations']);
+   expect([...mail!.querySelectorAll('a')].map((a: Element)=>a.textContent)).toEqual(['Send Money','Gift Requests','Messages','Offers','Invitations']);
    const loans = [...fixture.nativeElement.querySelectorAll('details')].find((g: Element) => g.querySelector('summary')?.textContent === 'Loans');
    expect([...loans!.querySelectorAll('a')].map((a: Element)=>a.textContent)).toEqual(['Loans','Lotto']);
    expect(fixture.nativeElement.textContent).toContain('Board Health');
@@ -51,6 +51,6 @@ describe('responsive site navigation', () => {
    const groups=Array.from(fixture.nativeElement.querySelectorAll('details')) as HTMLDetailsElement[];
    expect(groups.find(g=>g.querySelector('summary')?.textContent==='Accounts')?.textContent).toContain('My Account');
    const help=groups.find(g=>g.querySelector('summary')?.textContent==='Help')!;
-   expect(Array.from(help.querySelectorAll('a')).map(a=>a.textContent)).toEqual(['About','Docs']);
+   expect(Array.from(help.querySelectorAll('a')).map(a=>a.textContent)).toEqual(['NanaCoin vs Crypto','About Nana-nickles','SMBC','Docs']);
  });
 });

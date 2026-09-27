@@ -267,7 +267,7 @@ the ROM bootloader; an unpowered/stuck-in-download CPU cannot light it.
 | White for 1.5 seconds, 0.5-second gap, short white flashes | Application started; flashes identify the previous reset. |
 | Pulsing blue | Waiting for Wi-Fi/DHCP or reconnecting. |
 | Dim white | Wi-Fi acquired; service initialization continues. |
-| Dim green with a short dark beat every 2 seconds | Both real TLS and HTTP workers are making progress, Wi-Fi is up, and mDNS initialized. |
+| Cyan Morse message followed by three green blinks | Both real TLS and HTTP workers are making progress, Wi-Fi is up, and mDNS initialized. |
 | Amber | mDNS initialization failed (use the IP), or an allocation/TLS initialization error occurred within 10 seconds. |
 | Red | Startup/storage failure, or a server worker has stopped progressing for 2 seconds. |
 
@@ -353,3 +353,12 @@ GPIO48 diagnostics and ready at 6,728 ms. Strict probe at `192.168.1.158` passed
 including balanced ledger and exact updated Angular index. Browser manual
 checks were not performed. Reload all existing Nanacoin tabs to replace the old
 JavaScript timers. Evidence is in `.local/nanacoin-poll-{dry,deploy,boot,probe}.log`.
+
+### Rotating healthy messages
+
+The current firmware rotates three administrator-editable messages from
+**Household → Light**. The defaults and timing are documented in README.md.
+They are saved as one bounded `ncmeta/led_phrases` setting, separate from the
+financial journal. Routine application-only upgrades preserve them. Do not
+change live messages or financial records merely to prove a deployment; use
+the ordinary read-only boot and probe checks. Startup and faults take priority.

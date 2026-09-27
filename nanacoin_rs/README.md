@@ -170,7 +170,7 @@ Validated events append durably before state changes. Failed or ambiguous writes
 
 File and NVS adapters stage immutable archive pages and a replacement checkpoint before publishing the new head. Only the committed archive interval is visible; unpublished pages cannot skip event replay. Checkpoints preserve balances, credentials, obligations, correction annotations, exact per-epoch counters and retry protection. The committed transaction floor trims cached originals, and pending commands are revalidated after automatic rotation. Nana can checkpoint early or reset from Household. Reset publishes empty state with a new incarnation, revokes sessions and returns to provisioning. See [retention](spec/RETENTION.md) and [storage v2](spec/STORAGE_V2.md).
 
-Historical transactions keep original units and currency epochs. Transaction responses also expose exact current-unit projections, or null when conversion would round or overflow. Exact lifetime totals remain available after archive pruning. Partial refunds, gift requests and digital-art ownership/sales are implemented as APIs; see [commerce](spec/COMMERCE_API.md). No new commerce screens are included. Money arithmetic remains integer-only; lifetime counters are transmitted as decimal strings.
+Historical transactions keep original units and currency epochs. Transaction responses also expose exact current-unit projections, or null when conversion would round or overflow. Exact lifetime totals remain available after archive pruning. Partial refunds, gift requests and digital-art ownership/sales are implemented as APIs; see [commerce](spec/COMMERCE_API.md). The UI has a Gift Requests screen (`/gifts`); digital art has no screen yet. Money arithmetic remains integer-only; lifetime counters are transmitted as decimal strings.
 
 USD issuance is Nana-only. Quotes support BID/ASK, integer cents per coin, all-or-nothing takes, expiry and owner/Nana cancellation. A take validates both wallets and records both currency legs in one durable event. Balances and quote status replay together; there is no half-trade state. Ordinary disabled accounts cannot send or receive. Currency listings retain descriptive metadata but do not themselves move USD wallets.
 
@@ -262,3 +262,26 @@ diagnostics and errors) remains `no-store`. Conditional requests still execute
 the normal handler and its checks; they save response bandwidth, not ledger
 work, and introduce no in-memory response cache. Desktop and board share the
 same policy. CORS permits conditional headers and exposes ETag.
+
+### Rotating healthy Morse messages
+
+Nana's **Household → Light** tab edits three messages (1–80 ASCII letters,
+numbers, spaces or Morse punctuation each). Defaults, in order:
+
+1. Katie, do you really need all of those drugs?
+2. Only if you also have a lemon square!
+3. Thank you for donating blood, Mr Thiel. Here's a shiny nana-nickel
+
+The healthy LED spells each message in cyan with 200 ms dots, 600 ms dashes,
+and standard Morse spacing, then three green blinks. After message three it
+repeats from message one. Startup and fault indicators interrupt playback;
+recovery or a setting change restarts at message one. Changes apply on the next
+free maintenance pass, normally about ten seconds. Playback uses the existing
+LED task without acquiring the ledger lock.
+
+Authenticated Nana/admin `GET/POST /api/v1/admin/light` reads/replaces
+`{"phrases":["first","second","third"]}` with `no-store` responses. All three
+are validated and saved together, independently of money operations or currency
+revisions. On the board they occupy a single `ncmeta/led_phrases` value; desktop
+journals use a `.light` companion file (include it when backing up that journal).
+Existing journals default to the three messages without a ledger migration.

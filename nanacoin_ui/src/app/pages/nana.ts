@@ -8,6 +8,7 @@ import { inject as moneyInject } from '@angular/core';
 import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
+import { LightSettings } from './light-settings';
 import { ConnectionSecurity } from './connection-security';
 import { CurrencyReform } from './currency-reform';
 import { Notebook } from '../ui/notebook';
@@ -27,7 +28,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 @Component({
   selector: 'app-nana',
-  imports: [MoneyPipe, FormsModule, RouterLink, ConnectionSecurity, Notebook, CurrencyReform, SectionTabs, LottoPage, MarketMakerPage],
+  imports: [LightSettings, MoneyPipe, FormsModule, RouterLink, ConnectionSecurity, Notebook, CurrencyReform, SectionTabs, LottoPage, MarketMakerPage],
   templateUrl: './nana.html',
 })
 export class NanaPage {
@@ -35,7 +36,7 @@ export class NanaPage {
   protected get tabs() {
     return [{id:'full-ledger',label:'Ledger'},{id:'members',label:'Members'},{id:'money',label:'Money'},
       {id:'lotto-admin',label:'Lotto'},{id:'market-desk',label:'Market desk'},
-      ...(!this.isDemo?[{id:'security',label:'Security'}]:[]),
+      ...(!this.isDemo?[{id:'security',label:'Security'},{id:'light',label:'Light'}]:[]),
       ...(this.session.status()?.checkpoint_supported?[{id:'storage',label:'Storage'}]:[]),
       {id:'demo-data',label:'Demo data'}];
   }

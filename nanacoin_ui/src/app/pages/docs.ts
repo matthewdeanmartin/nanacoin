@@ -42,7 +42,8 @@ import { SectionTabs } from '../ui/section-tabs';
           <dl><dt>Market / Buy, sell, hire</dt><dd>Advertise an item, offer work, or post something you want to buy. A purchase pays the seller. You still need to arrange delivery or do the work.</dd>
             <dt>Forex</dt><dd>Trade coins for recorded dollars at an agreed price. Read both amounts. The app records the deal; it does not send money through a bank.</dd>
             <dt>Nana-nickles</dt><dd>In the demo, create a one-use voucher, print or share it, and let another person redeem it. Keep the code safe: whoever has it can use it.</dd></dl>
-          <p>Gift requests (“cyberbegging”) and digital-art ownership have API support and demo examples in the Notebook. Their own screens are still to come. Art payments cannot be refunded separately from ownership.</p>
+          <dl><dt>Gift Requests</dt><dd>Ask the household to chip in for something (“cyberbegging”), with an optional target and last day, or give toward someone else's request. Gifts arrive immediately, can pass the target, and are not returned if the target is missed. Close your request when you are done.</dd></dl>
+          <p>Digital-art ownership has API support and demo examples in the Notebook; its own screen is still to come. Art payments cannot be refunded separately from ownership.</p>
         }
         @case ('docs-loans') {
           <h2>Loans and lotto</h2>

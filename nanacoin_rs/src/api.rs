@@ -296,6 +296,15 @@ pub fn handle_keyed<J: Journal>(
             .strip_prefix("Bearer ")
             .ok_or(Error::Unauthorized)?;
         let actor = service.auth.lookup(&service.state, token, now)?;
+        if path == "/api/v1/admin/light" {
+            service.state.admin(actor)?;
+            if method == "POST" {
+                service.set_light_config(actor, parse(body)?)?;
+            } else if method != "GET" {
+                return Err(Error::NotFound);
+            }
+            return serialize(&service.light_config, output);
+        }
         // After a reform an old screen cannot submit amounts in the old unit.
         // Keyed commands also check this after durable retry receipt lookup.
         if method != "GET" && service.state.money_epoch > 0 && path != "/api/v1/admin/reform" {

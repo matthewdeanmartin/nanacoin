@@ -13,6 +13,7 @@ pub struct FileJournal {
     archive: File,
     head_path: PathBuf,
     transport_path: PathBuf,
+    light_path: PathBuf,
     https_only: bool,
     generation: u64,
     rows: usize,
@@ -94,6 +95,7 @@ impl FileJournal {
             archive,
             head_path,
             transport_path,
+            light_path: companion(path, ".light"),
             https_only,
             generation,
             rows,
@@ -105,6 +107,22 @@ impl FileJournal {
     }
 }
 impl Journal for FileJournal {
+    fn light_config(&self) -> Result<crate::board_status::LightConfig, Error> {
+        match std::fs::read(&self.light_path) {
+            Ok(bytes) => crate::board_status::LightConfig::decode(&bytes),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Default::default()),
+            Err(_) => Err(Error::Storage),
+        }
+    }
+    fn set_light_config(&mut self, config: &crate::board_status::LightConfig) -> Result<(), Error> {
+        let temporary = companion(&self.light_path, ".next");
+        let mut file = io(File::create(&temporary))?;
+        io(file.write_all(&config.encode()?))?;
+        io(file.sync_all())?;
+        drop(file);
+        io(publish(&temporary, &self.light_path))
+    }
+
     fn supports_archive(&self) -> bool {
         true
     }

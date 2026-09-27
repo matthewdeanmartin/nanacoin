@@ -28,6 +28,7 @@ import { IS_DEMO } from '../demo/demo';
        <details name="site-menu-group" class="menu-group" routerLinkActive="current">
          <summary>Mail</summary><div class="menu-group__items">
            <a routerLink="/send" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Send Money</a>
+           <a routerLink="/gifts" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Gift Requests</a>
            <a routerLink="/messages" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Messages</a>
            <a routerLink="/offers" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Offers</a>
            <a routerLink="/invite" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Invitations</a>
@@ -92,7 +93,9 @@ import { IS_DEMO } from '../demo/demo';
      }
      <details name="site-menu-group" class="menu-group help-group" routerLinkActive="current">
        <summary>Help</summary><div class="menu-group__items">
-         <a routerLink="/about" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">About</a>
+         <a routerLink="/about" routerLinkActive="current" [routerLinkActiveOptions]="{ exact: true }" ariaCurrentWhenActive="page" (click)="close()">NanaCoin vs Crypto</a>
+         <a routerLink="/about/nickles" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">About Nana-nickles</a>
+         <a routerLink="/about/smbc" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">SMBC</a>
          <a routerLink="/docs" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Docs</a>
        </div>
      </details>

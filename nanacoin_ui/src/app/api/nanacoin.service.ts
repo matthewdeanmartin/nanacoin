@@ -16,7 +16,7 @@ import { digestSha256, hasNativeDigest } from './sha256';
 import { ApiBase } from './api-base';
 import { Money } from './money';
 import { normalizeTransactions } from './transaction-normalization';
-import { Lotto, LottoBook, LottoTerms, Loan, LoanBook, LoanOfferInput, ReformInput, ReformResult } from './models';
+import { CommerceAction, GiftRequest, Lotto, LottoBook, LottoTerms, Loan, LoanBook, LoanOfferInput, ReformInput, ReformResult } from './models';
 import {
   AccountHistory,
   AccountId,
@@ -628,6 +628,21 @@ export class NanacoinService {
     return this.post<Offer>(`/offers/${encodeURIComponent(id)}/withdraw`, {});
   }
 
+  // --- commerce (gift requests) ---
+
+  /** Every gift request on the board, open and closed. Artworks share this endpoint. */
+  giftRequests(): Promise<{ requests: GiftRequest[] }> {
+    return this.get<{ requests: GiftRequest[] }>('/commerce');
+  }
+
+  /**
+   * One commerce command. Contributions move money, so the caller keeps the
+   * key for a retry of the same gift, exactly like a transfer.
+   */
+  commerce(action: CommerceAction, idempotencyKey: string): Promise<{ sequence: number; replayed: boolean }> {
+    return this.post<{ sequence: number; replayed: boolean }>('/commerce/commands', action, idempotencyKey);
+  }
+
   /**
    * Recent server events. No token required - the commonest thing to diagnose
    * is a client that cannot authenticate.
@@ -707,6 +722,14 @@ export class NanacoinService {
         await new Promise((r) => setTimeout(r, e.retryAfterMs));
       }
     }
+  }
+
+  lightSettings(): Promise<{ phrases: [string, string, string] }> {
+    return this.get('/admin/light');
+  }
+
+  setLightSettings(phrases: [string, string, string]): Promise<{ phrases: [string, string, string] }> {
+    return this.post('/admin/light', { phrases });
   }
 
   private get<T>(path: string): Promise<T> {

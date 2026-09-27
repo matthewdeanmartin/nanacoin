@@ -107,8 +107,8 @@ export class App {
         // whenever this browser last did something.
         void this.session.checkForChanges();
         const path = event.urlAfterRedirects.split('?')[0];
-        this.aboutPage.set(path === '/about');
-        this.publicPage.set(['/about', '/docs', '/recipes', '/ledger', '/diagnostics', '/error-log', '/database', '/configuration'].includes(path));
+        this.aboutPage.set(path === '/about' || path.startsWith('/about/'));
+        this.publicPage.set(['/about', '/about/nickles', '/about/smbc', '/docs', '/recipes', '/ledger', '/diagnostics', '/error-log', '/database', '/configuration'].includes(path));
         requestAnimationFrame(() => document.getElementById('main-content')?.focus());
       }
     });

@@ -187,3 +187,261 @@ mod tests {
         assert_eq!(reset_color(3700, 4), None);
     }
 }
+
+pub const DEFAULT_PHRASES: [&str; 3] = [
+    "Katie, do you really need all of those drugs?",
+    "Only if you also have a lemon square!",
+    "Thank you for donating blood, Mr Thiel. Here's a shiny nana-nickel",
+];
+pub const DEFAULT_PHRASE: &str = DEFAULT_PHRASES[0];
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LightConfig {
+    pub phrases: [heapless::String<80>; 3],
+}
+impl Default for LightConfig {
+    fn default() -> Self {
+        Self {
+            phrases: DEFAULT_PHRASES.map(|s| s.try_into().expect("bounded default")),
+        }
+    }
+}
+impl LightConfig {
+    pub fn valid(&self) -> bool {
+        self.phrases.iter().all(|p| valid_phrase(p))
+    }
+    pub fn decode(bytes: &[u8]) -> Result<Self, crate::domain::Error> {
+        let (config, used): (Self, _) =
+            serde_json_core::from_slice(bytes).map_err(|_| crate::domain::Error::CorruptJournal)?;
+        if !config.valid() || bytes[used..].iter().any(|b| !b.is_ascii_whitespace()) {
+            return Err(crate::domain::Error::CorruptJournal);
+        }
+        Ok(config)
+    }
+    pub fn encode(&self) -> Result<heapless::Vec<u8, 512>, crate::domain::Error> {
+        serde_json_core::to_vec(self).map_err(|_| crate::domain::Error::Storage)
+    }
+}
+
+pub const MAX_PHRASE: usize = 80;
+pub const MORSE_UNIT_MS: u64 = 200; // Six words/minute (PARIS convention).
+
+fn morse(ch: u8) -> Option<&'static str> {
+    Some(match ch.to_ascii_uppercase() {
+        b'A' => ".-",
+        b'B' => "-...",
+        b'C' => "-.-.",
+        b'D' => "-..",
+        b'E' => ".",
+        b'F' => "..-.",
+        b'G' => "--.",
+        b'H' => "....",
+        b'I' => "..",
+        b'J' => ".---",
+        b'K' => "-.-",
+        b'L' => ".-..",
+        b'M' => "--",
+        b'N' => "-.",
+        b'O' => "---",
+        b'P' => ".--.",
+        b'Q' => "--.-",
+        b'R' => ".-.",
+        b'S' => "...",
+        b'T' => "-",
+        b'U' => "..-",
+        b'V' => "...-",
+        b'W' => ".--",
+        b'X' => "-..-",
+        b'Y' => "-.--",
+        b'Z' => "--..",
+        b'0' => "-----",
+        b'1' => ".----",
+        b'2' => "..---",
+        b'3' => "...--",
+        b'4' => "....-",
+        b'5' => ".....",
+        b'6' => "-....",
+        b'7' => "--...",
+        b'8' => "---..",
+        b'9' => "----.",
+        b'.' => ".-.-.-",
+        b',' => "--..--",
+        b'?' => "..--..",
+        b'!' => "-.-.--",
+        b'-' => "-....-",
+        b'/' => "-..-.",
+        b'\'' => ".----.",
+        b'"' => ".-..-.",
+        b'(' => "-.--.",
+        b')' => "-.--.-",
+        b':' => "---...",
+        b';' => "-.-.-.",
+        b'=' => "-...-",
+        b'+' => ".-.-.",
+        b'@' => ".--.-.",
+        b'_' => "..--.-",
+        _ => return None,
+    })
+}
+
+pub fn valid_phrase(phrase: &str) -> bool {
+    !phrase.trim().is_empty()
+        && phrase.len() <= MAX_PHRASE
+        && phrase.bytes().all(|c| c == b' ' || morse(c).is_some())
+}
+
+/// Precomputed only when the setting changes. No allocations or service lock
+/// during playback. Marks are cyan; three slower green flashes end each cycle.
+pub struct MorsePattern {
+    marks: Vec<(u16, u16)>,
+    message_end: u64,
+    cycle: u64,
+}
+impl MorsePattern {
+    pub fn new(phrase: &str) -> Self {
+        let phrase = if valid_phrase(phrase) {
+            phrase
+        } else {
+            DEFAULT_PHRASE
+        };
+        let mut marks = Vec::new();
+        let mut t = 0;
+        let mut first_word = true;
+        for word in phrase.split_whitespace() {
+            if !first_word {
+                t += 7;
+            }
+            first_word = false;
+            for (i, ch) in word.bytes().enumerate() {
+                if i > 0 {
+                    t += 3;
+                }
+                if let Some(code) = morse(ch) {
+                    for (j, mark) in code.bytes().enumerate() {
+                        if j > 0 {
+                            t += 1;
+                        }
+                        let end = t + if mark == b'.' { 1 } else { 3 };
+                        marks.push((t as u16, end as u16));
+                        t = end;
+                    }
+                }
+            }
+        }
+        Self {
+            marks,
+            message_end: t,
+            cycle: t + 7 + 3 * 6 + 7,
+        }
+    }
+    pub fn color(&self, elapsed_ms: u64) -> [u8; 3] {
+        let t = elapsed_ms / MORSE_UNIT_MS % self.cycle;
+        if t < self.message_end {
+            if self
+                .marks
+                .iter()
+                .any(|&(start, end)| t >= u64::from(start) && t < u64::from(end))
+            {
+                [0, 5, 8]
+            } else {
+                [0, 0, 0]
+            }
+        } else if t >= self.message_end + 7
+            && t < self.message_end + 7 + 18
+            && (t - self.message_end - 7) % 6 < 3
+        {
+            [0, 8, 0]
+        } else {
+            [0, 0, 0]
+        }
+    }
+}
+
+/// Each message includes its own three green flashes and pause.
+pub struct Rotation {
+    patterns: [MorsePattern; 3],
+    cycle_ms: u64,
+}
+impl Rotation {
+    pub fn new(config: &LightConfig) -> Self {
+        let patterns = std::array::from_fn(|i| MorsePattern::new(&config.phrases[i]));
+        let cycle_ms = patterns.iter().map(|p| p.cycle * MORSE_UNIT_MS).sum();
+        Self { patterns, cycle_ms }
+    }
+    pub fn color(&self, elapsed_ms: u64) -> [u8; 3] {
+        let mut t = elapsed_ms % self.cycle_ms;
+        for p in &self.patterns {
+            let length = p.cycle * MORSE_UNIT_MS;
+            if t < length {
+                return p.color(t);
+            }
+            t -= length;
+        }
+        [0, 0, 0]
+    }
+}
+
+#[cfg(test)]
+mod morse_tests {
+    use super::*;
+    #[test]
+    fn timing_and_three_healthy_flashes() {
+        let p = MorsePattern::new("E T");
+        assert_eq!(p.marks, vec![(0, 1), (8, 11)]);
+        assert_eq!(p.message_end, 11);
+        assert_eq!(p.color(0), [0, 5, 8]);
+        assert_eq!(p.color(200), [0, 0, 0]);
+        assert_eq!(p.color(1600), [0, 5, 8]);
+        let green: Vec<_> = (11..p.cycle)
+            .filter(|t| p.color(t * 200) == [0, 8, 0])
+            .collect();
+        assert_eq!(green, vec![18, 19, 20, 24, 25, 26, 30, 31, 32]);
+        assert_eq!(p.color(p.cycle * 200), p.color(0));
+        assert_eq!(
+            MorsePattern::new("AA").marks,
+            vec![(0, 1), (2, 5), (8, 9), (10, 13)]
+        );
+    }
+    #[test]
+    fn validation_and_default() {
+        assert!(LightConfig::default().valid());
+        let config = LightConfig::default();
+        assert_eq!(
+            LightConfig::decode(&config.encode().unwrap()).unwrap(),
+            config
+        );
+        assert!(valid_phrase(DEFAULT_PHRASE));
+        assert!(valid_phrase(&"A".repeat(MAX_PHRASE)));
+        for bad in ["", "   ", "hello 🌍", "a\nb", "a#b"] {
+            assert!(!valid_phrase(bad));
+        }
+        assert!(!valid_phrase(&"A".repeat(MAX_PHRASE + 1)));
+        assert_eq!(
+            MorsePattern::new("e t").marks,
+            MorsePattern::new("E T").marks
+        );
+        assert_eq!(morse(b'!'), Some("-.-.--"));
+    }
+}
+
+#[cfg(test)]
+mod rotation_tests {
+    use super::*;
+    #[test]
+    fn visits_three_distinct_messages_in_order_then_wraps() {
+        let config = LightConfig {
+            phrases: ["E", "T", "I"].map(|p| p.try_into().unwrap()),
+        };
+        let rotation = Rotation::new(&config);
+        let mut start = 0;
+        for p in &rotation.patterns {
+            for ms in (0..p.cycle * MORSE_UNIT_MS).step_by(100) {
+                assert_eq!(rotation.color(start + ms), p.color(ms));
+            }
+            start += p.cycle * MORSE_UNIT_MS;
+        }
+        assert_eq!(start, rotation.cycle_ms);
+        assert_eq!(rotation.color(start + 200), rotation.color(200));
+    }
+}

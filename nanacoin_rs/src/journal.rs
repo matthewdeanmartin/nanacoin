@@ -11,6 +11,12 @@ pub const MAX_RECORDS: usize = 4096;
 /// A successful append means durable storage. An error may be ambiguous;
 /// Service latches read-only until restart/replay instead of reusing the slot.
 pub trait Journal {
+    fn light_config(&self) -> Result<crate::board_status::LightConfig, Error> {
+        Ok(Default::default())
+    }
+    fn set_light_config(&mut self, _: &crate::board_status::LightConfig) -> Result<(), Error> {
+        Err(Error::Storage)
+    }
     fn supports_archive(&self) -> bool {
         false
     }
@@ -63,6 +69,7 @@ pub trait Journal {
 }
 
 pub struct Service<J> {
+    pub light_config: crate::board_status::LightConfig,
     // Allocate fixed state once; returning/moving Service must not copy a
     // growing inline state through the small firmware startup stack.
     pub(crate) state: Box<State>,
@@ -93,6 +100,7 @@ impl<J: Journal> Service<J> {
 
     pub fn open_with_clock(mut journal: J, clock: fn() -> u64) -> Result<Self, Error> {
         let https_only = journal.https_only();
+        let light_config = journal.light_config()?;
         let mut state = Box::new(State::default());
         let mut frame = [0; FRAME_SIZE];
         let mut records = 0;
@@ -123,6 +131,7 @@ impl<J: Journal> Service<J> {
         }
         state.check_invariants()?;
         Ok(Self {
+            light_config,
             state,
             auth: crate::auth::Auth::default(),
             journal,
@@ -136,6 +145,27 @@ impl<J: Journal> Service<J> {
         })
     }
 
+    pub fn set_light_config(
+        &mut self,
+        actor: MemberId,
+        mut config: crate::board_status::LightConfig,
+    ) -> Result<(), Error> {
+        self.state.admin(actor)?;
+        if self.storage_failed {
+            return Err(Error::Storage);
+        }
+        for p in &mut config.phrases {
+            *p = p.trim().try_into().map_err(|_| Error::InvalidInput)?;
+        }
+        if !config.valid() {
+            return Err(Error::InvalidInput);
+        }
+        if config != self.light_config {
+            self.journal.set_light_config(&config)?;
+            self.light_config = config;
+        }
+        Ok(())
+    }
     pub fn state(&self) -> &State {
         &self.state
     }

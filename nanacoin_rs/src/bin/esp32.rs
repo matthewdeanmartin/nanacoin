@@ -105,6 +105,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let service = Service::open(journal).map_err(|e| format!("ledger startup: {e:?}"))?;
     // The mutex covers API/domain work, including JSON encoding; all network
     // I/O and TLS handshakes happen outside it.
+    status_led::configure(&service.light_config);
     let shared = Arc::new(Mutex::new(service));
     let diagnostics = Arc::new(Diagnostics::default());
     let mut wifi = BlockingWifi::wrap(
@@ -224,6 +225,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     );
     loop {
         std::thread::sleep(Duration::from_secs(10));
+        if let Ok(service) = shared.try_lock() {
+            status_led::configure(&service.light_config);
+        }
         if !wifi.is_connected()? {
             incidents::record(nanacoin::incidents::Kind::Reconnect, 0);
             log::warn!("Wi-Fi disconnected; reconnecting");

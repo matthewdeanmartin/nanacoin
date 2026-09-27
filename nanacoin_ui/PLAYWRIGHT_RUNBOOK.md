@@ -32,6 +32,10 @@ uv run --with playwright==1.63.0 playwright install chromium
 uv run --with playwright==1.63.0 python scripts/showcase-check.py
 ```
 
+From Git Bash, prefix the build with `MSYS_NO_PATHCONV=1`. Otherwise Git Bash
+rewrites `/nanacoin/` to `C:/Program Files/Git/nanacoin/`, the app never loads,
+and the first heading assertion fails.
+
 For a closer comparison when Edge and Chromium behave differently, set
 `$env:SHOWCASE_BROWSER = 'chromium'` before the last command. Install the
 matching browser with `uv run --with playwright==1.63.0 playwright install chromium`.
