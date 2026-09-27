@@ -46,6 +46,14 @@ export class DemoLending {
       summary: { outstanding: String(outstanding), overdue: String(overdue), active: active.length, weighted_annual_percent: outstanding ? weighted / Number(outstanding) : null },
       decimals, money_epoch: epoch, sequence };
   }
+  /** Like the board's `?member=`: funded loans only, with the note kept for the parties and Nana. */
+  memberBook(viewer: User, subject: User, now: number): Loan[] {
+    return this.loans.filter(l => (l.lender === subject.account || l.borrower === subject.account) && (l.status === 'ACTIVE' || l.status === 'PAID'))
+      .slice().reverse().map(l => {
+        const v = this.view(l, now);
+        return viewer.role === 'nana' || viewer.account === l.lender || viewer.account === l.borrower ? v : { ...v, memo: '' };
+      });
+  }
   offer(actor: User, input: LoanOfferInput, now: number): Loan {
     this.active(actor.account); const borrower = this.active(input.borrower);
     if (actor.account === input.borrower || !Number.isSafeInteger(input.amount) || input.amount <= 0 || input.amount > MAX_MONEY

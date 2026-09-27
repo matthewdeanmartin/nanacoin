@@ -434,3 +434,11 @@ fn command_and_state_serialization_do_not_allocate_after_startup() {
         api::RESPONSE_LIMIT
     );
 }
+
+#[test]
+fn service_moves_do_not_copy_the_large_auth_arrays_onto_startup_stacks() {
+    // Firmware startup returns Service, wraps it in Mutex, then moves it into
+    // Arc. Inline auth arrays previously multiplied these stack temporaries
+    // enough to exceed the 64 KiB ESP main task stack before Wi-Fi started.
+    assert!(core::mem::size_of::<nanacoin::journal::Service<Preallocated>>() < 1024);
+}

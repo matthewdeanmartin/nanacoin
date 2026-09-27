@@ -8,6 +8,7 @@ import { Session, reloadOnLedgerChange } from '../api/session';
 import { Toasts } from '../ui/toasts';
 import { Dialogs } from '../ui/dialog';
 import { ArtPicture } from '../art/art-picture';
+import { TrustedArtHosts } from '../art/trusted-hosts';
 import { digestOf, sha256Hex } from '../art/art-media';
 import { memberNumber, nameOf, userIdOf } from '../people/people';
 
@@ -98,6 +99,15 @@ export function mintProblem(title: string, license: string, locator: string, sha
             @if (book.hasValue()) { <p class="muted">{{ view() === 'mine' ? 'You do not own any art yet.' : view() === 'sale' ? 'Nothing is for sale right now.' : 'Nobody has made any art yet.' }}</p> }
           }
         </div>
+        @if (trusted.hosts().length) {
+          <section class="panel art-trusted" aria-labelledby="trusted-heading">
+            <h2 id="trusted-heading">Sites you show pictures from</h2>
+            <p class="muted small">Remembered in this browser only. Pictures from other sites wait until you ask.</p>
+            <ul>
+              @for (h of trusted.hosts(); track h) { <li>{{ h }} <button type="button" class="btn btn--quiet btn--small" (click)="trusted.forget(h)">Stop showing</button></li> }
+            </ul>
+          </section>
+        }
       }
     }`,
   styles: `.art-actions,.art-inline{display:flex;flex-direction:column;gap:.4rem;margin-top:auto}.art-inline label{font-size:.875rem}.art-digest{display:flex;flex-wrap:wrap;gap:.5rem}.art-file{position:relative;overflow:hidden}.art-file input{position:absolute;inset:0;opacity:0;cursor:pointer}.art-preview{max-width:10rem;border:1px solid var(--line);border-radius:var(--radius)}`,
@@ -108,6 +118,7 @@ export class ArtPage {
   private readonly money = inject(Money);
   private readonly toasts = inject(Toasts);
   private readonly dialogs = inject(Dialogs);
+  protected readonly trusted = inject(TrustedArtHosts);
   protected readonly userIdOf = userIdOf;
   protected readonly number = memberNumber;
 

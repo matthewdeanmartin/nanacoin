@@ -418,3 +418,63 @@ fn quote_permissions_limits_funds_deadlines_and_recycling() {
         Err(Error::Unavailable)
     );
 }
+
+#[test]
+fn members_write_their_own_public_bio() {
+    let (mut s, m) = house();
+    let alice = common::login_as(&mut s, "alice", "1234");
+    let (status, me) = call(
+        &mut s,
+        "PATCH",
+        "/api/v1/users/user-2",
+        &alice,
+        "",
+        json!({"bio":"I bake lemon bars"}),
+    );
+    assert_eq!(status, 200, "{me}");
+    assert_eq!(me["bio"], "I bake lemon bars");
+    assert_eq!(
+        call(
+            &mut s,
+            "PATCH",
+            "/api/v1/users/user-3",
+            &alice,
+            "",
+            json!({"bio":"hacked"})
+        )
+        .0,
+        403
+    );
+    assert_eq!(
+        call(
+            &mut s,
+            "PATCH",
+            "/api/v1/users/user-2",
+            &alice,
+            "",
+            json!({"bio":"a\u{7}b"})
+        )
+        .0,
+        400
+    );
+    assert_eq!(
+        call(
+            &mut s,
+            "PATCH",
+            "/api/v1/users/user-2",
+            &alice,
+            "",
+            json!({"bio":"x".repeat(97)})
+        )
+        .0,
+        400
+    );
+    let users = call(&mut s, "GET", "/api/v1/users", &alice, "", json!({})).1;
+    assert_eq!(users["users"][1]["bio"], "I bake lemon bars");
+    assert!(users["users"][2].get("bio").is_none());
+    let replayed = Service::open_with_clock(m, now).unwrap();
+    assert_eq!(
+        replayed.state().member(MemberId(2)).unwrap().bio.as_str(),
+        "I bake lemon bars"
+    );
+}

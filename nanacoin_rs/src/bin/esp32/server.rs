@@ -26,7 +26,7 @@ const TLS_CLIENTS: usize = 8;
 const HTTP_CLIENTS: usize = 4;
 const HANDSHAKES: usize = 2;
 const IDLE: Duration = Duration::from_secs(60);
-const IO_DEADLINE: Duration = Duration::from_secs(5);
+const REQUEST_DEADLINE: Duration = Duration::from_secs(5);
 // Pause dispatch before another potentially 512 KiB response is constructed.
 // At most this budget plus one maximum reply is retained, even with slow peers.
 const RESPONSE_BUDGET: usize = 2 * 1024 * 1024;
@@ -222,14 +222,9 @@ impl Client {
         }
         if self
             .request_started
-            .is_some_and(|t| t.elapsed() > IO_DEADLINE)
-            || self.send_started.is_some_and(|t| t.elapsed() > IO_DEADLINE)
+            .is_some_and(|t| t.elapsed() > REQUEST_DEADLINE)
         {
-            incident(
-                Kind::RequestTimeout,
-                if self.send_started.is_some() { 1 } else { 0 },
-                IO_DEADLINE.as_millis() as u32,
-            );
+            incident(Kind::RequestTimeout, 0, REQUEST_DEADLINE.as_millis() as u32);
             return false;
         }
         if self.response.is_none() {
@@ -238,6 +233,9 @@ impl Client {
             }
             // Process an already buffered pipelined request before touching the
             // socket again (the peer may have half-closed after sending it).
+            if self.used > 0 {
+                self.request_started.get_or_insert_with(Instant::now);
+            }
             let mut parsed = http::parse(&self.input[..self.used]);
             if matches!(parsed, Ok(None)) {
                 match self.socket.read(&mut self.input[self.used..]) {
@@ -263,11 +261,9 @@ impl Client {
                     self.response = Some(respond(ctx, &request, self.socket.tls.is_some(), output));
                     self.input.copy_within(consumed..self.used, 0);
                     self.used -= consumed;
-                    self.request_started = if self.used == 0 {
-                        None
-                    } else {
-                        Some(Instant::now())
-                    };
+                    // A pipelined request waits behind this response. Its
+                    // receive deadline starts when we can read it again.
+                    self.request_started = None;
                     self.send_started = Some(Instant::now());
                 }
                 Ok(None) if self.used < self.input.len() => {}
@@ -287,23 +283,27 @@ impl Client {
             }
         }
         if let Some(response) = &mut self.response {
-            if !response.next().is_empty() {
-                match self.socket.write(response.next()) {
-                    Ok(0) => return false,
-                    Ok(n) => {
-                        response.advance(n);
-                        self.active = Instant::now();
-                    }
-                    Err(e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                    Err(e) => {
-                        if self.socket.tls.is_none() {
-                            incident(Kind::SocketError, e.raw_os_error().unwrap_or(0), 0);
-                        }
-                        return false;
-                    }
+            let finished = match response.send(&mut self.socket, Instant::now()) {
+                Ok(finished) => {
+                    // Socket activity only matters for idle keep-alive expiry;
+                    // active responses have their own progress deadline.
+                    self.active = Instant::now();
+                    finished
                 }
-            }
-            if response.next().is_empty() {
+                Err(e) => {
+                    if e.kind() == io::ErrorKind::TimedOut {
+                        incident(
+                            Kind::RequestTimeout,
+                            1,
+                            http::WRITE_STALL_TIMEOUT.as_millis() as u32,
+                        );
+                    } else if self.socket.tls.is_none() {
+                        incident(Kind::SocketError, e.raw_os_error().unwrap_or(0), 0);
+                    }
+                    return false;
+                }
+            };
+            if finished {
                 if let Some(started) = self.send_started {
                     if started.elapsed().as_millis() >= 500 {
                         incident(Kind::SlowRequest, 0, started.elapsed().as_millis() as u32);

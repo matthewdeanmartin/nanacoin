@@ -73,7 +73,9 @@ pub struct Service<J> {
     // Allocate fixed state once; returning/moving Service must not copy a
     // growing inline state through the small firmware startup stack.
     pub(crate) state: Box<State>,
-    pub(crate) auth: crate::auth::Auth,
+    // Like State, auth contains large fixed arrays. Keep Service small when
+    // it is returned/moved during firmware startup.
+    pub(crate) auth: Box<crate::auth::Auth>,
     pub(crate) journal: J,
     pub(crate) page_rows: std::vec::Vec<crate::domain::Transaction>,
     pub(crate) audit_rows: std::vec::Vec<crate::ledger::Audit>,
@@ -133,7 +135,7 @@ impl<J: Journal> Service<J> {
         Ok(Self {
             light_config,
             state,
-            auth: crate::auth::Auth::default(),
+            auth: Box::default(),
             journal,
             page_rows: std::vec::Vec::with_capacity(100),
             audit_rows: std::vec::Vec::with_capacity(16),
@@ -213,6 +215,7 @@ impl<J: Journal> Service<J> {
 
     pub(crate) fn diagnostic_model_bytes(&self) -> usize {
         core::mem::size_of::<Self>()
+            + core::mem::size_of::<crate::auth::Auth>()
             + core::mem::size_of::<State>()
             + self.state.history.capacity() * core::mem::size_of::<crate::domain::Transaction>()
             + self.state.fulfillments.capacity()

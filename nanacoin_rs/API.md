@@ -46,18 +46,20 @@ IDs use user-1, account-1, listing-5 and tx-6 forms. Roles are nana/user and mem
 |---|---|
 | GET `/me`, `/users` | Current user and members |
 | POST `/users` | Nana creates member with username, display_name, password, optional role/grant/mastodon_id |
-| PATCH `/users/user-N` | Name/password/Mastodon ID; Nana can also change role/status or other members |
+| PATCH `/users/user-N` | Name/password/Mastodon ID/`bio` (public profile line, 96 UTF-8 bytes, no control characters; only the member themselves); Nana can also change role/status or other members |
 | GET `/transactions`, `/transactions/tx-N` | Recent ledger and individual transaction |
 | GET `/accounts/account-N`, `/accounts/account-N/transactions` | Any active member may read any account's balance and money movements (profiles); zero-value messages appear only to their sender and recipient; `account-N-usd` selects dollars |
 | POST `/transfers` | Transfer with to, amount, memo |
 | POST `/admin/issue`, `/admin/retire` | Nana issuance/retirement |
 | POST `/transactions/tx-N/reverse` | Nana reversal with reason |
-| GET/POST `/listings` | Query/create listings |
+| GET/POST `/listings` | Query/create listings. Nana alone may create `kind: "good_deed"` with `side: "BUY"`: a standing good deed. Members claim it with an offer; accepting issues the offer amount as new money (ISSUE transaction, no fulfillment TODO) and the listing stays ACTIVE. Undoing an accepted claim retires the reward, even after the deed is cancelled. Direct purchase of a good deed is 403 |
 | GET `/listings/listing-N` | Read one listing |
 | PATCH `/listings/listing-N` | Edit title, description, price |
 | POST `/listings/listing-N/purchase`, `/listings/listing-N/cancel` | Purchase/cancel |
 | GET/PATCH `/admin/config` | household_name, initial_grant, currency, offer_settles_after (seconds; zero restores 48 hours) |
 | GET `/offers`, `/offers/offer-N` | Visible offers, newest first, or one visible offer |
+| GET `/loans?member=user-N` | That member's funded (ACTIVE or PAID) loans as lender or borrower, for profiles; `memo` is empty unless the reader is a party or Nana |
+| GET `/lottos?member=user-N` | All draws, with `my_tickets` counting that member's tickets |
 | GET `/offers?member=user-N` | That member's OPEN offers, for their profile; `message` is empty unless the reader is the offerer, the listing owner or Nana |
 | POST `/listings/listing-N/offers` | Propose amount and optional message (140 UTF-8 bytes); returns 201 |
 | POST `/offers/offer-N/accept` | Owner accepts; requires Idempotency-Key; returns 201 |

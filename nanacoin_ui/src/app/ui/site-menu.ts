@@ -21,6 +21,7 @@ import { IS_DEMO } from '../demo/demo';
            <a routerLink="/people" routerLinkActive="current" [routerLinkActiveOptions]="{ exact: true }" ariaCurrentWhenActive="page" (click)="close()">Demographics</a>
            @if (session.isNana()) {
              <a routerLink="/nana" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Household</a>
+             <a routerLink="/good-deeds" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Good Deeds</a>
            }
          </div>
        </details>
@@ -96,6 +97,7 @@ import { IS_DEMO } from '../demo/demo';
          <a routerLink="/about" routerLinkActive="current" [routerLinkActiveOptions]="{ exact: true }" ariaCurrentWhenActive="page" (click)="close()">NanaCoin vs Crypto</a>
          <a routerLink="/about/nickles" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">About Nana-nickles</a>
          <a routerLink="/about/smbc" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">SMBC</a>
+         <a routerLink="/recipes" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Lemon Bars</a>
          <a routerLink="/docs" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Docs</a>
        </div>
      </details>

@@ -87,6 +87,8 @@ pub(crate) struct User<'a> {
     created_at: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     mastodon_id: Option<&'a str>,
+    #[serde(skip_serializing_if = "str::is_empty")]
+    bio: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
     balance: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -106,6 +108,7 @@ pub(crate) fn user(member: &Member) -> User<'_> {
         account: account(member.id),
         created_at: member.created_at,
         mastodon_id: (!member.mastodon_id.is_empty()).then_some(member.mastodon_id.as_str()),
+        bio: &member.bio,
         balance: Some(member.balance),
         usd_cents: Some(member.usd_cents),
     }
@@ -195,10 +198,11 @@ fn transaction<'a>(state: &'a State, tx: &'a Transaction) -> TransactionView<'a>
             "MESSAGE"
         } else if tx.reverses.is_some() {
             "REVERSAL"
+        } else if tx.from == MemberId(0) {
+            // Includes good-deed rewards, which settle a listing with new money.
+            "ISSUE"
         } else if tx.listing.is_some() {
             "PURCHASE"
-        } else if tx.from == MemberId(0) {
-            "ISSUE"
         } else if tx.to == MemberId(0) {
             "RETIRE"
         } else {
@@ -424,10 +428,10 @@ pub(crate) fn route<J: Journal>(
     if let Some(result) = fulfillment::route(s, actor, method, path, key, body, output) {
         return result;
     }
-    if let Some(result) = lotto::route(s, actor, method, path, key, body, output) {
+    if let Some(result) = lotto::route(s, actor, method, path, query, key, body, output) {
         return result;
     }
-    if let Some(result) = loans::route(s, actor, method, path, key, body, output) {
+    if let Some(result) = loans::route(s, actor, method, path, query, key, body, output) {
         return result;
     }
     if let Some(result) = offers::route(s, actor, method, path, query, key, body, output) {
@@ -663,6 +667,7 @@ pub(crate) fn route<J: Journal>(
             role: Option<Role>,
             status: Option<String<16>>,
             mastodon_id: Option<MastodonId>,
+            bio: Option<Memo>,
         }
         let member = member_id(&path[14..], "user-")?;
         let req: Update = parse(body)?;
@@ -695,6 +700,7 @@ pub(crate) fn route<J: Journal>(
                 role: req.role,
                 disabled,
                 mastodon_id: req.mastodon_id,
+                bio: req.bio,
             },
         )?;
         return serialize(&user(s.state.member(member)?), output);

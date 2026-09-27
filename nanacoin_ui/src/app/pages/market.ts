@@ -2,7 +2,7 @@ import { Money, MoneyPipe } from '../api/money';
 import { inject as moneyInject } from '@angular/core';
 // The marketplace: what is for sale, and the form for offering something.
 
-import { Component, inject, resource, signal } from '@angular/core';
+import { Component, computed, inject, resource, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 
@@ -13,10 +13,13 @@ import { Dialogs } from '../ui/dialog';
 import { Toasts } from '../ui/toasts';
 import { CATEGORIES, Category, ITEMS } from '../catalog/catalog';
 import { catalogEconomics, formatQuantity, validQuantity } from '../catalog/economics';
+import { isGoodDeed } from '../nana/good-deeds';
+import { ArtPicture } from '../art/art-picture';
+import { nameOf } from '../people/people';
 
 @Component({
   selector: 'app-market',
-  imports: [MoneyPipe, FormsModule, RouterLink],
+  imports: [MoneyPipe, FormsModule, RouterLink, ArtPicture],
   templateUrl: './market.html',
 })
 export class MarketPage {
@@ -68,6 +71,44 @@ export class MarketPage {
   constructor() {
     const repeated = history.state?.['repeat'] as Listing | undefined;
     if (this.listingPage && repeated?.id) this.prefill(repeated);
+  }
+
+  /** Nana's standing good deeds, shown apart from ordinary buying and selling. */
+  protected readonly goodDeeds = computed(() => this.session.forSale().filter(isGoodDeed));
+  protected readonly market = computed(() => this.session.forSale().filter((l) => !isGoodDeed(l)));
+  /** Art editions on sale; buying happens in the gallery, where ownership changes hands with the coins. */
+  private readonly commerce = resource({
+    params: () => (this.listingPage ? undefined : this.session.me()?.account),
+    loader: () => this.api.commerceBook(),
+  });
+  protected readonly artForSale = computed(() => (this.commerce.value()?.artworks ?? []).filter((a) => a.price !== null));
+  protected artist(member: number): string { return nameOf(this.session.household(), member); }
+
+  /**
+   * Claims a good deed: an offer at Nana's reward, with a note saying what was
+   * done. It goes through the ordinary offer process; the coins are new money
+   * issued only when Nana accepts.
+   */
+  protected async claim(l: Listing): Promise<void> {
+    if (this.offering()) return;
+    try {
+      const open = (await this.api.offers()).offers.some((o) => o.listing === l.id && o.offerer === this.session.me()?.account && o.status === 'OPEN');
+      if (open) { this.toasts.error('Nana has not answered your last claim for this deed yet.'); return; }
+    } catch (e) { this.toasts.fromError(e); return; }
+    const note = await this.dialogs.prompt({
+      title: `I did this: "${l.title}"`,
+      message: `Tell Nana what you did. If she accepts, she issues ${this.money.format(l.price)} new NC to you.`,
+      placeholder: 'Helped Ivy with fractions on Tuesday',
+      confirmLabel: 'Send to Nana',
+      required: true,
+    });
+    if (note === null) return;
+    this.offering.set(l.id);
+    try {
+      await this.api.makeOffer(l.id, l.price, note, newIdempotencyKey());
+      this.toasts.ok('Sent to Nana. The reward arrives when she accepts.');
+    } catch (e) { this.toasts.fromError(e); }
+    finally { this.offering.set(null); }
   }
 
   protected mine(l: Listing): boolean {

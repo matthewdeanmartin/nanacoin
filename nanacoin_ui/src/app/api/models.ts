@@ -56,6 +56,8 @@ export interface User {
   created_at: number;
   /** Public household handle; OAuth credentials never leave this browser. */
   mastodon_id?: string;
+  /** A short public line the member writes about themselves (96 bytes). */
+  bio?: string;
   /** Present only where the caller is entitled to see it. */
   balance?: number;
 
@@ -127,7 +129,7 @@ export interface Listing {
   buyer?: AccountId;
   buyer_name?: string;
   sold_tx?: TransactionId;
-  /** '' or 'item' or 'service' or 'currency'. */
+  /** '' or 'item' or 'service' or 'currency', or 'good_deed' for Nana's standing new-money rewards. */
   kind?: string;
   /** For a currency listing: the code, e.g. 'USD'. */
   currency?: string;

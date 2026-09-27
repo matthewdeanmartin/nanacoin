@@ -136,6 +136,9 @@ pub enum Command {
         disabled: Option<bool>,
         #[serde(default)]
         mastodon_id: Option<MastodonId>,
+        /// A short public profile line the member writes about themselves.
+        #[serde(default)]
+        bio: Option<Memo>,
     },
     /// Local-only upgrade of an existing token account; preserves its identity.
     MigrateMember {
@@ -328,6 +331,9 @@ pub struct Member {
     pub mastodon_id: MastodonId,
     pub role: Role,
     pub disabled: bool,
+    /// Public profile text; every member may read it.
+    #[serde(default)]
+    pub bio: Memo,
     #[serde(skip)]
     pub(crate) password: Option<PasswordVerifier>,
     pub balance: i64,
@@ -345,6 +351,8 @@ pub struct Member {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ListingDetails {
+    /// "", item, service, currency, or good_deed (Nana's standing BUY
+    /// listing that rewards members with newly issued coins).
     #[serde(default)]
     pub kind: String<16>,
     #[serde(default)]
@@ -370,6 +378,16 @@ pub struct Listing {
     pub created_at: u64,
     pub updated_at: u64,
 }
+
+impl Listing {
+    /// A good deed stays open after each accepted offer, and its reward is
+    /// new money from issuance rather than Nana's own balance.
+    pub fn is_good_deed(&self) -> bool {
+        self.details.kind == GOOD_DEED
+    }
+}
+
+pub const GOOD_DEED: &str = "good_deed";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Transaction {
@@ -727,8 +745,15 @@ impl State {
                 role,
                 disabled,
                 mastodon_id,
+                bio,
             } => {
                 let target = self.member(*member)?;
+                if bio
+                    .as_ref()
+                    .is_some_and(|b| b.chars().any(char::is_control))
+                {
+                    return Err(Error::InvalidInput);
+                }
                 if target.password.is_none() && password.is_some() {
                     return Err(Error::InvalidInput);
                 }
@@ -841,10 +866,19 @@ impl State {
                 title,
                 price,
                 details,
+                side,
                 ..
             } => {
                 if let Some(d) = details {
-                    if !["", "item", "service", "currency"].contains(&d.kind.as_str())
+                    if d.kind == GOOD_DEED
+                        && (self.member(actor)?.role != Role::Nana
+                            || *side != Side::Buy
+                            || !d.currency.is_empty()
+                            || d.minor_units != 0)
+                    {
+                        return Err(Error::Forbidden);
+                    }
+                    if !["", "item", "service", "currency", GOOD_DEED].contains(&d.kind.as_str())
                         || d.currency.chars().any(char::is_control)
                         || d.minor_units.unsigned_abs() > MAX_SEQUENCE
                         || (d.kind == "currency" && (d.currency.is_empty() || d.minor_units <= 0))
@@ -945,6 +979,10 @@ impl State {
                 let l = self.listing(*listing)?;
                 if l.status != ListingStatus::Active {
                     return Err(Error::Conflict);
+                }
+                // A good deed is claimed by offer; Nana decides whether it was done.
+                if l.is_good_deed() {
+                    return Err(Error::Forbidden);
                 }
                 let (from, to) = match l.side {
                     Side::Sell => (actor, l.owner),
@@ -1177,8 +1215,12 @@ impl State {
                 role,
                 disabled,
                 mastodon_id,
+                bio,
             } => {
                 let m = self.members.iter_mut().find(|m| m.id == *member).unwrap();
+                if let Some(value) = bio {
+                    m.bio = value.clone();
+                }
                 if let Some(name) = display_name {
                     m.name = name.clone();
                 }
@@ -1223,6 +1265,7 @@ impl State {
                             Role::User
                         },
                         disabled: false,
+                        bio: Memo::new(),
                         password: None,
                         balance: 0,
                         usd_cents: 0,
@@ -1639,6 +1682,7 @@ impl State {
                 name: display_name.clone(),
                 role,
                 disabled: false,
+                bio: Memo::new(),
                 password: Some(password.clone()),
                 token_hash: [0; 32],
                 balance: 0,

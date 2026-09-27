@@ -1,12 +1,33 @@
 <h1>{{ listingPage ? 'Buy, sell, hire' : 'Market' }}</h1>
 
+@if (goodDeeds().length) {
+<section class="good-deeds" aria-labelledby="good-deeds-heading">
+  <h2 id="good-deeds-heading">Good deeds from Nana</h2>
+  <p class="muted small">Nana rewards these with brand-new coins. Do one, tell her about it, and the reward is yours when she accepts. You can do them again.</p>
+  <div class="cards">
+    @for (l of goodDeeds(); track l.id) {
+      <article class="card" [attr.aria-label]="l.title">
+        <h3>{{ l.title }}</h3>
+        @if (l.description) { <p class="card__desc">{{ l.description }}</p> }
+        <p class="card__meta"><strong>{{ l.price | nc }} NC</strong> · new money from Nana</p>
+        @if (mine(l)) {
+          <a class="btn btn--quiet" routerLink="/good-deeds">Manage good deeds</a>
+        } @else {
+          <button class="btn" (click)="claim(l)" [disabled]="offering() !== null">{{ offering() === l.id ? 'Sending…' : 'I did this' }}</button>
+        }
+      </article>
+    }
+  </div>
+</section>
+}
+
 @if (!listingPage) {
 <p><a class="btn" routerLink="/list">Buy, sell, hire</a></p>
-@if (session.forSale().length === 0) {
+@if (market().length === 0) {
   <p class="muted">Nothing for sale right now.</p>
 } @else {
   <div class="cards">
-    @for (l of session.forSale(); track l.id) {
+    @for (l of market(); track l.id) {
       <article class="card" data-keyboard-row tabindex="-1">
         <h3>{{ l.title }}</h3>
 
@@ -70,6 +91,22 @@
     }
   </div>
 }
+}
+
+@if (!listingPage && artForSale().length) {
+<section class="market-art" aria-labelledby="market-art-heading">
+  <h2 id="market-art-heading">Digital art for sale</h2>
+  <div class="cards">
+    @for (a of artForSale(); track a.id) {
+      <article class="card" [attr.aria-label]="a.title">
+        <app-art-picture [art]="a" [controls]="false" />
+        <h3>{{ a.title }}</h3>
+        <p class="card__meta"><strong>{{ a.price | nc }} NC</strong> · {{ artist(a.owner) }}</p>
+        <a class="btn btn--quiet" routerLink="/art">See it in the gallery</a>
+      </article>
+    }
+  </div>
+</section>
 }
 
 @if (listingPage) {

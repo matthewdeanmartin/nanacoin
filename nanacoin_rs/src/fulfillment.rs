@@ -132,6 +132,8 @@ impl State {
             || tx.lotto.is_some()
             || tx.quote.is_some()
             || tx.meta.art.is_some()
+            // New money (a good-deed reward) is granted after the deed, not owed.
+            || tx.from == MemberId(0)
         {
             return;
         }

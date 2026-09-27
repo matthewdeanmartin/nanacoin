@@ -188,9 +188,10 @@ function handle(req: HttpRequest<unknown>): unknown {
     if (me.role !== 'nana' || me.status !== 'ACTIVE') throw new DemoError(403,'forbidden','Only Nana can resolve demo lottos.');
     return {resolved:demoLedger.lotto.resolveNow(me,Math.floor(Date.now()/1000))};
   }
-  if (path === '/lottos' && method === 'GET') return {lottos:demoLedger.lotto.book(me),decimals:demoLedger.decimals,money_epoch:demoLedger.moneyEpoch};
+  if (path === '/lottos' && method === 'GET') return {lottos:demoLedger.lotto.book(query.has('member') ? subject(query.get('member')!) : me),decimals:demoLedger.decimals,money_epoch:demoLedger.moneyEpoch};
   if (path === '/lottos' && method === 'POST') return demoLedger.lotto.create(me,req.body as LottoTerms,Math.floor(Date.now()/1000));
   if (/^\/lottos\/\d+\/tickets$/.test(path) && method === 'POST') return demoLedger.lotto.buy(me,Number(path.split('/')[2]),Number(body['count']),Math.floor(Date.now()/1000));
+  if (path === '/loans' && method === 'GET' && query.has('member')) return {...demoLedger.lending.book(me,demoLedger.decimals,demoLedger.moneyEpoch,demoLedger.revision,Math.floor(Date.now()/1000)),loans:demoLedger.lending.memberBook(me,subject(query.get('member')!),Math.floor(Date.now()/1000))};
   if (path === '/loans' && method === 'GET') return demoLedger.lending.book(me,demoLedger.decimals,demoLedger.moneyEpoch,demoLedger.revision,Math.floor(Date.now()/1000));
   if (path === '/loans' && method === 'POST') return demoLedger.lending.offer(me,req.body as LoanOfferInput,Math.floor(Date.now()/1000));
   if (path.startsWith('/loans/') && method === 'POST') {
@@ -224,6 +225,7 @@ function handle(req: HttpRequest<unknown>): unknown {
   }
 
   if (path.startsWith('/users/') && method === 'PATCH') {
+    if (typeof body['bio'] === 'string') return demoLedger.setUserBio(me, lastSegment(path), body['bio']);
     if (typeof body['password'] === 'string') {
       return demoLedger.setUserPassword(me, lastSegment(path), body['password']);
     }
@@ -235,7 +237,7 @@ function handle(req: HttpRequest<unknown>): unknown {
     if (rest.endsWith('/transactions')) {
       const account = rest.slice(0, -'/transactions'.length);
       // Like the board: any member may read another member's money movements; messages stay private.
-      const result = demoLedger.history(account, Number(query.get('limit') ?? 50));
+      const result = demoLedger.history(account, Number(query.get('limit') ?? 50), query.get('cursor'));
       return { ...result, transactions: result.transactions.filter(t=>t.kind !== 'MESSAGE' || t.postings.some(p=>p.account===me.account)) };
     }
   }
@@ -380,6 +382,12 @@ function current(req: HttpRequest<unknown>) {
   const userId = token ? sessions.get(token) : undefined;
   const user = userId ? demoLedger.userById(userId) : undefined;
   if (!user) throw new DemoError(401, 'no_session', 'Please log in again.');
+  return user;
+}
+
+function subject(id: string) {
+  const user = demoLedger.userById(id);
+  if (!user) throw new DemoError(404, 'not_found', 'No such member.');
   return user;
 }
 

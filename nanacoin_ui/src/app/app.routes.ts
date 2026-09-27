@@ -14,6 +14,7 @@ export const routes: Routes = [
   { path: 'configuration', loadComponent: () => import('./pages/configuration').then(m => m.ConfigurationPage), title: 'Configuration — NanaCoin' },
   { path: 'people', loadComponent: () => import('./pages/demographics').then(m => m.DemographicsPage), title: 'Demographics — NanaCoin' },
   { path: 'people/:id', loadComponent: () => import('./pages/profile').then(m => m.ProfilePage), title: 'Profile — NanaCoin' },
+  { path: 'good-deeds', loadComponent: () => import('./pages/good-deeds').then(m => m.GoodDeedsPage), title: 'Good Deeds — NanaCoin' },
   { path: 'art', loadComponent: () => import('./pages/art').then(m => m.ArtPage), title: 'Digital Art — NanaCoin' },
   { path: 'gifts', loadComponent: () => import('./pages/gift-requests').then(m => m.GiftRequestsPage), title: 'Gift Requests — NanaCoin' },
   { path: 'messages', loadComponent: () => import('./pages/messages').then(m => m.MessagesPage), title: 'Messages — NanaCoin' },

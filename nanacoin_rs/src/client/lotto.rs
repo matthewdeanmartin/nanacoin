@@ -46,6 +46,7 @@ pub(super) fn route<J: Journal>(
     actor: MemberId,
     method: &str,
     path: &str,
+    query: &str,
     key: &str,
     body: &[u8],
     output: &mut [u8],
@@ -55,6 +56,12 @@ pub(super) fn route<J: Journal>(
     }
     Some((|| {
         if path == "/api/v1/lottos" && method == "GET" {
+            // `member=user-N` counts that member's tickets instead: ticket
+            // purchases are already public ledger entries, shown on profiles.
+            let whose = match query.split('&').find_map(|p| p.strip_prefix("member=")) {
+                Some(v) => s.state.member(member_id(v, "user-")?)?.id,
+                None => actor,
+            };
             #[derive(Serialize)]
             struct Book<T> {
                 lottos: T,
@@ -68,7 +75,7 @@ pub(super) fn route<J: Journal>(
                             .lottos
                             .iter()
                             .rev()
-                            .map(|l| view(&s.state, l, actor, s.now())),
+                            .map(|l| view(&s.state, l, whose, s.now())),
                     ),
                     decimals: s.state.decimals,
                     money_epoch: s.state.money_epoch,

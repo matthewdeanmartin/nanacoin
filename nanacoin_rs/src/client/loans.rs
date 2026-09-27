@@ -112,6 +112,7 @@ pub(super) fn route<J: Journal>(
     actor: MemberId,
     method: &str,
     path: &str,
+    query: &str,
     key: &str,
     body: &[u8],
     output: &mut [u8],
@@ -195,6 +196,14 @@ pub(super) fn route<J: Journal>(
                 sequence: u64,
             }
             let member = s.state.member(actor)?;
+            // `member=user-N`: that member's funded loans, for their profile.
+            // Funding and repayments are public ledger entries; proposals and
+            // the loan's note stay with the two parties and Nana.
+            let subject = match query.split('&').find_map(|p| p.strip_prefix("member=")) {
+                Some(v) => Some(s.state.member(member_id(v, "user-")?)?.id),
+                None => None,
+            };
+            let now = s.now();
             return serialize(
                 &Response {
                     loans: Rows(
@@ -202,8 +211,20 @@ pub(super) fn route<J: Journal>(
                             .loans
                             .iter()
                             .rev()
-                            .filter(|l| l.visible_to(member))
-                            .map(|l| view(&s.state, l, s.now())),
+                            .filter(|l| match subject {
+                                Some(m) => {
+                                    (l.lender == m || l.terms.borrower == m)
+                                        && matches!(l.status, LoanStatus::Active | LoanStatus::Paid)
+                                }
+                                None => l.visible_to(member),
+                            })
+                            .map(|l| {
+                                let mut v = view(&s.state, l, now);
+                                if !l.visible_to(member) {
+                                    v.memo = "";
+                                }
+                                v
+                            }),
                     ),
                     summary: summary(&s.state),
                     decimals: s.state.decimals,

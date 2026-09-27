@@ -476,3 +476,29 @@ fn http_contract_uses_accounts_statuses_and_durable_keys() {
     assert_eq!(book["lottos"][0]["winner"], "account-2");
     assert_eq!(book["lottos"][0]["status"], "SETTLED");
 }
+
+#[test]
+fn profiles_count_another_members_tickets() {
+    let (mut s, _) = house();
+    let id = create(&mut s, LottoKind::Simple, 0);
+    buy(&mut s, id, 2, 3);
+    buy(&mut s, id, 3, 1);
+    let bob = common::login_as(&mut s, "Bob", "1234");
+    let get = |s: &mut Service<Memory>, path: &str| {
+        let mut output = vec![0; nanacoin::api::RESPONSE_LIMIT];
+        let (status, n) = nanacoin::api::handle(s, "GET", path, &bob, b"", &mut output);
+        (
+            status,
+            serde_json::from_slice::<serde_json::Value>(&output[..n]).unwrap(),
+        )
+    };
+    assert_eq!(
+        get(&mut s, "/api/v1/lottos").1["lottos"][0]["my_tickets"],
+        1
+    );
+    assert_eq!(
+        get(&mut s, "/api/v1/lottos?member=user-2").1["lottos"][0]["my_tickets"],
+        3
+    );
+    assert_ne!(get(&mut s, "/api/v1/lottos?member=user-0").0, 200);
+}

@@ -180,6 +180,9 @@ for `nanacoin.local`, and checks:
 - `/api/v1/status` returns JSON and says the ledger balances;
 - `/` serves the **exact Angular index produced by this build**, configured for
   the same-origin API;
+- every bundled asset matches the build byte-for-byte in identity and gzip
+  form, with correct lengths, ETags and conditional responses, across concurrent
+  keep-alive connections; the largest asset also passes a slow-reader check;
 - the anonymous public notebook returns a correctly shaped ledger response;
 - anonymous Board Health returns current machine data;
 - the served public CA is byte-for-byte the one used for the build.
@@ -201,7 +204,7 @@ Do not create a payment, reset the economy, close the journal, or seed demo data
 merely to prove deployment.
 
 For non-interactive automation with no browser surface, the strict probe is the
-required substitute: it compares the served index to the exact local build and
+required substitute: it compares every served asset to the exact local build and
 checks the anonymous notebook and Board Health endpoints. Report the browser
 checks as unavailable rather than claiming they were clicked.
 
@@ -362,3 +365,157 @@ They are saved as one bounded `ncmeta/led_phrases` setting, separate from the
 financial journal. Routine application-only upgrades preserve them. Do not
 change live messages or financial records merely to prove a deployment; use
 the ordinary read-only boot and probe checks. Startup and faults take priority.
+
+### 2026-09-27: startup stack corruption during Morse deployment
+
+The first application-only upgrade of revision `0cd3993` on COM9
+(MAC `ac:a7:04:2c:2c:04`) wrote 3,312,592 bytes at `0x10000` and passed
+esptool hash verification. It did **not** complete deployment: the board
+repeated its white startup marker and rebooted before Wi-Fi/HTTP readiness.
+The ledger partition was not written. No pre-upgrade ledger-count snapshot
+was recorded, so the flash result alone cannot establish before/after counts.
+
+Investigation:
+
+1. Read the bounded serial boot capture. GPIO48 initialized, then Wi-Fi task
+   creation was followed by a Core 0 `LoadProhibited` panic: PC `0x4037fe10`,
+   `EXCVADDR=0x4`. Do not interpret repeated white as a healthy heartbeat or
+   evidence that the LED/power circuit is broken.
+2. Decode the backtrace with the **matching flashed ELF**, using
+   `xtensa-esp32s3-elf-addr2line -pfiaC -e <elf> <addresses>`. The path was
+   Wi-Fi initialization → NVS read → flash cache/other-core coordination →
+   `esp_ipc_call_nonblocking` → `xTaskGenericNotify`. The faulting instruction
+   accessed a null FreeRTOS task-list container; the Wi-Fi frame was where
+   prior corruption surfaced, not proof of a bad Wi-Fi password.
+3. Inspect startup stack reservations in the same ELF. This toolchain's
+   `.xt.prop` metadata made GNU objdump display some Rust code as raw words.
+   Create an **analysis-only copy** with
+   `xtensa-esp32s3-elf-objcopy --remove-section=.xt.prop <elf> <analysis-elf>`
+   and disassemble that copy with `objdump -d -C`. Never flash this modified
+   analysis ELF. Address/name lookup must use the exact build, not addresses
+   copied from another release.
+4. The nested startup chain reserved 38,288 bytes in `nanacoin_esp32::main`
+   (32 + `0x9570`), 24,784 bytes in `Service<NvsJournal>::open` (`0x60d0`),
+   and 9,136 bytes in `Auth::default` (`0x23b0`): **72,208 bytes**, before
+   additional callees, exceeding `CONFIG_ESP_MAIN_TASK_STACK_SIZE=65536`.
+   The canary check did not prevent the later task-list crash. A normal
+   desktop build/test pass does not establish embedded stack safety.
+
+Fix: keep the large fixed authentication arrays in `Box<Auth>` inside
+`Service`, as the domain `State` already is, so constructing/returning the
+service and moving it into `Mutex`/`Arc` no longer copies those arrays through
+multiple startup stack frames. Account for the boxed allocation in diagnostic
+memory totals. This changes RAM placement, not the journal, credentials,
+authentication semantics, or ledger schema. Add a regression bound keeping a
+representative `Service` below 1 KiB, rerun desktop checks, inspect the repaired
+ESP stack frames, then use the ordinary application-only deployment/probe flow.
+No erasing, reprovisioning, certificate rotation or larger flash partition is
+part of this repair. Recovery verification is recorded below.
+
+The repaired release ELF reduced these three reservations to 1,872 bytes in
+`main` (`0x750`), 11,584 bytes in `Service::open` (`0x2d40`), and 9,136 bytes
+in `Auth::default`: **22,592 bytes** for the same chain, versus 72,208 before.
+This provides substantial room within the existing 64 KiB stack without
+reserving more scarce internal RAM. `make check` passed, including the new
+service-size regression and the real HTTP restart smoke. The smoke's stale
+expectation that other members' account pages return 403 was aligned with the
+already-committed household-visible account-page policy; admin-only raw state
+checks remain. ESP firmware build passed at 3,311,456 bytes.
+
+Recovery completed by the diagnosing agent on the same COM9 board, without
+handing the repair back to the deployment agent. The dry run and ordinary
+`bash scripts/deploy.sh COM9` passed. The application-only write at `0x10000`
+was 3,311,456 bytes, with esptool hash verification; the image SHA-256 was
+`d629181ea017b21947489c7a624defbcdeb7bc3bffd68b770ca713d526f1a2fd`.
+The boot capture reported the expected GPIO48 initialization and reached
+`Ready at https://nanacoin.local` at 6,705 ms, without the startup panic.
+A subsequent HTTPS diagnostic read showed 186 seconds of uptime, confirming
+that the board had stayed up beyond the previous repeating startup failure.
+
+Validation passed: `make check` (164 Rust tests plus HTTP/restart smoke),
+302 UI tests across 52 files, the ESP release build, and strict board probes
+through both `192.168.1.158` and `nanacoin.local`. Both probes verified the CA
+and hostname, TLS, API, balanced ledger, exact Angular build, public notebook,
+public board health and matching `/ca`. Ledger/config partitions were preserved
+by the application-only deployment; without a pre-upgrade count snapshot,
+no claim of numerical before/after ledger-count equality is made. Interactive
+browser checks and visual confirmation of the complete Morse rotation were
+not performed during recovery.
+
+### 2026-09-27: truncated static downloads after successful boot
+
+The owner's browser reported JavaScript syntax errors at the end of downloaded
+scripts. A strict HTTPS reproduction of `/main-CI5QVWSH.js` received 116,736 of
+273,005 advertised identity bytes before EOF, while a gzip request and both
+index representations matched the build in that sample. The previous board
+probe compared only the index, so its "exact Angular build" result did not
+establish that the JavaScript/CSS downloads completed.
+
+The response loop imposed a five-second deadline from response creation,
+even when writes were making progress. Replace that total-duration cutoff with
+a 15-second write-stall timeout, refreshed only by accepted bytes. Retain the
+five-second incoming-request deadline; a pipelined request's timer starts when
+it can be processed after the previous response. Keep bounded connection and
+response-memory limits and one nonblocking write per client per turn. Tests
+exercise 273,005-byte responses with concurrent slow writers, partial writes,
+identical TLS retry slices, stalled readers and disconnections.
+
+The deployment probe now checks every embedded asset byte-for-byte against the
+local build, identity and gzip, Content-Length, decompression, ETags and 304s.
+It uses three concurrent keep-alive connections and repeats the largest asset
+with a small receive buffer and delayed reads. It fails on premature EOF or
+mismatched bytes without silently retrying a broken response. The desktop
+bundled-site smoke shares these checks (allowing tiny_http's chunked framing).
+An initial run against the old firmware caught a second truncated response:
+`/chunk-B8XrW2-32.js` ended after 10,240 of 66,920 bytes. That run also recorded
+socket errors, so the deadline repair alone requires hardware verification.
+
+Before the upgrade, the board reported sequence 10, five users, four
+transactions, journal generation 0 and a balanced ledger. COM9's USB serial
+identity matched MAC `ac:a7:04:2c:2c:04`. Hardware results follow after checking
+the repaired application. If a browser still holds an old response after
+verified repair, force reload with its cache disabled; hashed asset filenames
+continue to change when their contents change, and the HTML shell revalidates.
+
+The first deadline-only repair (3,311,664-byte application, verified flash and
+ready at 6,735 ms) still failed the concurrent asset probe. Capturing USB serial
+while reproducing it revealed `esp-aes: Failed to allocate memory`, followed by
+`esp-tls-mbedtls: write error :-0x0001`. This was an internal DMA allocation
+failure, not evidence of an invalid JavaScript bundle. The board's short
+socket-error code alone had concealed the underlying allocator error.
+
+Additional repair: change the ordinary malloc internal-preference threshold
+from 16 KiB to 1 KiB so multi-KiB authentication/request/response allocations
+prefer PSRAM. Retain the existing 64 KiB internal-only reserve and TLS PSRAM
+allocation policy. Limit every HTTP write, including headers and coalesced
+small bodies, to 1 KiB. ESP-IDF 5.5.3's AES external-RAM path can allocate
+internal DMA bounce buffers (up to 1,600 bytes per chunk on S3); small records
+reduce that peak, and moving ordinary buffers leaves internal memory for DMA
+and Wi-Fi. Do not retry a fatal TLS encryption error on the same TLS context.
+
+Final recovery passed on the same identified COM9 board. Dry run and ordinary
+application-only deployment wrote 3,311,648 bytes at `0x10000`, with esptool hash
+verification; image SHA-256:
+`8d90f6cf8eeff6fbf4b13c2b5bc3bd866caa127c9e0e2f323dc7705a50f95094`.
+The generated SDK configuration was checked for
+`CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=1024`. Boot reached ready at 6,725 ms.
+
+`make check` passed formatting, lint, 167 Rust tests and HTTP/restart smoke;
+`make web-check` passed the bundled tests, all-asset desktop smoke and deployment
+safety tests. The strict live probe passed all 65 assets (1,224,039 identity
+bytes and 473,902 gzip bytes), concurrent keep-alive delivery, conditional
+responses and the deliberately slow largest-asset transfer. USB serial capture
+during that entire probe contained zero error lines. A separate request via
+`nanacoin.local` verified the largest JavaScript again in identity and gzip,
+including its ETags. The incident history contained no socket, request-timeout,
+allocation, storage or TLS-failure events at the final check.
+
+The before/after status matched: sequence 10, five users, four transactions,
+journal generation 0, ledger balanced. During asset verification, public health
+reported 79,723 internal bytes free with a 36,864-byte largest block; the final
+check at 124 seconds uptime reported 85,819 bytes free and a 38,912-byte largest
+block. These are observed snapshots, not a guarantee against every future load.
+No browser surface was enabled in the computer-use inventory, so browser
+rendering/sign-in checks were unavailable; no visual success is claimed.
+Evidence is retained in `.local/nanacoin-transfer-*.log`, including the failing
+probe/serial capture and the successful final deployment, boot and full probe.

@@ -189,6 +189,7 @@ fn funds_checked_only_on_acceptance_and_disabled_parties_cannot_trade() {
             role: None,
             disabled: Some(true),
             mastodon_id: None,
+            bio: None,
         },
     )
     .unwrap();
@@ -770,4 +771,103 @@ fn profiles_show_anyones_open_offers_but_only_parties_read_the_note() {
             "{bad}"
         );
     }
+}
+
+fn good_deed(s: &mut House, actor: u8, side: Side) -> Result<u64, Error> {
+    exec(
+        s,
+        actor,
+        Command::List {
+            title: Title::try_from("Help a sibling with homework").unwrap(),
+            description: Memo::new(),
+            price: 7,
+            side,
+            details: Some(ListingDetails {
+                kind: heapless::String::try_from("good_deed").unwrap(),
+                ..Default::default()
+            }),
+        },
+    )
+    .map(|r| r.sequence)
+}
+
+#[test]
+fn good_deeds_pay_new_money_on_nanas_acceptance_and_stay_open() {
+    let (mut s, memory) = house();
+    assert_eq!(good_deed(&mut s, 2, Side::Buy), Err(Error::Forbidden));
+    assert_eq!(good_deed(&mut s, 1, Side::Sell), Err(Error::Forbidden));
+    let deed = good_deed(&mut s, 1, Side::Buy).unwrap();
+    assert_eq!(
+        exec(&mut s, 3, Command::Buy { listing: deed }),
+        Err(Error::Forbidden),
+        "a deed is claimed by offer, never bought outright"
+    );
+    let nana = balance(&s, 1);
+    let issuance = s.state().issuance_balance;
+    let bob_claim = offer(&mut s, deed, 7);
+    let carol_claim = OfferId(
+        exec(
+            &mut s,
+            4,
+            Command::MakeOffer {
+                listing: deed,
+                amount: 7,
+                message: OfferMessage::try_from("Did it Tuesday").unwrap(),
+            },
+        )
+        .unwrap()
+        .sequence,
+    );
+    exec(&mut s, 1, Command::AcceptOffer { offer: bob_claim }).unwrap();
+    exec(&mut s, 1, Command::AcceptOffer { offer: carol_claim }).unwrap();
+    assert_eq!([balance(&s, 3), balance(&s, 4)], [107, 107]);
+    assert_eq!(balance(&s, 1), nana, "Nana's own coins are untouched");
+    assert_eq!(s.state().issuance_balance, issuance - 14);
+    assert_eq!(
+        s.state()
+            .listings
+            .iter()
+            .find(|l| l.id == deed)
+            .unwrap()
+            .status,
+        ListingStatus::Active
+    );
+    let nana_auth = common::login(&mut s);
+    let (_, ledger) = api(
+        &mut s,
+        "GET",
+        "/api/v1/transactions",
+        &nana_auth,
+        "",
+        json!(null),
+    );
+    assert_eq!(ledger["transactions"][0]["kind"], "ISSUE");
+    assert_eq!(
+        ledger["transactions"][0]["description"],
+        "Help a sibling with homework"
+    );
+    exec(&mut s, 3, undo(bob_claim)).unwrap();
+    assert_eq!(balance(&s, 3), 100);
+    assert_eq!(s.state().issuance_balance, issuance - 7);
+    assert_eq!(
+        s.state()
+            .listings
+            .iter()
+            .find(|l| l.id == deed)
+            .unwrap()
+            .status,
+        ListingStatus::Active
+    );
+    assert!(s.state().check_invariants().is_ok());
+    // Nana may retire the deed; an accepted claim can still be undone afterwards.
+    exec(&mut s, 1, Command::Cancel { listing: deed }).unwrap();
+    exec(&mut s, 1, undo(carol_claim)).unwrap();
+    assert_eq!(balance(&s, 4), 100);
+    assert_eq!(s.state().issuance_balance, issuance);
+    let replayed = Service::open_with_clock(memory, now).unwrap();
+    assert_eq!(replayed.state().issuance_balance, issuance);
+    assert_eq!(
+        (1..=4).map(|m| balance(&replayed, m)).collect::<Vec<_>>(),
+        (1..=4).map(|m| balance(&s, m)).collect::<Vec<_>>()
+    );
 }

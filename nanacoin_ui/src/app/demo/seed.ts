@@ -12,6 +12,7 @@
 
 import { DemoLedger } from './ledger';
 import { DEMO_ART_BASE } from '../art/art-media';
+import { GOOD_DEED, GOOD_DEED_IDEAS } from '../nana/good-deeds';
 
 const DAY = 86_400;
 
@@ -239,6 +240,15 @@ export function seed(ledger: DemoLedger): void {
   ledger.commerce.command(nanaUser,{equip_art:{art:giftArt,equipped:true}});
   const forSale=ledger.commerce.command(ivy,{mint_art:{title:'Little comet',license:'Personal profile display; artist retains copyright',sha256:'01281d7bd3ce27aec02078d2eb8f3afd4b7edee919c96aa3689b5d848e9fb6a7',locator:`${DEMO_ART_BASE}little-comet.svg`}}).sequence;
   ledger.commerce.command(ivy,{list_art:{art:forSale,price:80_000}});
+  // A few of Nana's standing good deeds: one already rewarded with new money,
+  // one claim waiting for her decision.
+  const coin = 10 ** ledger.decimals;
+  const deeds = GOOD_DEED_IDEAS.slice(0, 8).map(idea => ledger.createListing(nanaUser, {
+    title: idea.title, description: idea.description, price: idea.reward * coin, side: 'BUY', kind: GOOD_DEED }));
+  const story = deeds.find(d => d.title === 'Read a bedtime story to someone younger')!;
+  ledger.acceptOffer(nanaUser, ledger.makeOffer(ivy, story.id, story.price, 'Read Sam two chapters last night').id);
+  const homework = deeds.find(d => d.title === 'Help a sibling with homework')!;
+  ledger.makeOffer(sam, homework.id, homework.price, 'Helped Ivy with fractions');
   // Nana's open reserve-backed quotes make the central-bank book useful.
   ledger.postQuote(nanaUser,'BID',20,100_000);
   ledger.postQuote(nanaUser,'ASK',30,100_000);

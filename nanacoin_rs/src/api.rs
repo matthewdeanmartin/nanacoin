@@ -78,6 +78,8 @@ struct UpdateMember {
     role: Option<Role>,
     disabled: Option<bool>,
     mastodon_id: Option<MastodonId>,
+    #[serde(default)]
+    bio: Option<Memo>,
 }
 
 #[derive(Deserialize)]
@@ -418,6 +420,7 @@ pub fn handle_keyed<J: Journal>(
                         role: req.role,
                         disabled: req.disabled,
                         mastodon_id: req.mastodon_id,
+                        bio: req.bio,
                     },
                 )?;
                 serialize(&receipt, output)

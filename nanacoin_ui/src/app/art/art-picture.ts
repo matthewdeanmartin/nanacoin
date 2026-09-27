@@ -1,6 +1,7 @@
-import { Component, computed, input, signal } from '@angular/core';
+import { Component, computed, inject, input, signal } from '@angular/core';
 import { Artwork } from '../api/models';
 import { autoSource, digestOf, digestPattern, mediaHost } from './art-media';
+import { TrustedArtHosts } from './trusted-hosts';
 
 /**
  * One edition's picture. The board only knows the locator and digest, so the
@@ -14,6 +15,9 @@ import { autoSource, digestOf, digestPattern, mediaHost } from './art-media';
       @if (source(); as src) {
         <img [src]="src" [alt]="art().title" loading="lazy" referrerpolicy="no-referrer" (error)="failed.set(true)" />
         @if (failed()) { <figcaption class="muted small">The picture could not be loaded from {{ host() }}.</figcaption> }
+        @if (controls() && offSite()) {
+          <label class="small art-trust"><input type="checkbox" [checked]="trusted.has(host())" (change)="trust($any($event.target).checked)" /> Always show pictures from {{ host() }}</label>
+        }
       } @else {
         <svg viewBox="0 0 5 5" role="img" [attr.aria-label]="art().title + ' (pattern drawn from its digest)'" shape-rendering="crispEdges">
           <rect width="5" height="5" [attr.fill]="'hsl(' + pattern().hue + ' 45% 92%)'" />
@@ -39,7 +43,7 @@ import { autoSource, digestOf, digestPattern, mediaHost } from './art-media';
     .art-picture{margin:0;display:flex;flex-direction:column;gap:.35rem;align-items:flex-start}
     .art-picture img,.art-picture svg{width:100%;aspect-ratio:1;object-fit:contain;border-radius:var(--radius);border:1px solid var(--line);background:var(--surface)}
     .art-picture--small{width:2.5rem;flex:none}.art-picture--small img,.art-picture--small svg{border-radius:50%}
-    .art-check--ok{color:var(--credit)}.art-check--bad{color:var(--debit);font-weight:600}`,
+    .art-trust{display:flex;gap:.35rem;align-items:center}.art-check--ok{color:var(--credit)}.art-check--bad{color:var(--debit);font-weight:600}`,
 })
 export class ArtPicture {
   readonly art = input.required<Pick<Artwork, 'title' | 'sha256' | 'locator'>>();
@@ -52,7 +56,15 @@ export class ArtPicture {
   protected readonly check = signal<'idle' | 'checking' | 'match' | 'mismatch' | 'unknown'>('idle');
   protected readonly host = computed(() => mediaHost(this.art().locator));
   protected readonly pattern = computed(() => digestPattern(this.art().sha256));
-  protected readonly source = computed(() => autoSource(this.art().locator) ?? (this.shown() ? this.art().locator : null));
+  protected readonly trusted = inject(TrustedArtHosts);
+  /** Loading it would tell another site who looked; same-site media never asks. */
+  protected readonly offSite = computed(() => autoSource(this.art().locator) === null);
+  protected readonly source = computed(() => autoSource(this.art().locator)
+    ?? (this.shown() || this.trusted.has(this.host()) ? this.art().locator : null));
+
+  protected trust(always: boolean): void {
+    if (always) this.trusted.trust(this.host()); else this.trusted.forget(this.host());
+  }
 
   protected async verify(): Promise<void> {
     const src = this.source();

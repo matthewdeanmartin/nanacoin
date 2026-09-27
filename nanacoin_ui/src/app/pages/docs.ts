@@ -26,7 +26,7 @@ import { SectionTabs } from '../ui/section-tabs';
             <dt>TODO</dt><dd>Work and deliveries still owed. Record completion, report a problem, or withdraw a dispute. Marking work done does not move money a second time.</dd>
             <dt>Loans & debts / Lotto</dt><dd>See what you owe, what others owe you, upcoming draws and results.</dd>
             <dt>My offers / My forex bids</dt><dd>Find your outstanding deals and open the relevant page to act on them.</dd></dl>
-          <dl><dt>Demographics</dt><dd>Everyone on the board, with population figures. Open anyone's profile for a read-only report from the public ledger: what came in and went out by kind, who they trade with, their art, gift requests, market listings and open offers. Private messages never appear, and an offer's note shows only to the two people in the deal.</dd></dl>
+          <dl><dt>Demographics</dt><dd>Everyone on the board, with population figures. Open anyone's profile for a read-only report from the public ledger: what came in and went out by kind (page back with Include older payments), who they trade with, their loans and lotto tickets, art, gift requests, market listings and open offers. Write a one-line bio on your own profile. Private messages never appear, and an offer's note shows only to the two people in the deal.</dd></dl>
           <p>Use the account menu beside your name to switch people or sign out. My Account and Demographics are inside Accounts; Nana also finds Household there.</p>
         }
         @case ('docs-mail') {
@@ -43,6 +43,7 @@ import { SectionTabs } from '../ui/section-tabs';
           <dl><dt>Market / Buy, sell, hire</dt><dd>Advertise an item, offer work, or post something you want to buy. A purchase pays the seller. You still need to arrange delivery or do the work.</dd>
             <dt>Forex</dt><dd>Trade coins for recorded dollars at an agreed price. Read both amounts. The app records the deal; it does not send money through a bank.</dd>
             <dt>Nana-nickles</dt><dd>In the demo, create a one-use voucher, print or share it, and let another person redeem it. Keep the code safe: whoever has it can use it.</dd></dl>
+          <dl><dt>Good deeds from Nana</dt><dd>At the top of the Market. Do one, press “I did this” and tell Nana what you did. When she accepts, she issues the reward to you as brand-new coins. Deeds stay posted, so you can do them again.</dd></dl>
           <dl><dt>Gift Requests</dt><dd>Ask the household to chip in for something (“cyberbegging”), with an optional target and last day, or give toward someone else's request. Gifts arrive immediately, can pass the target, and are not returned if the target is missed. Close your request when you are done.</dd></dl>
           <dl><dt>Digital Art</dt><dd>Register an edition of a picture you host somewhere on the web, then sell it, give it away or show it on your profile. The board records who owns each edition and a SHA-256 fingerprint of the file; the picture never lives on the board. This is not an NFT: no crypto, no blockchain, and owning an edition does not transfer copyright. Pictures from other sites load only when you ask, because loading them tells that site you looked. Art payments cannot be refunded separately from ownership.</dd></dl>
         }
@@ -56,6 +57,7 @@ import { SectionTabs } from '../ui/section-tabs';
         @case ('docs-nana') {
           <h2>Nana is the household treasury</h2>
           <p>Think of Nana as the household's central bank and manager. The current app gives that role one account; it does not yet separate a person from a government, company or club.</p>
+          <p>Good Deeds (in Accounts) is where Nana posts standing rewards, adds the starter set of 25 in one click, and accepts or declines claims. Accepting a claim issues new money; her own balance is untouched.</p>
           <p>Nana can issue and retire coins, record dollar reserves, trade goods and currencies, buy work, and lend coins she owns. She cannot sell labor or buy tickets in her own lotto. These are the app's current rules, not a claim about what real governments may do.</p>
           <p>For the person who also bakes cookies or does chores, use an ordinary member account for personal activity. Keep Nana's account for the shared treasury. Companies, shared officers and corporate bonds are future features.</p>
           <dl><dt>Household → Ledger</dt><dd>The default view: inspect both sides of recent payments and make permitted corrections, with a reason.</dd>

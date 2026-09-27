@@ -53,7 +53,8 @@ describe('responsive site navigation', () => {
    expect(fixture.nativeElement.textContent).toContain('Household');
    const groups=Array.from(fixture.nativeElement.querySelectorAll('details')) as HTMLDetailsElement[];
    expect(groups.find(g=>g.querySelector('summary')?.textContent==='Accounts')?.textContent).toContain('My Account');
+   expect(groups.find(g=>g.querySelector('summary')?.textContent==='Accounts')?.textContent).toContain('Good Deeds');
    const help=groups.find(g=>g.querySelector('summary')?.textContent==='Help')!;
-   expect(Array.from(help.querySelectorAll('a')).map(a=>a.textContent)).toEqual(['NanaCoin vs Crypto','About Nana-nickles','SMBC','Docs']);
+   expect(Array.from(help.querySelectorAll('a')).map(a=>a.textContent)).toEqual(['NanaCoin vs Crypto','About Nana-nickles','SMBC','Lemon Bars','Docs']);
  });
 });

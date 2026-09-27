@@ -139,10 +139,7 @@ impl State {
                 if self.member(o.offerer)?.disabled || self.member(o.owner)?.disabled {
                     return Err(Error::Disabled);
                 }
-                let (payer, payee) = match l.side {
-                    Side::Sell => (o.offerer, o.owner),
-                    Side::Buy => (o.owner, o.offerer),
-                };
+                let (payer, payee) = settlement_parties(l, o);
                 if l.economic.kind == EconomicKind::Labor && self.member(payee)?.role == Role::Nana
                 {
                     return Err(Error::Forbidden);
@@ -167,7 +164,9 @@ impl State {
                     return Err(Error::InvalidInput);
                 }
                 // An ordinary purchase cannot have replaced this sale: the listing is pinned.
-                if self.listing(o.listing)?.status != ListingStatus::Sold {
+                // A good deed's payout came from issuance and never closed its listing.
+                if s.payer != MemberId(0) && self.listing(o.listing)?.status != ListingStatus::Sold
+                {
                     return Err(Error::Conflict);
                 }
                 self.correction_room(s.transaction)?;
@@ -236,10 +235,8 @@ impl State {
             Command::AcceptOffer { offer } => {
                 let o = self.offer(*offer).unwrap();
                 let l = self.listing(o.listing).unwrap();
-                let (payer, payee) = match l.side {
-                    Side::Sell => (o.offerer, o.owner),
-                    Side::Buy => (o.owner, o.offerer),
-                };
+                let (payer, payee) = settlement_parties(l, o);
+                let good_deed = l.is_good_deed();
                 let tx = Transaction {
                     meta: crate::ledger::TransactionMeta::default(),
                     id: event.sequence,
@@ -275,9 +272,11 @@ impl State {
                     .find(|l| l.id == listing_id)
                     .unwrap();
                 listing.updated_at = now;
-                listing.status = ListingStatus::Sold;
-                listing.buyer = Some(payer);
-                listing.sold_tx = Some(event.sequence);
+                if !good_deed {
+                    listing.status = ListingStatus::Sold;
+                    listing.buyer = Some(payer);
+                    listing.sold_tx = Some(event.sequence);
+                }
                 self.record_transaction(tx);
             }
             Command::UnacceptOffer { offer, reason } => {
@@ -307,15 +306,19 @@ impl State {
                 let listing_id = o.listing;
 
                 self.mark_offer_reversed(s.transaction, now);
-                let listing = self
-                    .listings
-                    .iter_mut()
-                    .find(|l| l.id == listing_id)
-                    .unwrap();
-                listing.updated_at = now;
-                listing.status = ListingStatus::Active;
-                listing.buyer = None;
-                listing.sold_tx = None;
+                // A good deed retires its reward; its listing stayed open (or was
+                // since cancelled by Nana) and is left as it is.
+                if s.payer != MemberId(0) {
+                    let listing = self
+                        .listings
+                        .iter_mut()
+                        .find(|l| l.id == listing_id)
+                        .unwrap();
+                    listing.updated_at = now;
+                    listing.status = ListingStatus::Active;
+                    listing.buyer = None;
+                    listing.sold_tx = None;
+                }
                 self.record_transaction(tx);
             }
             Command::DeclineOffer { offer } | Command::WithdrawOffer { offer } => {
@@ -340,5 +343,14 @@ impl State {
                 }
             }
         }
+    }
+}
+
+/// Who pays whom when an offer is accepted. Good deeds pay from issuance.
+fn settlement_parties(listing: &Listing, offer: &Offer) -> (MemberId, MemberId) {
+    match listing.side {
+        _ if listing.is_good_deed() => (MemberId(0), offer.offerer),
+        Side::Sell => (offer.offerer, offer.owner),
+        Side::Buy => (offer.owner, offer.offerer),
     }
 }

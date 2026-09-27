@@ -383,15 +383,20 @@ export class NanacoinService {
     return this.patch<User>(`/users/${encodeURIComponent(id)}`, { password });
   }
 
+  /** A member's own public profile line; the server refuses anyone else's. */
+  setUserBio(id: UserId, bio: string): Promise<User> {
+    return this.patch<User>(`/users/${encodeURIComponent(id)}`, { bio });
+  }
+
   setUserMastodonId(id: UserId, mastodonId: string): Promise<User> {
     return this.patch<User>(`/users/${encodeURIComponent(id)}`, { mastodon_id: mastodonId });
   }
 
   // --- money ---
 
-  accountHistory(id: AccountId, limit = 50): Promise<AccountHistory> {
+  accountHistory(id: AccountId, limit = 50, cursor: string | null = null): Promise<AccountHistory> {
     return this.get<AccountHistory>(
-      `/accounts/${encodeURIComponent(id)}/transactions?limit=${limit}`,
+      `/accounts/${encodeURIComponent(id)}/transactions?limit=${limit}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`,
     );
   }
 
@@ -662,6 +667,14 @@ export class NanacoinService {
     const result = await this.get<LottoBook>('/lottos');
     if (this.base === source) { moneyEpoch = result.money_epoch; this.money.update(result.decimals, result.money_epoch, source); }
     return result;
+  }
+  /** Every draw, with `my_tickets` counting the given member's tickets (for profiles). */
+  memberLottos(user: UserId): Promise<LottoBook> {
+    return this.get<LottoBook>(`/lottos?member=${encodeURIComponent(user)}`);
+  }
+  /** A member's funded loans, for their profile. Notes are blank unless you are a party. */
+  memberLoans(user: UserId): Promise<LoanBook> {
+    return this.get<LoanBook>(`/loans?member=${encodeURIComponent(user)}`);
   }
   createLotto(terms: LottoTerms, key: string): Promise<Lotto> { return this.post('/lottos', terms, key); }
   buyTickets(id: number, count: number, key: string): Promise<Lotto> { return this.post(`/lottos/${id}/tickets`, { count }, key); }

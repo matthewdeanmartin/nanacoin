@@ -49,6 +49,7 @@ import { ReformInput, ReformResult } from '../api/models';
 
 /** The one account allowed to go negative; see ledger.SystemIssuance. */
 export const SYSTEM_ISSUANCE = 'account:system-issuance';
+export const GOOD_DEED = 'good_deed';
 export const NICKLE_RESERVE = 'account:nickle-reserve';
 const digestNickle = (token: string) => Array.from(sha256(new TextEncoder().encode(token)), b => b.toString(16).padStart(2, '0')).join('');
 
@@ -264,6 +265,7 @@ export class DemoLedger {
       status: u.status,
       account: u.account,
       created_at: u.created_at,
+      bio: u.bio || undefined,
       balance: maySee ? this.balanceOf(u.account) : undefined,
       usd_cents: maySee ? (this.usdBalances.get(u.account) ?? 0) : undefined,
     };
@@ -273,12 +275,18 @@ export class DemoLedger {
     return this.users.map((u) => this.view(u, viewer));
   }
 
-  history(account: string, limit: number): AccountHistory {
-    const txns = this.transactions
-      .filter((t) => t.postings.some((p) => p.account === account || p.account === `${account}-usd`))
-      .slice(-limit)
+  /** Newest first, paged like the board: `next_cursor` continues below the last row. */
+  history(account: string, limit: number, cursor: string | null = null): AccountHistory {
+    const ordinal = (t: Transaction) => Number(t.id.split('-').at(-1));
+    const [epoch, upper, before] = cursor ? cursor.split(':').map(Number) : [this.moneyEpoch, this.nextTxn - 1, this.nextTxn];
+    if (![epoch, upper, before].every(Number.isSafeInteger) || epoch !== this.moneyEpoch || upper >= this.nextTxn) throw new DemoError(409, 'stale_request', 'The ledger changed. Reload its history.');
+    const rows = this.transactions
+      .filter((t) => ordinal(t) <= upper && ordinal(t) < before && t.postings.some((p) => p.account === account || p.account === `${account}-usd`))
       .reverse();
-    return { account, balance: this.balanceOf(account), transactions: this.named(txns) };
+    const txns = rows.slice(0, Math.max(1, Math.min(100, Number.isFinite(limit) ? limit : 50)));
+    const last = txns.at(-1);
+    return { account, balance: this.balanceOf(account), transactions: this.named(txns),
+      next_cursor: last && rows.length > txns.length ? `${epoch}:${upper}:${ordinal(last)}:0` : null };
   }
 
   ledger(limit: number): { transactions: Transaction[]; circulation: number } {
@@ -355,6 +363,17 @@ export class DemoLedger {
       throw new DemoError(400, 'bad_request', 'Nana cannot disable herself.');
     }
     u.status = status;
+    return this.view(u, actor);
+  }
+
+  setUserBio(actor: DemoUser, id: string, bio: string): User {
+    const u = this.userById(id);
+    if (!u) throw new DemoError(404, 'not_found', 'No such member.');
+    if (actor.id !== u.id) throw new DemoError(403, 'forbidden', 'Only you can write your profile.');
+    if (typeof bio !== 'string' || new TextEncoder().encode(bio).length > 96 || /[ -]/.test(bio)) {
+      throw new DemoError(400, 'bad_request', 'Keep it to one line of at most 96 bytes.');
+    }
+    u.bio = bio;
     return this.view(u, actor);
   }
 
@@ -721,6 +740,9 @@ export class DemoLedger {
     if (input.side !== 'BUY' && input.economic_kind === 'LABOR' && actor.role === 'nana') {
       throw new DemoError(403, 'forbidden', 'Nana cannot sell labor.');
     }
+    if (input.kind === GOOD_DEED && (actor.role !== 'nana' || input.side !== 'BUY' || input.currency || input.minor_units)) {
+      throw new DemoError(403, 'forbidden', 'Only Nana posts good deeds, as a reward she pays.');
+    }
     const l: Listing = {
       id: `listing-${this.nextId++}`,
       seller: actor.account,
@@ -795,6 +817,9 @@ export class DemoLedger {
     }
     if (l.seller === actor.account) {
       throw new DemoError(400, 'self_deal', 'You cannot buy your own listing.');
+    }
+    if (l.kind === GOOD_DEED) {
+      throw new DemoError(403, 'forbidden', 'Claim a good deed with an offer; Nana accepts it.');
     }
     if (l.economic_kind === 'LABOR' && this.userByAccount(l.seller)?.role === 'nana') {
       throw new DemoError(403, 'forbidden', 'Nana cannot sell labor.');
@@ -912,14 +937,16 @@ export class DemoLedger {
     }
 
     const wantAd = listing.side === 'BUY';
-    const payer = wantAd ? listing.seller : offer.offerer;
+    // Like the board: a good deed is rewarded with new money and stays open.
+    const goodDeed = listing.kind === GOOD_DEED;
+    const payer = goodDeed ? SYSTEM_ISSUANCE : wantAd ? listing.seller : offer.offerer;
     const payee = wantAd ? offer.offerer : listing.seller;
     if (listing.economic_kind === 'LABOR' && this.userByAccount(payee)?.role === 'nana') {
       throw new DemoError(403, 'forbidden', 'Nana cannot sell labor.');
     }
 
     const txn = this.append(
-      'PURCHASE',
+      goodDeed ? 'ISSUE' : 'PURCHASE',
       actor.id,
       listing.title,
       [
@@ -939,6 +966,10 @@ export class DemoLedger {
     offer.status = 'ACCEPTED';
     offer.settled_tx = txn.id;
     offer.updated_at = this.now();
+    if (goodDeed) {
+      listing.updated_at = this.now();
+      return { offer, transaction: txn, listing };
+    }
 
     listing.status = 'SOLD';
     listing.buyer = wantAd ? listing.seller : offer.offerer;

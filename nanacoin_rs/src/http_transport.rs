@@ -2,6 +2,17 @@
 //! A partial request never blocks another client. Invalid framing always closes
 //! the connection, so unread bytes cannot become a second, ambiguous request.
 use crate::api::BODY_LIMIT;
+use std::{
+    io::{self, Write},
+    time::{Duration, Instant},
+};
+
+/// Release stalled readers without truncating transfers that keep progressing.
+pub const WRITE_STALL_TIMEOUT: Duration = Duration::from_secs(15);
+// AES may need internal DMA bounce buffers even when TLS lives in PSRAM.
+// Bound every write, including the coalesced HTTP prefix, below IDF's 1600-byte
+// AES bounce chunk and leave each other client a turn between records.
+pub const WRITE_CHUNK_LIMIT: usize = 1024;
 
 pub const HEADER_LIMIT: usize = 4096;
 pub const INPUT_LIMIT: usize = HEADER_LIMIT + BODY_LIMIT;
@@ -138,6 +149,7 @@ pub struct Response {
     body: Body,
     skip: usize,
     sent: usize,
+    last_progress: Instant,
     pub close: bool,
 }
 
@@ -171,23 +183,52 @@ impl Response {
         } else {
             body
         };
-        let skip = body.as_ref().len().min(2048);
+        let skip = body.as_ref().len().min(WRITE_CHUNK_LIMIT);
         prefix.extend_from_slice(&body.as_ref()[..skip]);
         Self {
             prefix,
             body,
             skip,
             sent: 0,
+            last_progress: Instant::now(),
             close,
         }
     }
 
+    /// One nonblocking write per turn. The same slice is retried after
+    /// WouldBlock (required by TLS); only accepted bytes advance the cursor.
+    /// `now` is supplied by the caller so stalled/slow peers can be tested
+    /// without sleeping. Returns true only when the complete reply was sent.
+    pub fn send(&mut self, writer: &mut impl Write, now: Instant) -> io::Result<bool> {
+        if self.next().is_empty() {
+            return Ok(true);
+        }
+        if now.saturating_duration_since(self.last_progress) >= WRITE_STALL_TIMEOUT {
+            return Err(io::ErrorKind::TimedOut.into());
+        }
+        match writer.write(self.next()) {
+            Ok(0) => return Err(io::ErrorKind::WriteZero.into()),
+            Ok(n) => {
+                self.advance(n);
+                self.last_progress = now;
+            }
+            Err(e)
+                if matches!(
+                    e.kind(),
+                    io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted
+                ) => {}
+            Err(e) => return Err(e),
+        }
+        Ok(self.next().is_empty())
+    }
+
     pub fn next(&self) -> &[u8] {
         if self.sent < self.prefix.len() {
-            &self.prefix[self.sent..]
+            let rest = &self.prefix[self.sent..];
+            &rest[..rest.len().min(WRITE_CHUNK_LIMIT)]
         } else {
             let rest = &self.body.as_ref()[self.skip + self.sent - self.prefix.len()..];
-            &rest[..rest.len().min(8192)]
+            &rest[..rest.len().min(WRITE_CHUNK_LIMIT)]
         }
     }
 
@@ -309,6 +350,123 @@ mod tests {
         assert!(!headers.contains("Transfer-Encoding"));
         assert!(!headers.contains("Bad:"));
         assert_eq!(&out[split..], body);
+    }
+
+    struct SlowWriter {
+        bytes: Vec<u8>,
+        limit: usize,
+        calls: usize,
+        retry: Option<(usize, usize)>,
+    }
+
+    impl Write for SlowWriter {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            assert!(bytes.len() <= WRITE_CHUNK_LIMIT);
+            let slice = (bytes.as_ptr() as usize, bytes.len());
+            if let Some(retry) = self.retry.take() {
+                assert_eq!(slice, retry, "TLS retries must preserve the input slice");
+            } else if self.calls.is_multiple_of(3) {
+                self.calls += 1;
+                self.retry = Some(slice);
+                return Err(io::ErrorKind::WouldBlock.into());
+            }
+            self.calls += 1;
+            let n = self.limit.min(bytes.len());
+            self.bytes.extend_from_slice(&bytes[..n]);
+            Ok(n)
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn concurrent_large_responses_survive_slow_partial_writes_and_tls_retries() {
+        let body: Vec<u8> = (0..273_005).map(|i| (i % 251) as u8).collect();
+        let mut peers: Vec<_> = [113, 4096, 8192]
+            .into_iter()
+            .map(|limit| {
+                (
+                    Response::new(200, &[], Body::Owned(body.clone()), false, false),
+                    SlowWriter {
+                        bytes: Vec::new(),
+                        limit,
+                        calls: 0,
+                        retry: None,
+                    },
+                    false,
+                )
+            })
+            .collect();
+        let start = Instant::now();
+        let mut now = start;
+        // Simulate a multiplexed loop: slow/WouldBlock clients yield to peers.
+        while peers.iter().any(|(_, _, done)| !done) {
+            for (response, writer, done) in &mut peers {
+                if !*done {
+                    *done = response.send(writer, now).unwrap();
+                }
+            }
+            now += Duration::from_millis(100);
+            assert!(now.duration_since(start) < Duration::from_secs(600));
+        }
+        assert!(now.duration_since(start) > Duration::from_secs(5));
+        for (_, writer, _) in peers {
+            let split = writer
+                .bytes
+                .windows(4)
+                .position(|w| w == [13, 10, 13, 10])
+                .unwrap()
+                + 4;
+            assert_eq!(&writer.bytes[split..], &body);
+        }
+    }
+
+    #[test]
+    fn stalled_response_expires_from_last_progress_not_start_or_retry() {
+        let mut response = Response::new(200, &[], Body::Flash(b"hello"), false, false);
+        let start = response.last_progress;
+        let mut writer = SlowWriter {
+            bytes: Vec::new(),
+            limit: 1,
+            calls: 0,
+            retry: None,
+        };
+        assert!(!response.send(&mut writer, start).unwrap()); // WouldBlock
+        let progress = start + Duration::from_secs(14);
+        assert!(!response.send(&mut writer, progress).unwrap()); // accepts one byte
+        assert!(!response
+            .send(&mut writer, progress + Duration::from_secs(14))
+            .unwrap());
+        let progress = progress + Duration::from_secs(14);
+        assert!(!response
+            .send(&mut writer, progress + Duration::from_secs(14))
+            .unwrap()); // WouldBlock
+        assert_eq!(
+            response
+                .send(&mut writer, progress + WRITE_STALL_TIMEOUT)
+                .unwrap_err()
+                .kind(),
+            io::ErrorKind::TimedOut,
+        );
+    }
+
+    #[test]
+    fn disconnected_writer_does_not_report_a_complete_response() {
+        let mut response = Response::new(200, &[], Body::Flash(b"hello"), false, true);
+        let mut writer = SlowWriter {
+            bytes: Vec::new(),
+            limit: 0,
+            calls: 1,
+            retry: None,
+        };
+        assert_eq!(
+            response
+                .send(&mut writer, Instant::now())
+                .unwrap_err()
+                .kind(),
+            io::ErrorKind::WriteZero
+        );
     }
 
     #[test]

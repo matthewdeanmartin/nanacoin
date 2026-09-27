@@ -7,6 +7,7 @@ import re
 import socket
 import ssl
 import time
+from asset_probe import verify_board_assets
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -94,9 +95,11 @@ def main():
     if ca_status != 200 or served_ca != ca_der.read_bytes():
         raise SystemExit("Board /ca does not match the CA used to verify its server certificate")
 
+    asset_count = verify_board_assets(args.address, args.hostname, context)
     print(
         "Board probe passed: strict CA/hostname verification, "
-        f"{cipher[0]}, API, balanced ledger, exact Angular build, public notebook, "
+        f"{cipher[0]}, API, balanced ledger, {asset_count} exact assets "
+        "(identity + gzip + ETags, concurrent keep-alive and slow-reader checks), public notebook, "
         "public board health and matching /ca."
     )
 

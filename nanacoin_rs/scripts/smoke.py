@@ -131,7 +131,9 @@ def main():
             assert request('/me', token=alice)[0] == 401
             assert request('/users/user-2', {'status':'ACTIVE'}, nana, method='PATCH')[0] == 200
             alice = login('alice', '5678')
-            assert request('/accounts/account-1', token=alice)[0] == 403
+            # Account pages are household-visible; raw state remains admin-only.
+            account = request('/accounts/account-1', token=alice)
+            assert account[0] == 200 and account[1]['id'] == 'account-1', account
             assert request('/transactions', token=alice)[0] == 200
             assert request('/state', token=alice)[0] == 403
             assert request('/admin/issue-usd', dict(to='account-1', cents=500, reason='Cash reserve'), nana, 'usd-one')[0] == 201

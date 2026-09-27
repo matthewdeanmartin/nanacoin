@@ -248,6 +248,7 @@ fn empty_messages_negative_amounts_and_disabled_recipients_are_rejected() {
             role: None,
             disabled: Some(true),
             mastodon_id: None,
+            bio: None,
         },
     )
     .unwrap();

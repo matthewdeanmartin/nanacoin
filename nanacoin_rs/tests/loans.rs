@@ -380,3 +380,57 @@ fn http_contract_privacy_nonnegative_rates_and_keyed_retries() {
     assert_eq!(retry["id"], loan["id"]);
     assert_eq!(s.state().loans.len(), 1);
 }
+
+#[test]
+fn profiles_show_funded_loans_to_anyone_but_the_note_only_to_parties() {
+    let (mut s, _) = house();
+    transfer(&mut s, 3, 1, 10000);
+    let funded = exec(
+        &mut s,
+        1,
+        Command::OfferLoan {
+            terms: LoanTerms {
+                borrower: MemberId(2),
+                amount: 10000,
+                installment: 2000,
+                rate_bps: 100,
+                rate_days: 1,
+                payment_days: 1,
+                credit: false,
+                memo: Memo::try_from("Bike fund").unwrap(),
+            },
+        },
+    )
+    .unwrap()
+    .sequence;
+    exec(&mut s, 2, Command::AcceptLoan { loan: funded }).unwrap();
+    let proposal = offer(&mut s, 2, 3, false, 100);
+    let get = |s: &mut Service<Memory>, path: &str, auth: &str| {
+        let mut output = vec![0; nanacoin::api::RESPONSE_LIMIT];
+        let (status, n) = nanacoin::api::handle(s, "GET", path, auth, b"", &mut output);
+        (
+            status,
+            serde_json::from_slice::<serde_json::Value>(&output[..n]).unwrap(),
+        )
+    };
+    let bob = common::login_as(&mut s, "Bob", "1234");
+    let alice = common::login_as(&mut s, "Alice", "1234");
+    let (status, seen) = get(&mut s, "/api/v1/loans?member=user-2", &bob);
+    assert_eq!(status, 200);
+    let loans = seen["loans"].as_array().unwrap();
+    assert_eq!(loans.len(), 1, "the unaccepted proposal is private");
+    assert_eq!(loans[0]["id"], funded);
+    assert_eq!(loans[0]["memo"], "");
+    assert_eq!(
+        get(&mut s, "/api/v1/loans?member=user-2", &alice).1["loans"][0]["memo"],
+        "Bike fund"
+    );
+    // Bob's own book still includes the proposal he received.
+    let own = get(&mut s, "/api/v1/loans", &bob).1;
+    assert!(own["loans"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|l| l["id"] == proposal));
+    assert_ne!(get(&mut s, "/api/v1/loans?member=user-9", &bob).0, 200);
+}

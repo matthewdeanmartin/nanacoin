@@ -404,6 +404,7 @@ fn audit_only_pruning_evicts_unrecoverable_payment_before_accepting_refund() {
             role: None,
             disabled: None,
             mastodon_id: None,
+            bio: None,
         };
         for _ in 0..if automatic { 767 } else { 800 } {
             execute(&mut s, update());

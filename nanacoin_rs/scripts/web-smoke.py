@@ -1,5 +1,4 @@
 """Real local HTTP checks for the bundled application; disposable ledger only."""
-import gzip
 import hashlib
 import json
 import os
@@ -10,6 +9,7 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+from asset_probe import bundled_assets, verify_asset
 
 ROOT = Path(__file__).resolve().parents[1]
 TARGET = Path(os.environ.get('CARGO_TARGET_DIR', ROOT / 'target'))
@@ -54,20 +54,19 @@ def main():
             for secret in ['/rootCA-key.pem', '/certs/nanacoin-ca-signed.key', '/.local/ca/rootCA-key.pem']:
                 assert get(secret)[0] == 404
             assert b'name="nanacoin-api" content=""' in html
-            assets = ROOT.parent / 'nanacoin_ui/dist/nanacoin-web/browser'
-            for path in assets.rglob('*'):
-                if not path.is_file():
-                    continue
-                uri = '/' + path.relative_to(assets).as_posix()
-                status, headers, raw = get(uri)
-                assert status == 200, uri
+            def asset_get(uri, headers):
+                status, fields, body = get(uri, headers)
+                return status, {key.lower(): value for key, value in fields.items()}, body
+
+            for asset in bundled_assets():
+                # tiny_http uses chunked transfer for large desktop responses;
+                # the board uses Content-Length. Both must match all bytes.
+                verify_asset(asset_get, asset, require_length=False)
+                uri = asset[0]
+                path = Path(uri)
+                status, headers, _ = get(uri)
                 if path.suffix in ('.js', '.css') and '-' in path.name:
                     assert 'immutable' in headers['Cache-Control'], uri
-                status, zipped_headers, zipped = get(uri, {'Accept-Encoding': 'gzip'})
-                assert status == 200 and zipped_headers['Content-Encoding'] == 'gzip', uri
-                assert gzip.decompress(zipped) == raw, uri
-                status, _, unchanged = get(uri, {'If-None-Match': headers['ETag']})
-                assert status == 304 and not unchanged, uri
                 status, _, body = get(uri, method='HEAD')
                 assert status == 405 and not body, uri
             assert get('/nana?test=1')[2] == html

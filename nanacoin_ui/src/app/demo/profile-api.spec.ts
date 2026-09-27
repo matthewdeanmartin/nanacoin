@@ -28,3 +28,26 @@ describe('demo profile reads', () => {
     expect(JSON.stringify(await send(`/accounts/${ivy.account}/transactions?limit=100`))).toContain('Secret birthday plan');
   });
 });
+
+describe('demo profile loans and lotto', () => {
+  it('answers member queries like the board', async () => {
+    let token = '';
+    const send = async (path: string, body?: unknown, method?: string) => {
+      const req = new HttpRequest((method ?? (body === undefined ? 'GET' : 'POST')) as 'GET', `/api/v1${path}`, body ?? null);
+      const key: Record<string, string> = method === 'PATCH' ? { 'Idempotency-Key': `demo:e${demoLedger.moneyEpoch}:bio` } : {};
+      const event = await firstValueFrom(demoBackend(req.clone({ setHeaders: { Authorization: `Bearer ${token}`, ...key } }), () => { throw new Error('escaped'); }));
+      return (event as HttpResponse<any>).body;
+    };
+    token = (await send('/auth/token', { code: (await send('/auth/authorize', { username: 'ivy' })).code })).access_token;
+    const sam = demoLedger.userByName('sam')!;
+    const loans = (await send(`/loans?member=${sam.id}`)).loans as { status: string; lender: string; borrower: string; memo: string }[];
+    for (const l of loans) {
+      expect(['ACTIVE', 'PAID']).toContain(l.status);
+      expect([l.lender, l.borrower]).toContain(sam.account);
+    }
+    const draws = (await send(`/lottos?member=${sam.id}`)).lottos as { my_tickets: number }[];
+    expect(draws.length).toBeGreaterThan(0);
+    const ivy = demoLedger.userByName('ivy')!;
+    expect((await send(`/users/${ivy.id}`, { bio: 'Painter' }, 'PATCH')).bio).toBe('Painter');
+  });
+});
