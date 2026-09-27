@@ -211,11 +211,7 @@ fn route(
                         },
                     ))
                     .unwrap();
-                if etag.split(',').any(|tag| {
-                    tag.trim() == "*"
-                        || tag.trim().trim_start_matches("W/")
-                            == asset.etag.trim_start_matches("W/")
-                }) {
+                if crate::cache::etag_matches(Some(etag), asset.etag) {
                     reply.status = 304;
                     reply.bytes = b"";
                 }

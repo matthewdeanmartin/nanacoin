@@ -67,6 +67,9 @@ fn serve(
         )
     };
     if let Some(reply) = reply {
+        if reply.status == 304 {
+            return not_modified(request, reply.headers.iter().map(|(k, v)| header(k, v)).collect());
+        }
         return request.respond(Response::new(
             reply.status.into(),
             reply.headers.iter().map(|(k, v)| header(k, v)).collect(),
@@ -85,7 +88,6 @@ fn serve(
     let allowed = api::origin_allowed(&origin, origins);
     let mut headers = vec![
         header("Content-Type", "application/json"),
-        header("Cache-Control", "no-store"),
         header("Vary", "Origin"),
     ];
     if allowed && !origin.is_empty() {
@@ -96,7 +98,7 @@ fn serve(
         ));
         headers.push(header(
             "Access-Control-Allow-Headers",
-            "Authorization, Content-Type, Idempotency-Key",
+            "Authorization, Content-Type, Idempotency-Key, If-None-Match, Cache-Control",
         ));
     }
     let method = request.method().as_str().to_owned();
@@ -144,14 +146,33 @@ fn serve(
             }
         }
     };
+    let policy = nanacoin::cache::api(
+        &method,
+        request.url(),
+        status,
+        &output[..len],
+        request
+            .headers()
+            .iter()
+            .find(|h| h.field.equiv("If-None-Match"))
+            .map(|h| h.value.as_str())
+            .unwrap_or(""),
+    );
+    headers.push(header("Cache-Control", policy.control));
+    if let Some(etag) = &policy.etag {
+        headers.push(header("ETag", etag));
+    }
+    let status = policy.status;
+    let len = if status == 304 { 0 } else { len };
     headers.push(header(
         "X-Nanacoin-Generation",
         &service.generation().to_string(),
     ));
     headers.push(header(
         "Access-Control-Expose-Headers",
-        "X-Nanacoin-Generation",
+        "X-Nanacoin-Generation, ETag",
     ));
+    if status == 304 { return not_modified(request, headers); }
     request.respond(Response::new(
         status.into(),
         headers,
@@ -224,4 +245,20 @@ fn migrate_login(
         .map_err(|e| format!("migration: {e:?}"))?;
     println!("Login migrated. Ledger and member identity preserved; the old access token no longer authenticates.");
     Ok(())
+}
+
+// tiny_http 0.12 adds an incorrect zero length to empty 304 responses.
+fn not_modified(request: tiny_http::Request, headers: Vec<Header>) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut writer = request.into_writer();
+    writer.write_all(b"HTTP/1.1 304 Not Modified")?;
+    writer.write_all(&[13, 10])?;
+    for header in headers {
+        if !header.field.equiv("Content-Length") && !header.field.equiv("Transfer-Encoding") {
+            write!(writer, "{}: {}", header.field, header.value)?;
+            writer.write_all(&[13, 10])?;
+        }
+    }
+    writer.write_all(&[13, 10])?;
+    writer.flush()
 }

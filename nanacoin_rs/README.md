@@ -243,3 +243,22 @@ waiting deliveries and recent fulfillment activity; Messages and the public
 ledger show the same status. Nana can review disputes and reverse the payment.
 See [the fulfillment API](API.md#physical-fulfillment-current-development-schema)
 for authorization, retention and durability details.
+
+### HTTP caching
+
+Content-fingerprinted JS/CSS use `public, max-age=31536000, immutable`;
+rebuilding the UI changes their URLs. The HTML shell and unversioned assets
+use `no-cache` and content ETags, so firmware updates are picked up on the next
+visit. Gzip and identity representations share a weak validator and vary by
+`Accept-Encoding`.
+
+Successful public status, configuration, transport policy, ledger pages and
+transaction details use `public, no-cache` with SHA-256 ETags. Browsers may retain
+these responses but must validate every use. Changed response bytes bust the
+cache immediately; old transaction URLs are deliberately not immutable because
+retention, currency reforms and development resets can change their contents.
+All other JSON (including authenticated balances, credentials, mutations,
+diagnostics and errors) remains `no-store`. Conditional requests still execute
+the normal handler and its checks; they save response bandwidth, not ledger
+work, and introduce no in-memory response cache. Desktop and board share the
+same policy. CORS permits conditional headers and exposes ETag.

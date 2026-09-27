@@ -506,9 +506,18 @@ fn respond(ctx: &Context, request: &Request, secure: bool, output: &mut [u8]) ->
         "app;dur={app_ms:.3}, lock;dur={lock_ms:.3}, handler;dur={:.3}",
         began.elapsed().as_secs_f64() * 1000.0
     );
+    let policy = nanacoin::cache::api(
+        method,
+        uri,
+        status,
+        &output[..len],
+        request.header("If-None-Match"),
+    );
+    let status = policy.status;
+    let len = if status == 304 { 0 } else { len };
     let mut headers = vec![
         ("Content-Type", "application/json"),
-        ("Cache-Control", "no-store"),
+        ("Cache-Control", policy.control),
         ("Vary", "Origin"),
         ("Server-Timing", timing.as_str()),
     ];
@@ -518,14 +527,17 @@ fn respond(ctx: &Context, request: &Request, secure: bool, output: &mut [u8]) ->
             ("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS"),
             (
                 "Access-Control-Allow-Headers",
-                "Authorization, Content-Type, Idempotency-Key",
+                "Authorization, Content-Type, Idempotency-Key, If-None-Match, Cache-Control",
             ),
             (
                 "Access-Control-Expose-Headers",
-                "X-Nanacoin-Generation, Server-Timing",
+                "X-Nanacoin-Generation, Server-Timing, ETag",
             ),
             ("Access-Control-Max-Age", "600"),
         ]);
+    }
+    if let Some(etag) = policy.etag.as_deref() {
+        headers.push(("ETag", etag));
     }
     if let Some(generation) = generation.as_deref() {
         headers.push(("X-Nanacoin-Generation", generation));
