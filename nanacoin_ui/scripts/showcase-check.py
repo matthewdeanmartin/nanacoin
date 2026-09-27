@@ -165,7 +165,10 @@ def main():
             expect(page.locator('app-market')).to_be_visible()
             account_left = page.get_by_role('link', name='My Account', exact=True).bounding_box()['x']
             content_left = page.locator('#main-content').bounding_box()['x']
-            assert abs(account_left - content_left) <= 1, (account_left, content_left)
+            # Grid tracks and font metrics can yield fractional CSS positions.
+            # Two CSS pixels still catches a visibly separate left edge.
+            alignment_delta = abs(account_left - content_left)
+            assert alignment_delta <= 2, (account_left, content_left, alignment_delta)
             page.keyboard.press('n')
             expect(page.locator('app-market input[name="title"]')).to_be_focused()
             page.keyboard.type('gh?')

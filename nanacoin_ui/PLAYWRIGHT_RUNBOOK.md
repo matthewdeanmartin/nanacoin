@@ -49,8 +49,9 @@ and Chromium's Linux headless shell.
 3. For layout failures, inspect the reported viewport and element bounds. Check
    the CSS breakpoint, intrinsic text sizing, flex/grid minimum sizes, and
    whether the failure is overflow, clipping, wrapping, or delayed rendering.
-   Keep assertions focused on visible behavior and include measured values in
-   assertion messages.
+   Keep assertions focused on visible behavior, allow small CSS-pixel
+   differences where fractional layout is expected, and include measured
+   values in assertion messages.
 4. For timing failures, wait for a user-visible state or DOM condition with
    Playwright's `expect`/`wait_for_function`. Avoid fixed sleeps; they hide
    scheduling differences and make failures intermittent.
