@@ -24,6 +24,8 @@ default = ["desktop"]
 desktop = ["dep:tiny_http", "dep:fs2"]
 esp32 = ["dep:esp-idf-svc", "dep:embuild", "dep:log", "bundled-web"]
 bundled-web = []
+# Smaller-board bank; see src/board.rs. Never enabled for the S3 firmware.
+board-s2 = []
 
 [dependencies]
 heapless = { version = "0.8", features = ["serde"] }

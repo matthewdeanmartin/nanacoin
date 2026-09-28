@@ -7,6 +7,16 @@ use std::{
 };
 
 struct Counting;
+// Journal writes a steady-state loop may make without checkpoint support:
+// S3-sized runs on the default board, capacity-bounded runs on the S2 bank.
+const ROUNDS: usize = if MAX_RECORDS >= 4096 {
+    3000
+} else {
+    MAX_RECORDS - 16
+};
+// Alternating ask/bid trades: an even count returns balances to their start.
+const TRADES: u64 = (ROUNDS / 3) as u64 & !1;
+
 thread_local! { static ENABLED: Cell<bool> = const { Cell::new(false) }; static COUNT: Cell<usize> = const { Cell::new(0) }; }
 unsafe impl GlobalAlloc for Counting {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
@@ -226,7 +236,7 @@ fn forex_recycling_and_repeated_http_trades_do_not_allocate() {
     let mut output = vec![0; api::RESPONSE_LIMIT];
     COUNT.with(|c| c.set(0));
     ENABLED.with(|e| e.set(true));
-    for i in 0..1000 {
+    for i in 0..TRADES {
         let receipt = s
             .execute(
                 MemberId(1),
@@ -266,7 +276,7 @@ fn forex_recycling_and_repeated_http_trades_do_not_allocate() {
         s.state().history.len(),
         HISTORY.min(s.state().transactions as usize)
     );
-    assert_eq!(s.state().transactions, 2004);
+    assert_eq!(s.state().transactions, 4 + 2 * TRADES);
     assert_eq!(s.state().quotes.len(), nanacoin::forex::QUOTES);
     s.state().check_invariants().unwrap();
 }
@@ -384,7 +394,7 @@ fn command_and_state_serialization_do_not_allocate_after_startup() {
     let mut output = vec![0; api::RESPONSE_LIMIT];
     let auth = common::login(&mut service);
     ENABLED.with(|enabled| enabled.set(true));
-    for request_id in 2..3000 {
+    for request_id in 2..ROUNDS as u64 {
         service
             .execute(
                 MemberId(1),
@@ -426,8 +436,11 @@ fn command_and_state_serialization_do_not_allocate_after_startup() {
         service.state().history.len(),
         HISTORY.min(service.state().transactions as usize)
     );
-    assert_eq!(service.state().transactions, 2999);
-    assert_eq!(service.state().member(MemberId(1)).unwrap().balance, 2999);
+    assert_eq!(service.state().transactions, ROUNDS as u64 - 1);
+    assert_eq!(
+        service.state().member(MemberId(1)).unwrap().balance,
+        ROUNDS as i64 - 1
+    );
     println!(
         "State storage: {} bytes; response scratch: {} bytes",
         std::mem::size_of::<State>(),

@@ -2,7 +2,7 @@
 use crate::domain::*;
 use serde::{Deserialize, Serialize};
 
-pub const CAPACITY: usize = 128;
+pub const CAPACITY: usize = crate::board::FULFILLMENTS;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum Status {

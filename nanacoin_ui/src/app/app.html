@@ -4,7 +4,7 @@
 @if (!isDemo) {
   <p class="demobar">
     {{ plainHttp() ? 'Unencrypted home connection — use only on a network you trust.' : 'HTTPS connection — household HTTP access may still be enabled.' }}
-    <a href="http://nanacoin.local/trust" target="_blank" rel="noopener noreferrer">Set up trusted HTTPS</a>
+    <a [href]="'http://' + bankHost + '/trust'" target="_blank" rel="noopener noreferrer">Set up trusted HTTPS</a>
   </p>
 }
 

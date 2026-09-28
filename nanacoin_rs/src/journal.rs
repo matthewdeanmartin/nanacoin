@@ -6,7 +6,7 @@ pub mod archive;
 pub mod checkpoint;
 
 pub const FRAME_SIZE: usize = 1024;
-pub const MAX_RECORDS: usize = 4096;
+pub const MAX_RECORDS: usize = crate::board::MAX_RECORDS;
 
 /// A successful append means durable storage. An error may be ambiguous;
 /// Service latches read-only until restart/replay instead of reusing the slot.
@@ -388,10 +388,11 @@ impl<J: Journal> Service<J> {
         let now = self.now();
         self.state.validate_at(actor, &command, now)?;
         if self.journal.supports_checkpoint()
-            && (self.records >= 2048
+            && (self.records >= crate::board::CHECKPOINT_AFTER
                 || (self.journal.supports_archive()
-                    && (self.state.transactions - self.state.archive.transactions >= 1024
-                        || self.records >= 1024)))
+                    && (self.state.transactions - self.state.archive.transactions
+                        >= crate::board::ARCHIVE_AFTER as u64
+                        || self.records >= crate::board::ARCHIVE_AFTER)))
         {
             self.rotate(false)?;
             // Retention may evict an unpinned original: revalidate before append.

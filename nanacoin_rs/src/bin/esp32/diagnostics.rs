@@ -20,7 +20,7 @@ impl Default for Diagnostics {
             snapshot: Mutex::new(Snapshot {
                 schema: 1,
                 sampler_core: 0,
-                http_core: 1,
+                http_core: if cfg!(feature = "board-s2") { 0 } else { 1 },
                 ..Snapshot::default()
             }),
             requests: AtomicU32::new(0),
@@ -46,7 +46,7 @@ impl Diagnostics {
         let mut snapshot = Snapshot {
             schema: 1,
             sampler_core: 0,
-            http_core: 1,
+            http_core: if cfg!(feature = "board-s2") { 0 } else { 1 },
             ..Snapshot::default()
         };
         loop {
@@ -176,7 +176,9 @@ fn fixed_string<const N: usize>(bytes: &[u8]) -> heapless::String<N> {
 
 pub fn system_info() -> SystemInfo {
     let mut result = SystemInfo {
-        platform: "ESP32-S3 / Rust",
+        platform: nanacoin::board::PLATFORM,
+        board: nanacoin::board::ID,
+        hostname: nanacoin::board::FQDN,
         firmware: env!("CARGO_PKG_VERSION"),
         snapshot_bytes: core::mem::size_of::<Diagnostics>(),
         response_bytes: nanacoin::diagnostics::RESPONSE_BYTES,

@@ -44,7 +44,7 @@ plaintext downgrade. HTTPS certificate validation still applies.
 
 ```bash
 make certs
-make firmware
+make firmware BOARD=s3
 ```
 
 These targets generate local development certificate files if absent and
@@ -95,10 +95,10 @@ in ignored `.local/ca` and is never bundled. Compare the CA fingerprint through
 an independent trusted channel before installing it. See
 [connection security and USB recovery](https://github.com/matthewdeanmartin/nanacoin/blob/main/nanacoin_rs/CONNECTION_SECURITY.md).
 
-When deployment is explicitly intended, `make deploy PORT=COM9` rebuilds,
+When deployment is explicitly intended, `make deploy BOARD=s3 PORT=COM9` rebuilds,
 checks the attached board's partition table, and writes only the application
 at `0x10000`. It refuses other layouts; no automatic migration/erase occurs.
-The ledger and bootloader are not written. `bash scripts/deploy.sh COM9 --dry-run`
+The ledger and bootloader are not written. `bash scripts/deploy.sh s3 COM9 --dry-run`
 does the build and prints the plan without opening a port. This is not an
 initial installation tool. The canonical operator/automation runbook is
 [`nanacoin_rs/DEPLOY.md`](https://github.com/matthewdeanmartin/nanacoin/blob/main/nanacoin_rs/DEPLOY.md);

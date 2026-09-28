@@ -2,8 +2,7 @@
 //! A missing LED cannot be detected (WS2812 has no acknowledgement).
 use esp_idf_svc::{
     hal::{
-        cpu::Core,
-        gpio::{AnyOutputPin, Pins},
+        gpio::{AnyOutputPin, PinDriver, Pins},
         rmt::{
             config::TxChannelConfig, encoder::CopyEncoder, PinState, RmtChannel, Symbol,
             TxChannelDriver,
@@ -18,7 +17,7 @@ use nanacoin::{
     incidents::{Kind, LOG},
 };
 use std::{
-    sync::atomic::{AtomicBool, Ordering::Relaxed},
+    sync::atomic::{AtomicBool, AtomicU8, Ordering::Relaxed},
     time::Duration,
 };
 
@@ -34,6 +33,15 @@ static READY: AtomicBool = AtomicBool::new(false);
 static WIFI: AtomicBool = AtomicBool::new(false);
 static MDNS: AtomicBool = AtomicBool::new(false);
 static FATAL: AtomicBool = AtomicBool::new(false);
+static STAGE: AtomicU8 = AtomicU8::new(0);
+
+/// The startup step in progress; a fatal error blinks this number.
+pub fn stage(step: u8) {
+    STAGE.store(step, Relaxed);
+}
+pub fn current_stage() -> u8 {
+    STAGE.load(Relaxed)
+}
 
 pub fn wifi(up: bool) {
     WIFI.store(up, Relaxed);
@@ -53,8 +61,16 @@ pub fn start(pins: Pins) {
                 log::info!("Status LED disabled (NANACOIN_STATUS_LED_PIN=off)");
                 return;
             }
+            #[cfg(not(feature = "board-s2"))]
             Ok(Some(LedPin::Gpio38)) => pins.gpio38.into(),
+            #[cfg(not(feature = "board-s2"))]
             Ok(Some(LedPin::Gpio48)) => pins.gpio48.into(),
+            #[cfg(feature = "board-s2")]
+            Ok(Some(LedPin::Gpio15)) => pins.gpio15.into(),
+            Ok(Some(other)) => {
+                log::warn!("Status LED: {other:?} is not this board's LED; LED disabled");
+                return;
+            }
             Err(e) => {
                 log::warn!("Status LED configuration: {e}");
                 return;
@@ -64,7 +80,10 @@ pub fn start(pins: Pins) {
     if let Err(e) = (ThreadSpawnConfiguration {
         name: Some(c"status-led"),
         priority: 2,
-        pin_to_core: Some(Core::Core0),
+        pin_to_core: super::NETWORK_CORE,
+        #[cfg(feature = "board-s2")]
+        stack_alloc_caps: esp_idf_svc::hal::task::thread::MallocCap::Spiram
+            | esp_idf_svc::hal::task::thread::MallocCap::Cap8bit,
         ..Default::default()
     })
     .set()
@@ -75,7 +94,12 @@ pub fn start(pins: Pins) {
     let spawned = std::thread::Builder::new()
         .stack_size(6 * 1024)
         .spawn(move || {
-            if let Err(e) = run(pin) {
+            let result = if cfg!(feature = "board-s2") {
+                run_mono(pin)
+            } else {
+                run(pin)
+            };
+            if let Err(e) = result {
                 log::warn!("Status LED disabled: {e}; server continues");
             }
         });
@@ -84,6 +108,76 @@ pub fn start(pins: Pins) {
     }
     if let Err(e) = spawned {
         log::warn!("Status LED disabled: could not start task: {e}");
+    }
+}
+
+/// Single-colour LED (S2 Mini GPIO15): the startup marker and reset flashes,
+/// the S3's Morse rotation while healthy, and otherwise one rhythm per health
+/// state; see `board_status::mono`.
+fn run_mono(pin: AnyOutputPin<'static>) -> Result<(), EspError> {
+    let mut led = PinDriver::output(pin)?;
+    let began = super::incidents::now();
+    // SAFETY: read-only reset query, no arguments.
+    let reason = super::reset_reason(unsafe { esp_idf_svc::sys::esp_reset_reason() });
+    let flashes = board_status::reset_flashes(reason);
+    log::info!("Status LED: single colour, GPIO 15; reset {reason} ({flashes} flashes)");
+    let mut config = board_status::LightConfig::default();
+    let mut pattern = board_status::Rotation::new(&config);
+    let mut healthy_since = None;
+    let mut last_errors = 0;
+    let mut error_until = 0;
+    let mut previous = None;
+    loop {
+        let now = super::incidents::now();
+        let errors = LOG
+            .count(Kind::AllocationFailed)
+            .wrapping_add(LOG.count(Kind::TlsInitFailed));
+        if errors != last_errors {
+            error_until = now + 10_000;
+            last_errors = errors;
+        }
+        let health = Health {
+            ready: READY.load(Relaxed),
+            wifi: WIFI.load(Relaxed),
+            setup: false,
+            workers: LOG.workers_healthy(now),
+            mdns: MDNS.load(Relaxed),
+            fatal: FATAL.load(Relaxed) || LOG.count(Kind::StorageFailed) > 0,
+            recent_error: now < error_until,
+        };
+        if let Ok(pending) = CONFIG.try_lock() {
+            if let Some(next) = pending.as_ref().filter(|next| *next != &config) {
+                config.clone_from(next);
+                pattern = board_status::Rotation::new(&config);
+                healthy_since = None;
+            }
+        }
+        let state = health.state();
+        let startup = board_status::reset_color(now - began, flashes);
+        if state != board_status::State::Healthy || startup.is_some() {
+            healthy_since = None;
+        }
+        let on = if FATAL.load(Relaxed) {
+            board_status::stage_code(STAGE.load(Relaxed), now)
+        } else if health.fatal {
+            board_status::mono(state, now)
+        } else if let Some(color) = startup {
+            color != [0, 0, 0]
+        } else if state == board_status::State::Healthy {
+            let began = *healthy_since.get_or_insert(now);
+            pattern.color(now - began) != [0, 0, 0]
+        } else {
+            board_status::mono(state, now)
+        };
+        if previous != Some(on) {
+            if on {
+                led.set_high()?;
+            } else {
+                led.set_low()?;
+            }
+            previous = Some(on);
+        }
+        std::thread::sleep(Duration::from_millis(50));
     }
 }
 
@@ -164,7 +258,15 @@ fn run(pin: AnyOutputPin<'static>) -> Result<(), EspError> {
         if state != board_status::State::Healthy || startup.is_some() {
             healthy_since = None;
         }
-        let color = if health.fatal {
+        // A failed startup blinks its step number in red (see DEPLOY.md);
+        // stalled workers or storage failure while running stay solid red.
+        let color = if FATAL.load(Relaxed) {
+            if board_status::stage_code(STAGE.load(Relaxed), now) {
+                [8, 0, 0]
+            } else {
+                [0, 0, 0]
+            }
+        } else if health.fatal {
             board_status::color(health.state(), now)
         } else {
             startup.unwrap_or_else(|| {

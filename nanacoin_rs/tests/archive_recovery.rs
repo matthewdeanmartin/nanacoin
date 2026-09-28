@@ -406,7 +406,10 @@ fn audit_only_pruning_evicts_unrecoverable_payment_before_accepting_refund() {
             mastodon_id: None,
             bio: None,
         };
-        for _ in 0..if automatic { 767 } else { 800 } {
+        // One checkpoint per archived audit page: stay just inside retention, or
+        // exceed it so the page holding the payment is pruned.
+        let retain = nanacoin::journal::archive::RETAIN_PAGES;
+        for _ in 0..if automatic { retain - 1 } else { retain + 32 } {
             execute(&mut s, update());
             s.checkpoint(MemberId(1)).unwrap();
         }

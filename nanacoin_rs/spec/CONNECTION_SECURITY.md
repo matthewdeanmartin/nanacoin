@@ -65,7 +65,7 @@ fingerprinted trust instructions are added to the static bundle. Keep the CA
 private key on the trusted build computer. Trusting a root grants broader
 certificate authority than just NanaCoin, even though this CA is dedicated to it.
 
-`bash scripts/deploy.sh COM9` builds certificates, UI, and firmware, then validates
+`bash scripts/deploy.sh s3 COM9` builds certificates, UI, and firmware, then validates
 the existing partition layout and writes only the application partition.
 It preserves the economy and transport policy. The certificate change means
 clients trusting only the previous self-signed leaf must install the new CA.
@@ -77,8 +77,8 @@ physical USB access and perform two application deployments. Run from
 `nanacoin_rs`, substituting the actual serial port:
 
 ```bash
-NANACOIN_RECOVER_HTTP=1 bash scripts/deploy.sh COM9
-NANACOIN_RECOVER_HTTP=0 bash scripts/deploy.sh COM9
+NANACOIN_RECOVER_HTTP=1 bash scripts/deploy.sh s3 COM9
+NANACOIN_RECOVER_HTTP=0 bash scripts/deploy.sh s3 COM9
 ```
 
 The first build clears only the transport policy during startup. Let it boot

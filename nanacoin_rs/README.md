@@ -7,6 +7,14 @@ Separate client hosting and the API-only desktop build remain supported. Do not
 run the legacy `nanacoin.local` UI board at the same time. The Rust domain uses
 typed commands, identity newtypes, checked integer amounts and explicit errors.
 
+The household also runs a **second, independent bank** at
+**https://nanacoin-s2.local/** on a single-core ESP32-S2 Mini, with its own
+household and currency ([spec/SECOND_BANK.md](spec/SECOND_BANK.md)). It runs the
+same application with smaller retention and connection bounds
+(`--features board-s2`, [src/board.rs](src/board.rs)); the S3 build keeps its
+full limits. Every firmware, deploy and probe command takes the board
+explicitly (`s3` or `s2`); see [DEPLOY.md](DEPLOY.md).
+
 ## Run locally
 
 From Git Bash:
@@ -45,7 +53,7 @@ make check       # format, Clippy, Rust tests and real local HTTP smoke
 make help
 make certs       # development TLS files; preserves existing keys
 make certs-check # offline RSA/key/hostname/usage validation
-make firmware   # compile only; requires Wi-Fi settings
+make firmware BOARD=s3   # compile only; requires Wi-Fi settings
 ```
 
 Firmware targets ESP-IDF v5.5.3, esp-idf-svc 0.52.1 and managed mDNS 1.8.2. The application is Rust over ESP-IDF's C platform libraries. The script uses the installed Espressif Rust toolchain and, on this Windows machine, the SDK under `C:/Espressif`. Firmware output defaults to short path `C:/ncr` to avoid SDK path-length failures; override `CARGO_TARGET_DIR` if needed. Host output normally uses `target`.
@@ -53,7 +61,7 @@ Firmware targets ESP-IDF v5.5.3, esp-idf-svc 0.52.1 and managed mDNS 1.8.2. The 
 ```bash
 export NANACOIN_WIFI_SSID='Your 2.4GHz Wi-Fi'
 export NANACOIN_WIFI_PASSWORD='Your Wi-Fi password'
-make firmware
+make firmware BOARD=s3
 ```
 
 Wi-Fi credentials come from `NANACOIN_WIFI_SSID` / `NANACOIN_WIFI_PASSWORD` when
@@ -92,10 +100,10 @@ and required live-board checks, see [DEPLOY.md](DEPLOY.md).
 (cd ../nanacoin_ui && npm ci)       # one-time dependencies, if needed
 make run-bundle                   # local UI + API on http://127.0.0.1:8080
 make web-check                    # Rust, HTTP assets and deployment safety tests
-make firmware                     # Angular + gzip manifest + ELF + checked .bin
+make firmware BOARD=s3                     # Angular + gzip manifest + ELF + checked .bin
 # Only when a board is attached and deployment is intended:
-make deploy PORT=COM9
-make probe-board ADDRESS=192.168.1.158 # strict post-flash TLS/API/site check
+make deploy BOARD=s3 PORT=COM9
+make probe-board BOARD=s3 ADDRESS=192.168.1.158 # strict post-flash TLS/API/site check
 ```
 
 `make deploy` builds both halves of the single-board application: the current
@@ -103,7 +111,7 @@ shared client from `../nanacoin_ui` and the Rust API firmware that
 embeds it. Do not run `nanacoin_web/deploy.ps1` as a second step unless you are
 deliberately restoring the legacy two-board arrangement.
 
-After flashing, `make probe-board ADDRESS=<board-ip>` verifies the live server
+After flashing, `make probe-board BOARD=s3 ADDRESS=<board-ip>` verifies the live server
 against the generated CA without a certificate bypass, checks hostname and TLS,
 reads the API status, confirms the ledger invariant and Angular shell, and
 compares the board's downloadable `/ca` byte-for-byte with the build input.
@@ -114,7 +122,7 @@ at `0x10000`, not the ledger, configuration, bootloader or partition table.
 There is no full-chip erase. This is an upgrade script, not a first-install or
 TinyGo migration tool. Deployment resets the board and ends sessions; the ledger bytes remain. This binary-schema change requires a separate, scoped
 reset of disposable development ledger data; flashing alone does not migrate it.
-`bash scripts/deploy.sh COM9 --dry-run` builds and prints the plan without
+`bash scripts/deploy.sh s3 COM9 --dry-run` builds and prints the plan without
 opening a serial port. Scripts use esptool 4.x through
 `NANACOIN_ESPTOOL_PYTHON`, or the installed Windows ESP-IDF Python environment.
 

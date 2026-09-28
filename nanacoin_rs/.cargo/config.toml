@@ -4,6 +4,10 @@ linker = "ldproxy"
 runner = "espflash flash --monitor --partition-table partitions.csv --flash-size 16mb"
 rustflags = ["--cfg", "espidf_time64"]
 
+[target.xtensa-esp32s2-espidf]
+linker = "ldproxy"
+rustflags = ["--cfg", "espidf_time64"]
+
 [env]
 MCU = "esp32s3"
 CARGO_WORKSPACE_DIR = { value = "", relative = true }

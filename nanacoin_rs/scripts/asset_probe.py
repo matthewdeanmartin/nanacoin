@@ -11,15 +11,22 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def bundled_assets():
-    generated = (ROOT / ".embuild/web/assets.rs").read_text(encoding="utf-8")
+def bundled_assets(web_dir=".embuild/web"):
+    """(uri, identity, gzip, gzip_only) for each asset of one board's bundle.
+
+    A gzip-only bundle (the S2) embeds an empty identity copy; its identity
+    bytes are recovered from the embedded gzip for comparison.
+    """
+    generated = (ROOT / web_dir / "assets.rs").read_text(encoding="utf-8")
     assets = []
     for line in generated.splitlines():
         match = re.search(r'path: "([^"]+)".*?raw: include_bytes!\("([^"]+)"\).*?gzip: include_bytes!\("([^"]+)"\)', line)
         if match:
             uri, raw, zipped = match.groups()
-            assets.append((uri, Path(raw).read_bytes(), Path(zipped).read_bytes()))
-    if not assets or not any(uri == "/index.html" for uri, _, _ in assets):
+            raw, zipped = Path(raw).read_bytes(), Path(zipped).read_bytes()
+            gzip_only = not raw
+            assets.append((uri, gzip.decompress(zipped) if gzip_only else raw, zipped, gzip_only))
+    if not assets or not any(asset[0] == "/index.html" for asset in assets):
         raise RuntimeError("Could not identify the locally bundled assets")
     return assets
 
@@ -75,9 +82,14 @@ class BoardConnection:
 
 
 def verify_asset(get, asset, require_length=True):
-    uri, raw, zipped = asset
+    uri, raw, zipped, gzip_only = asset
     etag = None
-    for encoding, expected in (("identity", raw), ("gzip", zipped)):
+    if gzip_only:
+        # No identity copy on the board: an identity-only client gets 406.
+        status, headers, body = get(uri, {"Accept-Encoding": "identity"})
+        if status != 406:
+            raise RuntimeError(f"{uri} (identity): gzip-only board returned HTTP {status}, expected 406")
+    for encoding, expected in ((("gzip", zipped),) if gzip_only else (("identity", raw), ("gzip", zipped))):
         status, headers, body = get(uri, {"Accept-Encoding": encoding})
         label = f"{uri} ({encoding})"
         if status != 200 or body != expected:
@@ -103,8 +115,8 @@ def verify_asset(get, asset, require_length=True):
             raise RuntimeError(f"{label}: invalid conditional response")
 
 
-def verify_board_assets(address, hostname, context, workers=3):
-    assets = bundled_assets()
+def verify_board_assets(address, hostname, context, workers=3, web_dir=".embuild/web"):
+    assets = bundled_assets(web_dir)
 
     def check_group(group):
         with closing(BoardConnection(address, hostname, context)) as connection:

@@ -1,11 +1,13 @@
-//! Core 0 establishes TLS; core 1 multiplexes established HTTP(S) connections.
+//! One task establishes TLS; another multiplexes established HTTP(S)
+//! connections. On the S3 they run on cores 0 and 1; the S2 has one core.
 //! No socket read, write, or handshake waits inside the ledger mutex. All queues,
 //! connections and request buffers are bounded; partial I/O yields to peers.
-use super::{diagnostics, nvs_journal::NvsJournal, Diagnostics};
-use esp_idf_svc::{
-    hal::{cpu::Core, task::thread::ThreadSpawnConfiguration},
-    sys,
-};
+#[cfg(not(feature = "board-s2"))]
+use super::APP_CORE;
+use super::{diagnostics, nvs_journal::NvsJournal, Diagnostics, NETWORK_CORE};
+#[cfg(feature = "board-s2")]
+use esp_idf_svc::hal::task::thread::MallocCap;
+use esp_idf_svc::{hal::task::thread::ThreadSpawnConfiguration, sys};
 use nanacoin::incidents::{Kind, LOG};
 use nanacoin::{
     api,
@@ -22,14 +24,30 @@ use std::{
     time::{Duration, Instant},
 };
 
-const TLS_CLIENTS: usize = 8;
-const HTTP_CLIENTS: usize = 4;
-const HANDSHAKES: usize = 2;
+#[cfg(not(feature = "board-s2"))]
+mod limits {
+    pub const TLS_CLIENTS: usize = 8;
+    pub const HTTP_CLIENTS: usize = 4;
+    pub const HANDSHAKES: usize = 2;
+    // Pause dispatch before another potentially 512 KiB response is constructed.
+    // At most this budget plus one maximum reply is retained, even with slow peers.
+    pub const RESPONSE_BUDGET: usize = 2 * 1024 * 1024;
+    pub const PLACEMENT: &str =
+        "HTTP/API core 1 (8 TLS + 4 HTTP clients), TLS handshakes/Wi-Fi/diag core 0";
+}
+/// 2 MiB PSRAM: each TLS session keeps a 16 KiB receive record buffer.
+#[cfg(feature = "board-s2")]
+mod limits {
+    pub const TLS_CLIENTS: usize = 3;
+    pub const HTTP_CLIENTS: usize = 2;
+    pub const HANDSHAKES: usize = 1;
+    pub const RESPONSE_BUDGET: usize = 2 * nanacoin::api::RESPONSE_LIMIT;
+    pub const PLACEMENT: &str = "single core (3 TLS + 2 HTTP clients)";
+}
+pub use limits::PLACEMENT;
+use limits::{HANDSHAKES, HTTP_CLIENTS, RESPONSE_BUDGET, TLS_CLIENTS};
 const IDLE: Duration = Duration::from_secs(60);
 const REQUEST_DEADLINE: Duration = Duration::from_secs(5);
-// Pause dispatch before another potentially 512 KiB response is constructed.
-// At most this budget plus one maximum reply is retained, even with slow peers.
-const RESPONSE_BUDGET: usize = 2 * 1024 * 1024;
 
 pub struct Context {
     pub shared: Arc<Mutex<Service<NvsJournal>>>,
@@ -110,8 +128,25 @@ fn handshakes(listener: TcpListener, ready: mpsc::SyncSender<Socket>) {
     // SAFETY: zero is IDF's documented default; PEM inputs are static and NUL
     // terminated. Config remains alive until after every pending handshake.
     let mut cfg: sys::esp_tls_cfg_server_t = unsafe { core::mem::zeroed() };
-    let cert = concat!(include_str!("../../../certs/nanacoin-ca-signed.crt"), "\0").as_bytes();
-    let key = concat!(include_str!("../../../certs/nanacoin-ca-signed.key"), "\0").as_bytes();
+    // Each bank has a leaf for its own hostname, signed by the one household CA.
+    #[cfg(not(feature = "board-s2"))]
+    let (cert, key) = (
+        concat!(include_str!("../../../certs/nanacoin-ca-signed.crt"), "\0").as_bytes(),
+        concat!(include_str!("../../../certs/nanacoin-ca-signed.key"), "\0").as_bytes(),
+    );
+    #[cfg(feature = "board-s2")]
+    let (cert, key) = (
+        concat!(
+            include_str!("../../../certs/nanacoin-s2-ca-signed.crt"),
+            "\0"
+        )
+        .as_bytes(),
+        concat!(
+            include_str!("../../../certs/nanacoin-s2-ca-signed.key"),
+            "\0"
+        )
+        .as_bytes(),
+    );
     cfg.__bindgen_anon_3.servercert_buf = cert.as_ptr();
     cfg.__bindgen_anon_4.servercert_bytes = cert.len() as _;
     cfg.__bindgen_anon_5.serverkey_buf = key.as_ptr();
@@ -352,7 +387,17 @@ fn add_client(clients: &mut Vec<Client>, stream: Socket) {
     clients.push(Client::new(stream));
 }
 
-pub fn start(ctx: Context) -> Result<(), Box<dyn std::error::Error>> {
+/// The established-connection multiplexer, ready to run on some task.
+pub struct Http {
+    ctx: Context,
+    listener: TcpListener,
+    completed: mpsc::Receiver<Socket>,
+}
+
+/// Binds both listeners and starts the TLS handshake task. The caller decides
+/// where `Http::serve` runs: its own thread on the S3 (`spawn`), or the main
+/// task on the S2, whose internal RAM cannot hold another 32 KiB stack.
+pub fn start(ctx: Context) -> Result<Http, Box<dyn std::error::Error>> {
     let tls_listener = TcpListener::bind(("0.0.0.0", 443))?;
     let http_listener = TcpListener::bind(("0.0.0.0", 80))?;
     tls_listener.set_nonblocking(true)?;
@@ -361,7 +406,10 @@ pub fn start(ctx: Context) -> Result<(), Box<dyn std::error::Error>> {
     ThreadSpawnConfiguration {
         name: Some(c"nanacoin-tls"),
         priority: 4,
-        pin_to_core: Some(Core::Core0),
+        pin_to_core: NETWORK_CORE,
+        // Handshakes never write flash; on the S2 this stack lives in PSRAM.
+        #[cfg(feature = "board-s2")]
+        stack_alloc_caps: MallocCap::Spiram | MallocCap::Cap8bit,
         ..Default::default()
     }
     .set()?;
@@ -370,49 +418,72 @@ pub fn start(ctx: Context) -> Result<(), Box<dyn std::error::Error>> {
     std::thread::Builder::new()
         .stack_size(24 * 1024)
         .spawn(move || handshakes(tls_listener, ready))?;
+    ThreadSpawnConfiguration::default().set()?;
+    Ok(Http {
+        ctx,
+        listener: http_listener,
+        completed,
+    })
+}
+
+/// S3: the multiplexer gets its own 32 KiB internal-RAM task on core 1.
+#[cfg(not(feature = "board-s2"))]
+pub fn spawn(http: Http) -> Result<(), Box<dyn std::error::Error>> {
     ThreadSpawnConfiguration {
         name: Some(c"nanacoin-http"),
         priority: 5,
-        pin_to_core: Some(Core::Core1),
+        pin_to_core: APP_CORE,
         ..Default::default()
     }
     .set()?;
     std::thread::Builder::new()
         .stack_size(32 * 1024)
-        .spawn(move || {
-            let mut clients = Vec::with_capacity(TLS_CLIENTS + HTTP_CLIENTS);
-            let mut output = vec![0; api::RESPONSE_LIMIT];
-            loop {
-                if let Ok(stream) = completed.try_recv() {
-                    add_client(&mut clients, stream);
-                }
-                if let Ok((tcp, _)) = http_listener.accept() {
-                    if let Ok(stream) = socket(tcp) {
-                        add_client(&mut clients, stream);
-                    }
-                }
-                let mut queued: usize = clients
-                    .iter()
-                    .filter_map(|c| c.response.as_ref())
-                    .map(Response::retained_bytes)
-                    .sum();
-                LOG.beat(1, incident_now());
-                LOG.connections(1, clients.iter().filter(|c| c.socket.tls.is_some()).count());
-                LOG.connections(2, clients.iter().filter(|c| c.socket.tls.is_none()).count());
-                clients.retain_mut(|client| {
-                    let before = client.response.as_ref().map_or(0, Response::retained_bytes);
-                    let keep = client.poll(&ctx, &mut output, queued < RESPONSE_BUDGET);
-                    queued -= before;
-                    if keep {
-                        queued += client.response.as_ref().map_or(0, Response::retained_bytes);
-                    }
-                    keep
-                });
-                esp_idf_svc::hal::delay::FreeRtos::delay_ms(1);
-            }
-        })?;
+        .spawn(move || http.serve(|| {}))?;
     ThreadSpawnConfiguration::default().set()?;
     Ok(())
+}
+
+impl Http {
+    /// Never returns. `between` runs after every multiplexer turn (about
+    /// once per millisecond) and must stay short except when it has to block.
+    pub fn serve(self, mut between: impl FnMut()) -> ! {
+        let Http {
+            ctx,
+            listener,
+            completed,
+        } = self;
+        let mut clients = Vec::with_capacity(TLS_CLIENTS + HTTP_CLIENTS);
+        let mut output = vec![0; api::RESPONSE_LIMIT];
+        loop {
+            if let Ok(stream) = completed.try_recv() {
+                add_client(&mut clients, stream);
+            }
+            if let Ok((tcp, _)) = listener.accept() {
+                if let Ok(stream) = socket(tcp) {
+                    add_client(&mut clients, stream);
+                }
+            }
+            let mut queued: usize = clients
+                .iter()
+                .filter_map(|c| c.response.as_ref())
+                .map(Response::retained_bytes)
+                .sum();
+            LOG.beat(1, incident_now());
+            LOG.connections(1, clients.iter().filter(|c| c.socket.tls.is_some()).count());
+            LOG.connections(2, clients.iter().filter(|c| c.socket.tls.is_none()).count());
+            clients.retain_mut(|client| {
+                let before = client.response.as_ref().map_or(0, Response::retained_bytes);
+                let keep = client.poll(&ctx, &mut output, queued < RESPONSE_BUDGET);
+                queued -= before;
+                if keep {
+                    queued += client.response.as_ref().map_or(0, Response::retained_bytes);
+                }
+                keep
+            });
+            between();
+            esp_idf_svc::hal::delay::FreeRtos::delay_ms(1);
+        }
+    }
 }
 
 fn respond(ctx: &Context, request: &Request, secure: bool, output: &mut [u8]) -> Response {
@@ -441,8 +512,8 @@ fn respond(ctx: &Context, request: &Request, secure: bool, output: &mut [u8]) ->
     }
     let origin = request.header("Origin");
     let allowed = origin.len() <= 256
-        && (origin == "https://nanacoin.local"
-            || origin == "http://nanacoin.local"
+        && (origin == nanacoin::board::HTTPS_ORIGIN
+            || origin == nanacoin::board::HTTP_ORIGIN
             || api::origin_allowed(
                 origin,
                 option_env!("NANACOIN_ORIGINS").unwrap_or(api::DEFAULT_ORIGINS),

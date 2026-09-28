@@ -185,8 +185,19 @@ fn route(
         );
         let path = if spa { "/index.html" } else { path };
         if let Some(asset) = assets.iter().find(|a| a.path == path) {
-            let gz = quality(accept, "gzip", 0.0);
-            let identity = quality(accept, "identity", 1.0);
+            // Gzip-only bundles (the 4 MiB-flash S2) have no identity copy.
+            // An absent Accept-Encoding accepts any coding (RFC 9110 12.5.3).
+            let gzip_only = asset.raw.is_empty();
+            let gz = if gzip_only && accept.trim().is_empty() {
+                1.0
+            } else {
+                quality(accept, "gzip", 0.0)
+            };
+            let identity = if gzip_only {
+                0.0
+            } else {
+                quality(accept, "identity", 1.0)
+            };
             if gz == 0.0 && identity == 0.0 {
                 reply.status = 406;
                 reply.bytes = b"No acceptable representation";
@@ -315,5 +326,25 @@ mod tests {
         assert!(get("", "")
             .headers
             .contains(&("Cache-Control", "public, max-age=31536000, immutable")));
+    }
+    #[test]
+    fn gzip_only_bundle_never_serves_an_empty_identity_body() {
+        static GZIP_ONLY: &[Asset] = &[Asset {
+            path: "/main-12345678.js",
+            mime: "text/javascript",
+            raw: b"",
+            gzip: b"gzjs",
+            etag: "\"js\"",
+            immutable: true,
+        }];
+        let get = |accept| route(GZIP_ONLY, "GET", "/main-12345678.js", accept, "").unwrap();
+        for accept in ["", "gzip, deflate, br", "identity;q=1, gzip;q=0.1"] {
+            let reply = get(accept);
+            assert_eq!(reply.bytes, b"gzjs");
+            assert!(reply.headers.contains(&("Content-Encoding", "gzip")));
+        }
+        for accept in ["identity", "gzip;q=0", "*;q=0"] {
+            assert_eq!(get(accept).status, 406);
+        }
     }
 }

@@ -65,6 +65,9 @@ pub struct Partition {
 #[derive(Default, Serialize)]
 pub struct SystemInfo {
     pub platform: &'static str,
+    /// Board profile (`s3` or `s2`) and the hostname its certificate names.
+    pub board: &'static str,
+    pub hostname: &'static str,
     pub firmware: &'static str,
     pub idf: heapless::String<64>,
     pub chip_model: u32,

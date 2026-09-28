@@ -62,8 +62,13 @@ fn main() {
     println!("cargo:rustc-env=NANACOIN_RECOVER_HTTP={recovery}");
     println!("cargo:rerun-if-changed=build.rs");
     if std::env::var_os("CARGO_FEATURE_BUNDLED_WEB").is_some() {
-        let assets =
-            PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap()).join(".embuild/web");
+        // scripts/bundle-web.mjs writes one directory per board.
+        let dir = if std::env::var_os("CARGO_FEATURE_BOARD_S2").is_some() {
+            ".embuild/web-s2"
+        } else {
+            ".embuild/web"
+        };
+        let assets = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap()).join(dir);
         assert!(
             assets.join("assets.rs").exists(),
             "Run bash scripts/build-web.sh before building with bundled-web"
@@ -121,4 +126,6 @@ fn main() {
 
     println!("cargo:rerun-if-changed=certs/nanacoin-ca-signed.crt");
     println!("cargo:rerun-if-changed=certs/nanacoin-ca-signed.key");
+    println!("cargo:rerun-if-changed=certs/nanacoin-s2-ca-signed.crt");
+    println!("cargo:rerun-if-changed=certs/nanacoin-s2-ca-signed.key");
 }

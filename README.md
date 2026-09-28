@@ -123,7 +123,7 @@ To put it on a board instead:
 
 ```bash
 cd nanacoin_rs
-make firmware                 # builds the Angular site into the image too
+make firmware BOARD=s3                 # builds the Angular site into the image too
 ```
 
 Flashing is a separate, deliberate step — see

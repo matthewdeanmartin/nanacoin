@@ -9,7 +9,7 @@ use subtle::ConstantTimeEq;
 
 pub const MEMBERS: usize = 16;
 pub const LISTINGS: usize = 48;
-pub const HISTORY: usize = 3000;
+pub const HISTORY: usize = crate::board::HISTORY;
 pub const THINGS: usize = 64;
 pub const MAX_AMOUNT: i64 = 1_000_000_000_000_000;
 pub const MAX_SEQUENCE: u64 = 9_007_199_254_740_991;

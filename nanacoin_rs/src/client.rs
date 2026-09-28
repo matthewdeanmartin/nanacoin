@@ -385,7 +385,7 @@ pub(crate) fn status(
             circulation: -state.issuance_balance,
             journal_used: (records * FRAME_SIZE) as u64,
             journal_capacity: if checkpoint_supported {
-                2048 * FRAME_SIZE
+                crate::board::CHECKPOINT_AFTER * FRAME_SIZE
             } else {
                 MAX_RECORDS * FRAME_SIZE
             },

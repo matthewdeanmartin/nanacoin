@@ -51,7 +51,8 @@ def main():
             assert headers['Content-Type'] == 'application/x-x509-ca-cert'
             fingerprint = ':'.join(f'{b:02X}' for b in hashlib.sha256(certificate).digest()).encode()
             assert fingerprint in get('/trust')[2]
-            for secret in ['/rootCA-key.pem', '/certs/nanacoin-ca-signed.key', '/.local/ca/rootCA-key.pem']:
+            for secret in ['/rootCA-key.pem', '/certs/nanacoin-ca-signed.key', '/certs/nanacoin-s2-ca-signed.key',
+                           '/.local/ca/rootCA-key.pem']:
                 assert get(secret)[0] == 404
             assert b'name="nanacoin-api" content=""' in html
             def asset_get(uri, headers):

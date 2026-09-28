@@ -228,7 +228,7 @@ pub fn inventory<J: Journal>(service: &Service<J>) -> Inventory {
         .history
         .back()
         .and_then(|t| postcard::to_slice(t, &mut sample).ok().map(|v| v.len()));
-    Inventory { storage_codec: "postcard-1/NCR2/NCS2/NCA2", archive:s.archive, archive_page_slots:crate::journal::archive::SLOTS, archive_rotation_pending_limit:1024, sample_transaction_json_bytes:json_bytes, sample_transaction_binary_bytes:binary_bytes, engine: "Bounded in-memory model with durable event journal and checkpoints",
+    Inventory { storage_codec: "postcard-1/NCR2/NCS2/NCA2", archive:s.archive, archive_page_slots:crate::journal::archive::SLOTS, archive_rotation_pending_limit:crate::board::ARCHIVE_AFTER, sample_transaction_json_bytes:json_bytes, sample_transaction_binary_bytes:binary_bytes, engine: "Bounded in-memory model with durable event journal and checkpoints",
         generation: service.generation(), sequence: s.sequence, storage_failed: service.storage_failed(),
         invariants_ok: s.check_invariants().is_ok(), model_reserved_bytes: service.diagnostic_model_bytes(),
         memory_note: "RAM estimates use this build's Rust layouts, not flash sizes. Collection payloads omit container/allocator overhead; metadata is included in model total. Incident recorder, transport buffers, task stacks and native storage allocations are outside the model total. Embedded ticket/update rows are not separate tables. Browser-local caches are outside the board.",
@@ -236,7 +236,7 @@ pub fn inventory<J: Journal>(service: &Service<J>) -> Inventory {
         checkpoint_row_capacity: crate::journal::checkpoint::MAX_ROWS,
         checkpoint_row_max_bytes: crate::journal::checkpoint::ROW_BYTES,
         journal_records: service.journal_records(), journal_record_capacity: MAX_RECORDS,
-        journal_free_records: MAX_RECORDS.saturating_sub(service.journal_records()), checkpoint_after: 2048,
+        journal_free_records: MAX_RECORDS.saturating_sub(service.journal_records()), checkpoint_after: crate::board::CHECKPOINT_AFTER,
         journal_frame_bytes: FRAME_SIZE, journal_logical_bytes: service.journal_records() * FRAME_SIZE,
         lifetime_transactions: s.transactions,
         oldest_retained_sequence: s.history.front().map(|t| t.id), newest_retained_sequence: s.history.back().map(|t| t.id),

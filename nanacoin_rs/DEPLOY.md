@@ -1,82 +1,182 @@
-# Deploy Rust NanaCoin and the Angular app to the board
+# Deploy Rust NanaCoin and the Angular app to a bank
 
-This is the mechanical upgrade procedure for an **existing NanaCoin Rust board
-with the current partition layout**. It builds the current Angular client,
-embeds it in the Rust firmware, writes only the application partition, and
-checks the running board afterward.
+This household runs **two independent NanaCoin banks** (see
+`spec/SECOND_BANK.md`). Each has its own board, hostname, certificate,
+firmware build, ledger and currency. **Every command below names the board.**
+There is no default board, and a deployment for one bank cannot be written to
+the other.
 
-It preserves the ledger, household, HTTPS policy, bootloader, and partition
-table. It is not an initial installation, TinyGo migration, factory reset, or
-recovery procedure.
+| | **S3 bank** (`s3`) | **S2 bank** (`s2`) |
+|---|---|---|
+| Address | `https://nanacoin.local` | `https://nanacoin-s2.local` |
+| Board | ESP32-S3-N16R8 | ESP32-S2 Mini (S2FN4R2) |
+| Chip / MAC | `esp32s3`, `ac:a7:04:2c:2c:04` | `esp32s2`, `80:65:99:f0:1c:9c` |
+| USB | native USB (`VID_303A&PID_1001`, COM9 in Sept 2026) + CH343 bridge | native USB only (`VID_303A&PID_0002`); **the COM number moves on every reset** |
+| Known IP | 192.168.1.158 | 192.168.1.157 (September 28, 2026) |
+| Flash / app partition | 16 MiB / 4 MiB at `0x10000` | 4 MiB / 2.375 MiB at `0x10000` |
+| Build profile | `sdkconfig.defaults`, `partitions.csv` | `boards/s2/sdkconfig.defaults`, `boards/s2/partitions.csv`, `--features board-s2` |
+| Cargo target dir | `C:/ncr` | `C:/ncr-s2` |
+| Web bundle | `.embuild/web` (identity + gzip) | `.embuild/web-s2` (gzip only) |
+| Server certificate | `certs/nanacoin-ca-signed.*` | `certs/nanacoin-s2-ca-signed.*` |
+
+Both leaves are signed by the one household CA (`certs/home-ca.crt`), so a
+device that trusts one bank trusts the other. `scripts/boards.py` is the single
+source for the table above; the scripts read their board from it.
+
+## How the two banks are kept apart
+
+A deployment must pass **all** of these checks before it writes anything, and
+the probe must pass afterwards. Each check alone would stop a cross-board flash.
+
+1. **Board is required.** `deploy.sh`, `provision.sh`, `build-esp32.sh`,
+   `probe-board.py` and the Make targets refuse to run without `s3` or `s2`.
+   The old form `bash scripts/deploy.sh COM9` is now an error.
+2. **The image names its board.** Each firmware image embeds
+   `NANACOIN-BOARD:<board>:<hostname>;`, and its header carries the chip ID
+   (9 = S3, 2 = S2). `firmware-image.py`/`deploy.py` refuse an image that lacks
+   the board's marker, carries the other board's marker, has the wrong chip ID,
+   or is larger than that board's application partition.
+3. **esptool uses the board's `--chip`.** An S2 image cannot be written to an
+   S3, or the reverse: esptool refuses a chip-type mismatch.
+4. **The MAC must be that bank's recorded board.** If the chip is the other
+   bank, the error says so ("Port is the s3 bank ..."). If a board is
+   deliberately replaced, update `mac` in `scripts/boards.py` in a reviewed
+   change first.
+5. **The partition table must be that bank's layout.** The other bank's layout
+   is named in the refusal.
+6. **The live probe checks identity.** `/api/v1/diag/static` reports `board`
+   and `hostname`; the probe fails if they are not the requested bank, and TLS
+   is verified for that bank's hostname only.
+
+Separate target directories, bundle directories, certificates and sdkconfig
+files mean one board's build products are never picked up for the other.
 
 ## Rules for humans and automation
 
 - Work from `nanacoin_rs` in Git Bash on Windows.
 - Record `git status --short` before building. A dirty tree is allowed; do not
   discard, reset, stash, or overwrite somebody else's changes.
+- Decide which bank you are deploying **before** looking for a port. Write it
+  in the deployment report.
 - Never run `erase_flash`, erase NVS, write the partition table, flash a merged
   image, reset the economy, rotate certificates, or use HTTP recovery as part
-  of an ordinary deployment.
+  of an ordinary deployment. First installation (`provision.sh`) is a separate,
+  explicitly requested operation.
 - Never print Wi-Fi passwords, private keys, tokens, or credential-file contents.
 - Do not run `nanacoin_web/deploy.ps1` or `deploy.sh` afterward. The Rust image
-  already contains Angular; deploying the S2 web board would be a separate,
-  explicitly requested legacy two-board operation.
+  already contains Angular.
 - If the serial port or target board is ambiguous, stop and ask. Do not guess.
-- If the partition check refuses the board, stop. Do not bypass it or “fix” the
-  layout during a routine deployment.
+- If an identity check (image, chip, MAC, partition table, probe) refuses the
+  board, stop. Do not bypass it, edit `boards.py` to make it pass, or "fix"
+  the layout during a routine deployment.
 - A successful build or flash is not completion. The strict live-board probe
-  must pass.
+  for **the same board** must pass.
 
 ## Prerequisites
 
 The build computer needs:
 
-- the repository's existing Espressif Rust/ESP-IDF environment;
+- the repository's existing Espressif Rust/ESP-IDF environment (the `esp`
+  toolchain provides both `xtensa-esp32s3-espidf` and `xtensa-esp32s2-espidf`);
 - Node dependencies in `../nanacoin_ui/node_modules` (run `npm ci` there
   once if they are absent);
-- ignored Wi-Fi configuration supported by `build.rs`;
-- the existing ignored CA and server certificate under `.local/ca` and `certs`;
+- ignored Wi-Fi configuration supported by `build.rs` (both banks join the
+  same network);
+- the existing ignored CA under `.local/ca`, `certs/home-ca.crt` and the
+  board's leaf certificate. `scripts/dev-certs.sh s2` signs a missing S2 leaf
+  with the existing CA; it never creates a second CA;
 - Python `esptool` from the ESP-IDF environment;
-- a USB data cable connected to the ESP32-S3 board.
+- a USB **data** cable connected to the intended board.
 
 Do not regenerate or rotate working certificates just to deploy. Rotation would
 make every household device trust a new CA.
 
+`NANACOIN_STATUS_LED_PIN` in `.env` applies to the S3 only; S2 builds force it
+`off` because the S2 Mini has no WS2812 pixel.
+
 ## 1. Identify the serial port
 
-In PowerShell, list present port devices without opening them:
-
-```powershell
-Get-PnpDevice -Class Ports -PresentOnly |
-  Select-Object FriendlyName, InstanceId |
-  Format-Table -AutoSize
-```
-
-Use the PnP entity list when the port class omits the USB identity details:
+In PowerShell, list present ESP32 devices without opening them:
 
 ```powershell
 Get-CimInstance Win32_PnPEntity |
-  Where-Object { $_.Name -match 'COM\d+' -or $_.PNPDeviceID -match 'VID_303A' } |
-  Select-Object Name, PNPDeviceID |
+  Where-Object { $_.Name -match 'COM\d+' -or $_.PNPDeviceID -match 'VID_303A|VID_1A86' } |
+  Select-Object Name, Status, PNPDeviceID |
   Format-Table -AutoSize
 ```
 
-`Win32_SerialPort` is an optional additional view, but it does not enumerate
-every ESP32 USB Serial/JTAG device reliably on all Windows systems.
+Read the **product ID and MAC** in the `USB Composite Device` row, not the
+Windows device name:
 
-Set `PORT` to the unambiguous ESP32-S3 port, such as `COM9`. If several boards
-or serial adapters are present, unplug/replug the intended board and list again.
-Do not choose based only on an old example in documentation.
+| Row | Meaning |
+|---|---|
+| `USB\VID_303A&PID_1001\AC:A7:04:2C:2C:04` | the S3 bank; its `USB Serial Device (COMn)` with the same instance prefix is the port |
+| `USB\VID_303A&PID_0002\80:65:99:F0:1C:9C` | the S2 bank; its `MI_00` serial row is the port |
+| `VID_1A86&PID_55D3` | the S3's CH343 bridge (not used for deployment) |
+| `ESP32-S2` row with status `Error` (`MI_02`) | the S2's debug interface without a driver; harmless |
 
-Close serial monitors and other programs holding the port before continuing.
+COM3 on this PC is the motherboard's Intel AMT port; ignore it. Close serial
+monitors and other programs holding the port before continuing.
 
-### Prove the port is the live NanaCoin board
+If **both** boards are plugged in, confirm you picked the row whose MAC matches
+the bank you are deploying. The deploy script checks the MAC again, but do not
+rely on it to choose for you.
+
+### The S2: download mode by hand, RST afterwards
+
+The S2 has no bridge chip. Its USB port is presented by whatever runs on it:
+
+| What runs | What Windows shows |
+|---|---|
+| ROM download mode | `USB Serial Device (COMn)`, serial number `0` (COM4 on this PC) |
+| NanaCoin on the S2 | usually **"USB device not recognized"** and no COM port. This is the current, known state: the S2 app has no usable USB console. Use the blue LED, `/api/v1/diag` and the port-8080 report (below) instead. |
+
+Every S2 deployment therefore starts from ROM download mode, entered by hand:
+
+1. **Unplug** the S2. **Hold BOOT** (`0`). **Plug in** while holding it.
+2. Wait 2 seconds, **release BOOT**. The blue LED stays **dark**.
+3. List ports; the port with serial `0` is the one to use.
+
+"Hold BOOT, tap RST, release BOOT" also works, but did not always take on
+September 28, 2026; the power-on form was reliable. If the LED is still
+blinking, the board is not in download mode.
+
+`deploy.py`/`provision.py` never reset the S2 into download mode themselves
+(`--before no_reset`). Within one deployment they wait for the port when it
+briefly re-enumerates between esptool sessions, verify MAC and layout, write,
+and ask for a watchdog reset. **After an S2 write, tap RST once** if the LED
+stays dark: the watchdog reset can leave the S2 in download mode. If esptool
+cannot connect at all, repeat the power-on routine rather than retrying the
+command.
+
+### The S2's blue LED
+
+The S2 Mini's only light is a small blue LED on GPIO15 (there is no power
+lamp; no light at all means no power, a charge-only cable, or download mode).
+
+| Light | Meaning |
+|---|---|
+| On 1.5 s, gap, then 1–6 quick flashes | Firmware started; flashes = previous reset (1 power-on, 2 reset/USB, 3 crash, 4 watchdog, 5 brownout, 6 other) |
+| Slow: 1 s on, 1 s off | Joining Wi-Fi |
+| Solid on | Wi-Fi up, server starting |
+| Morse rotation and three blinks | Healthy and serving (same messages as the S3's RGB light) |
+| Mostly on: 1.75 s on, 0.25 s off | Serving but degraded (mDNS failed or a recent allocation/TLS error) |
+| Fast, 5 per second | Server stalled or storage failed |
+| **N blinks, 1.6 s dark, repeat** | Startup failed at step N: 1 event loop, 2 system NVS, 3 ledger partition, 4 journal, 5 ledger replay, 6 Wi-Fi driver, 7 Wi-Fi start, 8 time, 9 web server, 10 mDNS/background tasks |
+
+For a startup failure at step 8 or later, Wi-Fi is already up and the board
+keeps it up: `curl http://<board-ip>:8080/` returns the exact error with
+internal-RAM and PSRAM figures (both boards). Find the IP from the router, or
+ping-sweep and look for the MAC in `arp -a`.
+
+### Prove the port is the live S3 bank
 
 "A board is plugged in" does not mean "the NanaCoin server is plugged in". On
 September 26, 2026 the only USB board present (COM11) was a different
 ESP32-S3 with an unrelated partition table (`store`, `media`, `coredump`),
-while the real server kept running untouched over Wi-Fi. `deploy.py`'s
-partition check caught it, but identify the board before relying on that:
+while the real server kept running untouched over Wi-Fi. The partition check
+caught it, and the MAC check now also would, but identify the board before
+relying on either:
 
 1. Note the live server's uptime:
    `curl -s http://<board-ip>/api/v1/diag` → `uptime_seconds` (`/diag` is
@@ -87,11 +187,8 @@ partition check caught it, but identify the board before relying on that:
    If it restarted near zero, the port is the server. If it kept counting, the
    port is **another board**: stop and ask. Do not deploy to it.
 
-A quicker hint that needs no reset: the ESP32-S3's composite USB device ID ends
-in its MAC, for example `USB\VID_303A&PID_1001\AC:A7:04:2C:2C:04` in the
-`Win32_PnPEntity` listing above. The live server (September 2026) is
-`AC:A7:04:2C:2C:04` on 192.168.1.158. Its serial port is the
-`USB Serial Device (COMn)` entry with the same instance prefix.
+The same test works for the S2 bank: in download mode the S2 is not serving,
+so its `/api/v1/diag` stops answering until it restarts.
 
 Comparing the esptool MAC with the router or ARP table is only a hint. An ARP
 entry in `Probe`/`Stale` state may be old. The uptime test is decisive.
@@ -105,60 +202,64 @@ Open Git Bash:
 ```bash
 cd /c/github/nanacoin/nanacoin_rs
 git status --short
-PORT=COM9                         # replace with the port found above
-bash scripts/deploy.sh "$PORT" --dry-run
+BOARD=s3                          # s3 = nanacoin.local, s2 = nanacoin-s2.local
+PORT=COM9                         # the port found above for THAT board
+bash scripts/deploy.sh "$BOARD" "$PORT" --dry-run
 ```
 
 The dry run does all builds but never opens the port. It must:
 
 1. build the Angular production app;
-2. package identity and gzip assets for the same-origin API;
-3. validate the existing TLS certificate/key/CA inputs;
-4. build the ESP32-S3 release firmware;
-5. create a checked application `.bin` no larger than the 4 MiB application
-   partition; and
-6. print a plan to verify the partition table and write only address `0x10000`.
+2. package that board's assets (`.embuild/web` or `.embuild/web-s2`);
+3. validate that board's TLS certificate/key against the household CA;
+4. build that board's release firmware;
+5. check the application `.bin`: chip ID, board marker, and size against that
+   board's application partition; and
+6. print the board, hostname, chip, expected MAC, and a plan to verify the
+   chip, MAC and partition table and write only address `0x10000`.
 
 Warnings are not automatically failures, but any nonzero exit is. Fix the
 specific failure; do not skip its check.
 
 ## 3. Deploy the same source tree
 
-With the intended board still attached and the port free:
+With the intended board attached (the S2 in download mode) and the port free:
 
 ```bash
-bash scripts/deploy.sh "$PORT"
+bash scripts/deploy.sh "$BOARD" "$PORT"
 ```
 
-The deployment script rebuilds, then:
+The deployment script rebuilds, then in one esptool session:
 
-1. reads 4 KiB at `0x8000` from the board;
-2. requires exactly the expected `nvs`, `phy_init`, `factory`, and `ledger`
-   layout;
-3. writes the new application image at `0x10000`; and
-4. lets the board restart.
+1. connects with the board's `--chip` and reads the chip MAC;
+2. refuses unless the MAC is that bank's recorded board;
+3. reads 4 KiB at `0x8000` and requires exactly that bank's `nvs`,
+   `phy_init`, `factory` and `ledger` layout;
+4. writes the new application image at `0x10000`; and
+5. lets the board restart.
 
-Expected final text includes:
+Expected final text:
 
 ```text
-Application updated. Open https://nanacoin.local/ after restart.
+Application updated on the s3 bank. Open https://nanacoin.local/ after restart.
 ```
 
+or, for the S2, `... on the s2 bank. Open https://nanacoin-s2.local/ ...`.
 That sentence proves only that esptool completed. Continue to verification.
 
 ## 4. Find the board address
 
-First try its mDNS name:
+First try the bank's mDNS name:
 
 ```powershell
-Resolve-DnsName nanacoin.local
+Resolve-DnsName nanacoin.local       # S3 bank
+Resolve-DnsName nanacoin-s2.local    # S2 bank
 ```
 
 If mDNS is unavailable on the build computer, use the board's known DHCP address
 from the router or its prior deployment record. An IP address is fine for the
-probe; the probe still sends `nanacoin.local` for TLS SNI and hostname validation.
-
-Set the result in Git Bash:
+probe; the probe still sends the bank's hostname for TLS SNI and hostname
+validation, and it checks that the board at that address really is that bank.
 
 ```bash
 ADDRESS=192.168.1.158             # example only; use the actual address
@@ -166,90 +267,200 @@ ADDRESS=192.168.1.158             # example only; use the actual address
 
 ## 5. Prove the live board is correct
 
-Run the strict probe (the direct Python form is equivalent to the Make target):
-
 ```bash
-python scripts/probe-board.py --address "$ADDRESS"
-# equivalent: make probe-board ADDRESS="$ADDRESS"
+python scripts/probe-board.py --board "$BOARD" --address "$ADDRESS"
+# equivalent: make probe-board BOARD="$BOARD" ADDRESS="$ADDRESS"
 ```
 
 It retries during boot, trusts only `certs/home-ca.crt`, verifies the certificate
-for `nanacoin.local`, and checks:
+for that bank's hostname, and checks:
 
 - TLS succeeds without `-k` or a warning bypass;
+- `/api/v1/diag/static` reports the requested `board` and `hostname` (the
+  other bank at this address fails with "wrong bank");
 - `/api/v1/status` returns JSON and says the ledger balances;
-- `/` serves the **exact Angular index produced by this build**, configured for
-  the same-origin API;
-- every bundled asset matches the build byte-for-byte in identity and gzip
-  form, with correct lengths, ETags and conditional responses, across concurrent
-  keep-alive connections; the largest asset also passes a slow-reader check;
+- `/` serves the **exact Angular index produced by this board's build**,
+  configured for the same-origin API;
+- every bundled asset matches the build byte-for-byte, with correct lengths,
+  ETags and conditional responses, across concurrent keep-alive connections;
+  the largest asset also passes a slow-reader check. On the S3 both identity
+  and gzip are checked; the gzip-only S2 must return the exact gzip bytes and
+  answer an identity-only request with 406;
 - the anonymous public notebook returns a correctly shaped ledger response;
 - anonymous Board Health returns current machine data;
 - the served public CA is byte-for-byte the one used for the build.
 
-The command must end with `Board probe passed`. A DNS response, ping, serial boot
-line, HTTP 200 alone, or browser certificate bypass is not equivalent.
+The command must end with `Board probe passed for <board> (<hostname>, ...)`.
+A DNS response, ping, serial boot line, HTTP 200 alone, or browser certificate
+bypass is not equivalent.
 
 When a browser surface is available, perform these short product checks in a
-browser that already trusts the CA:
+browser that already trusts the CA, on **that bank's** hostname:
 
-1. Open `https://nanacoin.local/?api=` in a private window. The Notebook should
+1. Open `https://<hostname>/?api=` in a private window. The Notebook should
    load without signing in because the ledger is public.
-2. Open **Board Health** without signing in. It should show one fresh reading,
-   say **Start live updates**, and remain paused until selected.
-3. Sign in and confirm the existing household and balances survived.
-4. Open Household and My Account to confirm the new section navigation renders.
+2. Open **Board Health** without signing in. It should show one fresh reading
+   naming the right platform (ESP32-S3 or ESP32-S2), say **Start live
+   updates**, and remain paused until selected.
+3. Sign in and confirm the existing household and balances survived. The two
+   banks have different households; seeing the other bank's household means
+   the wrong address was used.
+4. Open Household and My Account to confirm the section navigation renders.
 
 Do not create a payment, reset the economy, close the journal, or seed demo data
 merely to prove deployment.
 
 For non-interactive automation with no browser surface, the strict probe is the
-required substitute: it compares every served asset to the exact local build and
-checks the anonymous notebook and Board Health endpoints. Report the browser
-checks as unavailable rather than claiming they were clicked.
+required substitute. Report the browser checks as unavailable rather than
+claiming they were clicked.
+
+## First installation of the S2 bank (provisioning)
+
+Only for a board that is **not yet a NanaCoin bank** (the S2 Mini arrived with
+MicroPython). This erases the whole chip, including anything the old firmware
+stored, then writes the bootloader (`0x1000` on the S2), partition table
+(`0x8000`) and application (`0x10000`). It is never part of a routine upgrade.
+
+```bash
+bash scripts/provision.sh s2 "$PORT" --dry-run   # builds and checks inputs only
+# BOOT+RST into download mode, find the port again, then:
+bash scripts/provision.sh s2 "$PORT"
+# equivalent: make provision BOARD=s2 PORT="$PORT"
+```
+
+`provision.py` refuses:
+
+- a chip whose type or MAC is not the recorded S2 (the S3 bank is named if it
+  is the S3's MAC);
+- a chip that already has **any** NanaCoin bank layout, because that chip holds
+  a ledger. Upgrade it with `deploy.sh` instead. `--replace-existing-bank`
+  exists only for an owner's explicit decision to discard that bank's ledger;
+  automation must never add it on its own;
+- a bootloader, partition table or image that is not the S2 build.
+
+After provisioning:
+
+1. The board restarts, joins Wi-Fi and advertises `nanacoin-s2.local`.
+2. Open `http://nanacoin-s2.local/trust`. Devices that already trust the
+   household CA need nothing new.
+3. Open `https://nanacoin-s2.local/` and create the second bank's household,
+   its administrator and **its own currency name**. Do not reuse the S3's
+   currency name; the two banks' coins are different currencies.
+4. Run the strict probe with `--board s2`.
+5. Record the board's DHCP address here for future probes.
 
 ## Stop conditions and what they mean
 
 | Symptom | Action |
 |---|---|
+| No board argument, or an unknown one | Decide which bank. Do not pick a default. |
 | No unambiguous serial port | Stop; reconnect/identify the physical board. |
 | Port access denied/in use | Close monitors and retry. Do not change flash commands. |
-| Partition-layout refusal | Stop. This is not an upgradeable current-layout board, and often not the NanaCoin server at all (see "Prove the port is the live NanaCoin board"). |
+| "Port is the s3 bank" / "Port is the s2 bank" | You have the other bank's port. Stop and pick the right board; never switch `BOARD` to match the port you happen to have. |
+| MAC "is not the recorded" board | Another board entirely. Stop and ask. |
+| esptool reports a different chip type | Wrong board for this `BOARD`. Stop. |
+| S2: esptool cannot connect / no port | Board not in download mode or charge-only cable: the power-on BOOT routine, list ports again. Do not retry in a loop. |
+| S2: "USB device not recognized" | Normal while NanaCoin runs on the S2. Not a fault by itself; use the LED and network diagnostics. |
+| S2: LED dark after a deployment | Still in download mode after the write. Tap RST once. |
+| LED counts N blinks | Startup failed at step N; read `http://<ip>:8080/` for step 8 and later. |
+| Probe: board `None`, "wrong bank" on the S3 | The S3 still runs firmware from before the two-bank change, which does not report its board. Deploy the current S3 build first. |
+| Partition-layout refusal | Stop. This is not an upgradeable bank of that type, and often not the NanaCoin server at all. |
+| Image lacks/has another board marker, wrong chip ID | The wrong build was selected. Rebuild with the right board. |
 | Live server uptime did not reset after `read_mac` | Stop. The port is a different board. |
-| Firmware image too large | Stop and reduce/review the image. Never enlarge or rewrite partitions casually. |
+| Firmware image too large | Stop and reduce/review the image. Never enlarge or rewrite partitions casually. The S2 app partition is 2.375 MiB. |
 | Certificate validation fails | Stop and inspect the existing certificate inputs. Do not use `-k` and do not rotate automatically. |
+| Probe: "wrong bank" | The address answers as the other bank. Fix the address; the deployment is unverified until the right bank passes. |
 | Flash succeeds but strict probe fails | Treat deployment as unverified; check boot, address, Wi-Fi, TLS, and serial evidence. Do not erase the board. |
 | Ledger reports unbalanced | Stop all money-writing tests and preserve evidence. |
 | Household appears empty | Stop. Do not provision or seed; verify that the intended board/address was used. |
 
-## Equivalent Make target
+## Equivalent Make targets
 
-After the port is known, this is equivalent to the non-dry deployment command:
+After the board and port are known:
 
 ```bash
-make deploy PORT=COM9
+make deploy BOARD=s3 PORT=COM9
+make probe-board BOARD=s3 ADDRESS=192.168.1.158
+make firmware BOARD=s2            # build only, no board access
+make test-s2                      # Rust tests with the S2 capacity profile
 ```
 
-The explicit `bash scripts/deploy.sh` form is used above because it exposes the
-safe `--dry-run` step and makes the accepted arguments obvious.
+Every board-specific target fails without `BOARD`. The explicit
+`bash scripts/deploy.sh` form is used above because it exposes the safe
+`--dry-run` step.
 
 ## Completion report
 
 A deployment report should state:
 
+- **which bank** (`s3`/`s2`, hostname) was deployed;
 - source working tree/revision and whether it was dirty;
-- selected serial port and how it was identified;
+- selected serial port and how it was identified (including the MAC);
 - dry-run result;
-- partition verification and application write result;
+- MAC, partition verification and application write result;
 - board hostname/IP used for verification;
-- strict probe result, including balanced-ledger confirmation;
+- strict probe result, including the reported board identity and
+  balanced-ledger confirmation;
 - whether the four browser checks passed;
 - any checks not performed and why.
 
 Do not include credentials, tokens, private-key material, or household transaction
 contents in the report.
 
-## Optional RGB boot and health diagnostics
+## S2 bank history
+
+### September 28, 2026: first installation of the S2 bank
+
+- Board: ESP32-S2FNR2, MAC `80:65:99:f0:1c:9c`, previously MicroPython.
+  Provisioned with `provision.py` (identity checks passed, whole-chip erase,
+  bootloader/partition table/app). The first boot opened a blank ledger and
+  retried Wi-Fi; the USB console then stopped working for later builds.
+- Diagnosis used the new LED step codes and the port-8080 report:
+  `startup failed at step 9: Not enough space (os error 12); internal free
+  50431 largest 31744; psram free 1964860`. The S3's layout of worker
+  threads needs 24 + 32 + 24 + 4 KiB of *internal* stacks; the S2 had 31 KiB
+  as its largest internal block after Wi-Fi.
+- Fix (S2 only): TLS handshake, diagnostics and LED task stacks live in PSRAM
+  (they never write flash); the HTTP/API multiplexer runs on the main task's
+  existing 32 KiB internal stack, with the scheduled-payment tick and
+  housekeeping between turns. Logging from the Wi-Fi event callback was also
+  removed; the reason and RSSI are recorded and logged by the main task.
+- Result: ready at 23.4 s (first Wi-Fi attempt: reason 201, no AP found;
+  second connected at −61 dBm on channel 11). `probe-board.py --board s2
+  --address 192.168.1.157` passed: strict TLS for `nanacoin-s2.local`, board
+  identity, balanced ledger, all 67 gzip-only assets with 406 identity,
+  ETags, concurrent and slow-reader transfers, public notebook, Board Health
+  and `/ca`. After the probe: internal free 42,791 (minimum 39,463), PSRAM
+  free 1,334,344 (minimum 1,205,084), no allocation/TLS/storage incidents.
+  mDNS resolved `nanacoin-s2.local`. The household was not yet created.
+
+### September 28, 2026: first two-bank deployment to the S3
+
+- Uncommitted two-bank working tree on top of `0793cb0` (52 changed paths,
+  none discarded). COM9 identified by the composite USB ID ending in
+  `AC:A7:04:2C:2C:04`; the board had been re-plugged (116 s uptime).
+- Baseline: The Martin House, 5 users, sequence 10, 4 transactions, journal
+  generation 0, balanced.
+- `bash scripts/deploy.sh s3 COM9 --dry-run` passed, then the real deployment:
+  chip, MAC and s3 partition layout verified in one esptool session; only the
+  3,349,056-byte application was written at `0x10000`, hash verified.
+  The S3 restarted on its own (uptime 5 s at first check).
+- `probe-board.py --board s3 --address 192.168.1.158` passed, including the new
+  board-identity check (`s3`, `nanacoin.local`) and all 67 identity + gzip
+  assets. The ledger matched the baseline exactly.
+- Cross-checks: `--board s2` against the S3 and `--board s3` against the S2
+  both failed at strict TLS (hostname mismatch) before any request.
+- New in this build for the S3: a failed startup blinks its step number in red
+  and serves the port-8080 report. No browser checks were performed.
+
+## S3 bank history and diagnostics
+
+Everything below records work on the S3 bank (`nanacoin.local`) before the
+second bank existed. Commands in it use the old single-board syntax; today the
+S3 forms are `bash scripts/deploy.sh s3 COM9` and
+`make probe-board BOARD=s3 ADDRESS=...`.
+
+### Optional RGB boot and health diagnostics
 
 Set `NANACOIN_STATUS_LED_PIN=48` (or `38` for that board's documented RGB
 pin) in ignored `nanacoin_rs/.env`, then use the ordinary deployment above.
@@ -272,7 +483,8 @@ the ROM bootloader; an unpowered/stuck-in-download CPU cannot light it.
 | Dim white | Wi-Fi acquired; service initialization continues. |
 | Cyan Morse message followed by three green blinks | Both real TLS and HTTP workers are making progress, Wi-Fi is up, and mDNS initialized. |
 | Amber | mDNS initialization failed (use the IP), or an allocation/TLS initialization error occurred within 10 seconds. |
-| Red | Startup/storage failure, or a server worker has stopped progressing for 2 seconds. |
+| Red blinking N times, dark 1.6 s, repeat | Startup failed at step N (same steps as the S2 table above); `http://<board-ip>:8080/` has the error text once Wi-Fi is up. |
+| Solid red | Storage failure while running, or a server worker has stopped progressing for 2 seconds. |
 
 Reset flashes: 1 power-on; 2 software/reset-pin/USB; 3 panic; 4 watchdog;
 5 brownout; 6 other. A panic may reset before a live red indication is possible.

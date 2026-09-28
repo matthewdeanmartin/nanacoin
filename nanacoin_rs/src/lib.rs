@@ -1,6 +1,7 @@
 //! A bounded household ledger, independent of its HTTP and ESP32 adapters.
 pub mod api;
 pub mod auth;
+pub mod board;
 mod client;
 pub mod database_diagnostics;
 pub mod diagnostics;

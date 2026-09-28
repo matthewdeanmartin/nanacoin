@@ -1,0 +1,6 @@
+# ESP32-S2 Mini bank (nanacoin-s2.local), 4 MiB embedded flash.
+# Name, Type, SubType, Offset, Size, Flags
+nvs, data, nvs, 0x9000, 0x6000,
+phy_init, data, phy, 0xf000, 0x1000,
+factory, app, factory, 0x10000, 0x260000,
+ledger, data, nvs, 0x270000, 0x190000,

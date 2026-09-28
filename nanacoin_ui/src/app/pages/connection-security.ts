@@ -1,6 +1,7 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ApiBase } from '../api/api-base';
+import { bankHost } from '../api/bank-host';
 import { NanacoinService } from '../api/nanacoin.service';
 
 @Component({
@@ -9,11 +10,11 @@ import { NanacoinService } from '../api/nanacoin.service';
   template: `
     <section class="card">
       <h2>Household connection security</h2>
-      <p>Easy mode lets the family use http://nanacoin.local without installing anything.
+      <p>Easy mode lets the family use http://{{ host }} without installing anything.
         HTTP exposes passwords and transactions to someone able to intercept your network traffic.
         HTTPS protects a connection, but an HTTP account can still be stolen while Easy mode is on.</p>
-      <p><a href="http://nanacoin.local/trust" target="_blank" rel="noopener noreferrer">Set up trusted HTTPS on each device</a>
-        · <a href="https://nanacoin.local/?api=">Open the secure site</a></p>
+      <p><a [href]="'http://' + host + '/trust'" target="_blank" rel="noopener noreferrer">Set up trusted HTTPS on each device</a>
+        · <a [href]="'https://' + host + '/?api='">Open the secure site</a></p>
       <button type="button" title="Read whether this household currently permits unencrypted HTTP" (click)="check()" [disabled]="busy()">Check household mode</button>
       @if (mode(); as current) {
         <p>{{ current.https_only ? 'Secure mode: HTTP app and API are disabled.' : 'Easy mode: HTTP and HTTPS are available.' }}</p>
@@ -31,6 +32,7 @@ import { NanacoinService } from '../api/nanacoin.service';
 export class ConnectionSecurity {
   private readonly api = inject(NanacoinService);
   private readonly base = inject(ApiBase);
+  protected readonly host = bankHost();
   readonly secure = computed(() => location.protocol === 'https:' &&
     new URL(this.base.current(), location.href).protocol === 'https:');
   readonly mode = signal<{ https_only: boolean; supported: boolean } | null>(null);

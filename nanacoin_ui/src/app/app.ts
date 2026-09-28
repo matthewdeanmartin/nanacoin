@@ -24,6 +24,7 @@ import { SiteMenu } from './ui/site-menu';
 import { KeyboardHelp } from './ui/keyboard-help';
 import { MastodonConnect } from './ui/mastodon-connect';
 import { Dialogs } from './ui/dialog';
+import { bankHost } from './api/bank-host';
 
 type Phase = 'loading' | 'connect' | 'setup' | 'login' | 'app' | 'logs';
 
@@ -61,6 +62,8 @@ export class App {
   private mastodonCallback: { code: string; state: string } | null = null;
 
   protected readonly isDemo = IS_DEMO;
+  /** This page's own bank: the trust link must not send S2 users to the S3. */
+  protected readonly bankHost = bankHost();
   protected readonly plainHttp = computed(() =>
     location.protocol !== 'https:' || new URL(this.apiBase.current(), location.href).protocol !== 'https:');
 

@@ -3,7 +3,7 @@ use crate::domain::*;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
-pub const CORRECTIONS: usize = 4096;
+pub const CORRECTIONS: usize = crate::board::CORRECTIONS;
 
 #[cfg(test)]
 mod integrity_tests {
@@ -112,7 +112,7 @@ mod integrity_tests {
     }
 }
 pub const EPOCHS: usize = 32;
-pub const AUDIT_CACHE: usize = 1024;
+pub const AUDIT_CACHE: usize = crate::board::AUDIT_CACHE;
 pub const FLOW_COUNT: usize = 20;
 pub const FLOW_NAMES: [&str; FLOW_COUNT] = [
     "issued_to_nana",

@@ -5,7 +5,7 @@ CARGO ?= cargo
 PYTHON ?= python
 export CARGO
 
-.PHONY: help run migrate-login build test check fmt smoke certs certs-check rotate-certs firmware web bundle deploy probe-board web-check run-bundle
+.PHONY: help run migrate-login build test test-s2 check fmt smoke certs certs-check rotate-certs firmware web bundle deploy provision probe-board web-check run-bundle require-board
 
 help:
 	@printf '%s\n' \
@@ -19,12 +19,16 @@ help:
 	  'make certs     Generate local development TLS certificate files' \
 	  'make certs-check  Validate certificate/key compatibility without a board' \
 	  'make rotate-certs  Archive the current CA and generate a compatible replacement' \
-	  'make firmware  Build ESP32-S3 firmware including Angular (no flashing)' \
+	  'make firmware BOARD=s3|s2  Build one bank firmware including Angular (no flashing)' \
 	  'make bundle    Build desktop server including Angular' \
 	  'make run-bundle  Serve UI + API locally on port 8080' \
 	  'make web-check Test bundled assets and deployment safety without a board' \
-	  'make deploy PORT=COM9  Build and update an existing Rust board; preserves ledger' \
-	  'make probe-board ADDRESS=192.168.1.158  Strict TLS/API/site post-flash check'
+	  'make test-s2   Run Rust tests with the S2 bank capacity profile' \
+	  'make deploy BOARD=s3|s2 PORT=COM9  Update an existing bank; preserves ledger' \
+	  'make provision BOARD=s2 PORT=COMn  FIRST INSTALL ONLY: erase + install a new bank' \
+	  'make probe-board BOARD=s3|s2 ADDRESS=192.168.1.158  Strict TLS/API/site post-flash check' \
+	  '' \
+	  'BOARD is always explicit: s3 = nanacoin.local (ESP32-S3), s2 = nanacoin-s2.local (ESP32-S2).'
 
 run:
 	bash scripts/run-local.sh
@@ -38,10 +42,15 @@ build:
 test:
 	$(CARGO) test --locked
 
+test-s2:
+	$(CARGO) test --locked --features board-s2
+
 check:
 	$(CARGO) fmt --check
 	$(CARGO) clippy --locked --all-targets -- -D warnings
+	$(CARGO) clippy --locked --all-targets --features board-s2 -- -D warnings
 	$(CARGO) test --locked
+	"$(MAKE)" test-s2
 	"$(MAKE)" smoke
 
 fmt:
@@ -51,16 +60,21 @@ smoke: build
 	$(PYTHON) scripts/smoke.py
 
 certs:
-	bash scripts/dev-certs.sh
+	bash scripts/dev-certs.sh s3
+	bash scripts/dev-certs.sh s2
 
 certs-check:
-	bash scripts/test-certs.sh
+	bash scripts/test-certs.sh s3
+	bash scripts/test-certs.sh s2
 
 rotate-certs:
 	bash scripts/rotate-certs.sh --yes
 
-firmware:
-	bash scripts/build-esp32.sh
+require-board:
+	@case "$(BOARD)" in s3|s2) ;; *) echo 'Set BOARD=s3 (nanacoin.local) or BOARD=s2 (nanacoin-s2.local).' >&2; exit 2;; esac
+
+firmware: require-board
+	bash scripts/build-esp32.sh "$(BOARD)"
 
 web:
 	bash scripts/build-web.sh
@@ -76,8 +90,11 @@ web-check: bundle
 	$(PYTHON) scripts/web-smoke.py
 	$(PYTHON) scripts/test_deploy.py
 
-deploy:
-	bash scripts/deploy.sh "$(PORT)"
+deploy: require-board
+	bash scripts/deploy.sh "$(BOARD)" "$(PORT)"
 
-probe-board:
-	$(PYTHON) scripts/probe-board.py --address "$(ADDRESS)"
+provision: require-board
+	bash scripts/provision.sh "$(BOARD)" "$(PORT)"
+
+probe-board: require-board
+	$(PYTHON) scripts/probe-board.py --board "$(BOARD)" --address "$(ADDRESS)"

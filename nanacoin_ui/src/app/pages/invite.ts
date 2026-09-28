@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { IS_DEMO } from '../demo/demo';
 import { toggleCaps } from './message-caps';
 import { Mastodon } from '../api/mastodon';
+import { bankHost } from '../api/bank-host';
 
 @Component({
   selector: 'app-invite',
@@ -51,9 +52,9 @@ export class InvitePage {
       'Demo at https://matthewdeanmartin.github.io/nanacoin/\n' +
       '\n' +
       'Runs on an $10 tiny computer.'
-    : 'Hey, visit my house, connect to nanacoin.local, and join the economy!\n' +
+    : `Hey, visit my house, connect to ${bankHost()}, and join the economy!\n` +
       '\n' +
-      'Live board at https://nanacoin.local\n' +
+      `Live board at https://${bankHost()}\n` +
       '\n' +
       'or visit the demo at https://matthewdeanmartin.github.io/nanacoin/';
   protected allCaps = false;
@@ -69,7 +70,7 @@ export class InvitePage {
   protected shareFacebook(): void {
     this.copyDraft();
     const params = new URLSearchParams({
-      u: IS_DEMO ? 'https://matthewdeanmartin.github.io/nanacoin/' : 'http://nanacoin.local/',
+      u: IS_DEMO ? 'https://matthewdeanmartin.github.io/nanacoin/' : `http://${bankHost()}/`,
       quote: this.text.trim(),
     });
     window.open(

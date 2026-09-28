@@ -9,9 +9,8 @@ use heapless::String;
 use serde::{Deserialize, Serialize};
 
 pub const BODY_LIMIT: usize = 1024;
-pub const RESPONSE_LIMIT: usize = 512 * 1024;
-pub const DEFAULT_ORIGINS: &str =
-    "http://localhost:4200,http://127.0.0.1:4200,http://nanacoin.local,https://nanacoin.local";
+pub const RESPONSE_LIMIT: usize = crate::board::RESPONSE_LIMIT;
+pub const DEFAULT_ORIGINS: &str = crate::board::DEFAULT_ORIGINS;
 pub fn origin_allowed(origin: &str, allowed: &str) -> bool {
     origin.is_empty()
         || allowed
@@ -104,7 +103,7 @@ fn storage_status<J: Journal>(service: &Service<J>) -> StorageStatus {
         generation: service.generation(),
         sequence: service.state.sequence,
         journal_records: service.journal_records(),
-        checkpoint_after: 2048,
+        checkpoint_after: crate::board::CHECKPOINT_AFTER,
         checkpoint_supported: service.checkpoint_supported(),
     }
 }

@@ -4,6 +4,8 @@
 pub enum LedPin {
     Gpio38,
     Gpio48,
+    /// The ESP32-S2 Mini's single blue LED (plain GPIO, not a WS2812).
+    Gpio15,
 }
 
 /// No autodetection or arbitrary pin probing: unknown settings disable output.
@@ -12,7 +14,8 @@ pub fn led_pin(value: Option<&str>) -> Result<Option<LedPin>, &'static str> {
         None | Some("" | "off") => Ok(None),
         Some("38") => Ok(Some(LedPin::Gpio38)),
         Some("48") => Ok(Some(LedPin::Gpio48)),
-        _ => Err("expected off, 38, or 48; LED disabled"),
+        Some("15") => Ok(Some(LedPin::Gpio15)),
+        _ => Err("expected off, 15, 38, or 48; LED disabled"),
     }
 }
 
@@ -87,6 +90,42 @@ pub fn color(state: State, elapsed_ms: u64) -> [u8; 3] {
     }
 }
 
+/// The same states on a single-colour LED, where only on/off is visible.
+/// Healthy plays the same Morse rotation and three blinks as the RGB light
+/// (the caller uses `Rotation`); every other state is a plain rhythm that
+/// cannot be mistaken for Morse (2-second cycle unless noted):
+///
+/// | State | Rhythm |
+/// |---|---|
+/// | Starting (Wi-Fi up, server not ready) | solid on |
+/// | Connecting (no Wi-Fi) | slow blink: 1 s on, 1 s off |
+/// | Healthy (without a rotation) | on, with a brief dark beat every 2 s |
+/// | Degraded (no mDNS / recent error) | mostly on: 1.75 s on, 0.25 s off |
+/// | Setup | mostly off: 0.25 s on, 1.75 s off |
+/// | Stalled / fatal | fast blink, 5 per second |
+pub fn mono(state: State, elapsed_ms: u64) -> bool {
+    let t = elapsed_ms % 2000;
+    match state {
+        State::Starting => true,
+        State::Connecting => t < 1000,
+        State::Healthy => t >= 150,
+        State::Degraded => t < 1750,
+        State::Setup => t < 250,
+        State::Stalled | State::Fatal => elapsed_ms % 200 < 100,
+    }
+}
+
+/// Failed startup on a single-colour LED: blink the step number (0.2 s on,
+/// 0.2 s off), stay dark 1.6 s, repeat. Step 0 (unknown) is the fast blink.
+pub fn stage_code(stage: u8, elapsed_ms: u64) -> bool {
+    if stage == 0 {
+        return elapsed_ms % 200 < 100;
+    }
+    let blinks = u64::from(stage) * 400;
+    let t = elapsed_ms % (blinks + 1600);
+    t < blinks && t % 400 < 200
+}
+
 pub fn reset_flashes(reason: &str) -> u64 {
     match reason {
         "power on" => 1,
@@ -122,11 +161,54 @@ mod tests {
     use super::*;
 
     #[test]
+    fn every_state_has_a_distinct_single_colour_rhythm() {
+        let states = [
+            State::Starting,
+            State::Connecting,
+            State::Setup,
+            State::Healthy,
+            State::Degraded,
+            State::Stalled,
+        ];
+        let rhythm = |s| {
+            (0..2000)
+                .step_by(50)
+                .map(|t| mono(s, t))
+                .collect::<Vec<_>>()
+        };
+        for (i, a) in states.iter().enumerate() {
+            for b in &states[i + 1..] {
+                assert_ne!(rhythm(*a), rhythm(*b), "{a:?} vs {b:?}");
+            }
+        }
+        // Healthy is mostly on; losing Wi-Fi is mostly visible as dark time.
+        assert!(rhythm(State::Healthy).iter().filter(|on| **on).count() > 35);
+        assert_eq!(mono(State::Fatal, 0), mono(State::Stalled, 0));
+    }
+
+    #[test]
+    fn stage_code_blinks_the_step_number() {
+        for stage in 1..=10u8 {
+            let cycle = u64::from(stage) * 400 + 1600;
+            let mut rises = 0;
+            let mut previous = false;
+            for t in (0..cycle).step_by(50) {
+                let on = stage_code(stage, t);
+                rises += u32::from(on && !previous);
+                previous = on;
+            }
+            assert_eq!(rises, u32::from(stage));
+            assert!(!stage_code(stage, cycle - 1));
+        }
+    }
+
+    #[test]
     fn unknown_board_defaults_to_no_pin() {
         assert_eq!(led_pin(None), Ok(None));
         assert_eq!(led_pin(Some("off")), Ok(None));
         assert_eq!(led_pin(Some("48")), Ok(Some(LedPin::Gpio48)));
         assert_eq!(led_pin(Some("38")), Ok(Some(LedPin::Gpio38)));
+        assert_eq!(led_pin(Some("15")), Ok(Some(LedPin::Gpio15)));
         for pin in ["19", "26", "0", "-1", "auto", "garbage"] {
             assert!(led_pin(Some(pin)).is_err());
         }

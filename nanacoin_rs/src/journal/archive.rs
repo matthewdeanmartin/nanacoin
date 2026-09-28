@@ -7,8 +7,8 @@ use crate::{
 use serde::{Deserialize, Serialize};
 
 pub const PAGE_BYTES: usize = 4096;
-pub const SLOTS: usize = 1024;
-pub const RETAIN_PAGES: u64 = 768;
+pub const SLOTS: usize = crate::board::ARCHIVE_SLOTS;
+pub const RETAIN_PAGES: u64 = crate::board::ARCHIVE_RETAIN_PAGES;
 const HEADER: usize = 32;
 const MAX_STAGE: u64 = SLOTS as u64 - RETAIN_PAGES;
 
