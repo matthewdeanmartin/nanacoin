@@ -519,3 +519,39 @@ No browser surface was enabled in the computer-use inventory, so browser
 rendering/sign-in checks were unavailable; no visual success is claimed.
 Evidence is retained in `.local/nanacoin-transfer-*.log`, including the failing
 probe/serial capture and the successful final deployment, boot and full probe.
+
+### September 27, 2026: current source deployment
+
+Started from clean revision `2eda80a`; no prior working-tree changes were
+discarded. The present USB composite identified native USB serial COM9 and MAC
+`ac:a7:04:2c:2c:04`, matching the live server: HTTP diagnostic uptime reset from
+134 seconds to 5 seconds after `read_mac`. `nanacoin.local` resolved to
+`192.168.1.158`. The pre-deployment ledger snapshot was sequence 10, five users,
+four transactions, journal generation 0, balanced.
+
+The dry run passed the Angular production build, 67-asset identity/gzip
+packaging, existing certificate and key validation, and ESP32-S3 release build.
+The 3,346,256-byte application fits the existing 4 MiB application partition.
+`make check` passed formatting, clippy, 167 Rust tests and the HTTP/restart
+smoke. `make web-check` passed bundled-web tests, the all-asset desktop HTTP
+smoke and three deployment-safety tests. Angular reports the initial bundle at
+503.96 kB, 3.96 kB above its configured 500 kB warning budget.
+
+The ordinary `bash scripts/deploy.sh COM9` confirmed the expected `nvs`,
+`phy_init`, `factory` and `ledger` partition layout and wrote only the
+3,346,256-byte application at `0x10000`; esptool verified its hash. Image SHA-256
+is `8154b497e534bffe1103110681e14e1a8c4a81aacb78b1141e596eafb3e1a9fe`.
+Serial restart capture reported reset class power-on, a successful PSRAM test,
+and `Ready at https://nanacoin.local` at 7,131 ms. The strict probe passed via
+the hostname with trusted CA and certificate hostname validation, API and
+balanced-ledger checks, all 67 identity/gzip assets with lengths, ETags,
+concurrent keep-alive and slow-reader checks, public notebook, Board Health and
+matching `/ca`. The post-deployment ledger matched the baseline at sequence 10,
+five users, four transactions and journal generation 0; it remained balanced.
+At the final diagnostic snapshot the server had 70 seconds uptime and zero
+errors. No money-writing tests, resets, provisioning or credential/certificate
+changes were performed.
+
+Interactive browser checks were unavailable because no browser surface was
+enabled; the strict live probe is the documented automated substitute. Local
+logs are `.local/lunacoin-{dry,check,web-check,deploy,boot,probe}-2026-09-27.log`.
