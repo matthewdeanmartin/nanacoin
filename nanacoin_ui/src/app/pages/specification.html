@@ -1,0 +1,317 @@
+<h1>The NanaCoin Specification (2026)</h1>
+<p class="lede">The rules of the household currency, written down so that nobody has to ask Nana twice.</p>
+<app-section-tabs [tabs]="tabs" [(selected)]="tab" label="Specification parts" prefix="spec" />
+<article class="spec" role="tabpanel" [id]="tab()" [attr.aria-labelledby]="'spec-tab-'+tab()" tabindex="0">
+  @switch (tab()) {
+    @case ('spec-ncs') {
+      <header class="spec-head">
+        <h2>NanaCoin Specification (NCS 2026)</h2>
+        <p>Status: adopted by the household · Edition: 2026 · Supersedes: whatever Nana said at Thanksgiving</p>
+      </header>
+
+      <h3>0. How to read this document</h3>
+      <p>The words <strong>must</strong>, <strong>must not</strong>, <strong>should</strong> and <strong>may</strong> carry their usual specification meaning: <em>must</em> is a rule, <em>should</em> is strong advice, <em>may</em> is permission. Where this document and Nana disagree, Nana is correct and this document will be amended.</p>
+      <p>This part (NCS) describes NanaCoin as a monetary institution. Part two, the <button class="spec-link" (click)="tab.set('spec-nces')">Extended Specification (NCES 2026)</button>, describes how the app carries it out. Neither part describes software internals.</p>
+      <p>This specification is based on the <a routerLink="/about/smbc">SMBC comic</a> that introduced NanaCoin to the world, a revolution in things that end with “-coin”.</p>
+
+      <h3>1. Definitions</h3>
+      <dl>
+        <dt>NanaCoin (NC)</dt><dd>The household unit of account. One coin buys whatever the household agrees it buys.</dd>
+        <dt>Nana</dt><dd>A beloved grandmother acting as issuer, bookkeeper, central bank and final authority. Where a household has several, they act together as a <em>cabal of beloved Nanas</em>.</dd>
+        <dt>Member</dt><dd>Any person with an account in the household.</dd>
+        <dt>The Notebook</dt><dd>The one authoritative record of every transaction, also called <em>the ledger</em>.</dd>
+        <dt>Entry</dt><dd>One line in the Notebook: who gave whom how much, when, and why.</dd>
+        <dt>Money supply</dt><dd>All NanaCoin that exist, wherever they are held.</dd>
+        <dt>Nana-nickel</dt><dd>A shiny physical or printed token worth a stated amount of NanaCoin.</dd>
+      </dl>
+
+      <h3>2. The Notebook</h3>
+      <p>2.1 All transactions <strong>must</strong> be written in a single spiral-bound notebook labeled <em>Transactions</em>. Loose leaf, index cards, sticky notes and the back of a church bulletin are not the Notebook.</p>
+      <p>2.2 Entries are written in <strong>perfect cursive</strong>, in ball-point ink, using a pen from the bulk pen purchase made 37 years ago. Gel pens, pencils and felt-tips are non-conforming. When that supply is exhausted, a successor bulk purchase <strong>should</strong> be made and <strong>should</strong> be expected to last another 37 years.</p>
+      <p>2.3 Each entry states the giver, the receiver, the amount followed by “NC”, and a short reason. Example, as written:</p>
+      <blockquote class="notebook-line">Sally gave Bobby 2.1718 NC on Tuesday for the good scissors</blockquote>
+      <p>2.4 Entries are <strong>never erased</strong>. The Notebook has no whiteout. A mistake is fixed by writing a new entry that undoes or adjusts it (section 5), so the history of the mistake is kept too.</p>
+      <p>2.5 Entries are recorded in order, and each has a number. Nana <strong>must not</strong> write the same payment twice because somebody asked twice.</p>
+      <p>2.6 Every entry balances. Coins leave one place and arrive in exactly one other place. When Nana creates money, it “leaves” the household's issuance line, which therefore always equals the money supply with the sign flipped. The Notebook as a whole always sums to zero.</p>
+
+      <h3>3. Precision and lettering</h3>
+      <p>3.1 <strong>Standard precision is four (4) digits after the decimal point.</strong> The smallest spendable amount is therefore 0.0001 NC.</p>
+      <p>3.2 Nana <strong>may</strong> change the household's precision to any value from zero (whole coins only) through eight (8) digits. Seven digits are needed to write Bobby's historic 6.2831853 NC.</p>
+      <p>3.3 Amounts with more digits than the household's precision <strong>must</strong> be refused, not rounded. Nana does not round. Nana asks you to write it again properly.</p>
+      <p>3.4 Dollars, where recorded, use two digits: whole cents.</p>
+      <p>3.5 The official lettering of the Notebook is handwritten cursive. A digital copy of the Notebook <strong>should</strong> offer that lettering, with lined paper, for readers who want the real feeling. It <strong>may</strong> also offer plain print for readers who need it; legibility is a courtesy, and Nana is courteous.</p>
+
+      <div class="example">
+        <h4>Example 3-A: precision is enforced, not rounded</h4>
+        <p>The household uses standard precision (4 digits). Sally tries to give Bobby <strong>2.171812 NC</strong>.</p>
+        <ol><li>The entry is refused: it has six digits after the point. Nothing moves.</li>
+          <li>Sally may instead give <strong>2.1718 NC</strong>, which is written normally.</li>
+          <li>Alternatively, Nana raises household precision to 6 digits (section 9 of NCES). Afterwards 2.171812 NC is a valid amount, and every existing balance keeps its value: 12.3456 NC is now written 12.345600 NC.</li></ol>
+      </div>
+
+      <h3>4. Trust</h3>
+      <p>4.1 NanaCoin is a perfect trust system. Its security rests on two properties: <strong>Nana never lies</strong>, and <strong>anyone may check the ledger</strong>.</p>
+      <p>4.2 <strong>Inspection.</strong> Any member may inspect the Notebook at any time, subject to the following entry requirements:</p>
+      <ol type="a"><li>The member arrives by bicycle, or by a comparably wholesome means of travel.</li>
+        <li>The member wipes their shoes before stepping on the carpet. Shoes that have not been wiped <strong>must not</strong> be admitted to the carpet, and the carpet is where the Notebook is.</li>
+        <li>The member asks nicely. “Can I pretty please come see?” is the reference phrasing.</li>
+        <li>The member <strong>also has a lemon bar</strong>. A lemon square is an accepted equivalent. A conforming <a routerLink="/recipes">recipe</a> is provided in Help.</li></ol>
+      <p>4.3 A member who cannot meet 4.2 in person <strong>may</strong> inspect the digital copy of the Notebook instead. Nana <strong>should</strong> still be sent a lemon bar.</p>
+      <p>4.4 The Notebook is public within the household. Members <strong>should not</strong> write secrets in a transaction's reason.</p>
+
+      <h3>5. Nana's right to challenge</h3>
+      <p>5.1 Nana <strong>may</strong> challenge any transaction, before or after it is written. A challenge is a question asked in a particular tone, for example: “Katie, do you <em>really</em> need <em>all</em> of those?”</p>
+      <p>5.2 NanaCoin is not controlled by any state. It nevertheless <strong>cannot</strong> be used for illicit activities, because Nana would not approve of that sort of thing. A transaction Nana does not approve of is not a NanaCoin transaction.</p>
+      <p>5.3 The customary response to a challenge is “No, Mrs. Slayton. I'm sorry, Mrs. Slayton.” Substitute the name of your own Nana.</p>
+      <p>5.4 A challenged entry that Nana finds wrong is <strong>reversed</strong>: Nana writes a new entry moving the same amount back, with her reason, and marks the original as reversed. The original stays visible.</p>
+      <p>5.5 Any member who paid for something and did not get it <strong>may</strong> raise a dispute and ask Nana to challenge the payment. The member who was paid <strong>may</strong> settle it first by refunding, in whole or in part.</p>
+      <p>5.6 Nana's decision on a challenge is final. There is no appeal, but there <strong>may</strong> be cookies.</p>
+
+      <div class="example">
+        <h4>Example 5-A: a reversed payment</h4>
+        <p>Bobby pays Katie 8 NC to mow the lawn. The lawn is not mowed. Bobby disputes; Nana challenges and reverses.</p>
+        <div class="table-scroll"><table>
+          <thead><tr><th>No.</th><th>Entry</th><th class="num">Bobby</th><th class="num">Katie</th></tr></thead>
+          <tbody>
+            <tr><td></td><td>Opening balances</td><td class="num">20.0000</td><td class="num">5.0000</td></tr>
+            <tr><td>41</td><td>Bobby gave Katie 8 NC for mowing the lawn <span class="tag">reversed</span></td><td class="num">−8.0000</td><td class="num">+8.0000</td></tr>
+            <tr><td>47</td><td>Reversal of no. 41 by Nana: “that lawn is not mowed”</td><td class="num">+8.0000</td><td class="num">−8.0000</td></tr>
+            <tr class="total"><td></td><td>Closing balances</td><td class="num">20.0000</td><td class="num">5.0000</td></tr>
+          </tbody></table></div>
+        <p>Both lines remain in the Notebook. Anyone inspecting it can see what happened and why.</p>
+      </div>
+
+      <h3>6. Issuance: mining by good deeds</h3>
+      <p>6.1 NanaCoin is friendly to the environment. It is mined by doing <strong>chores and good deeds</strong>, not by electricity.</p>
+      <p>6.2 Only Nana issues new coins. When she rewards a good deed, the reward is <strong>newly created money</strong>; it does not come out of her own purse.</p>
+      <p>6.3 Nana <strong>may</strong> pay a reward as a Nana-nickel handed over in person (“Thank you for donating blood. Here's a shiny Nana-nickel!”) or as an entry to the member's account.</p>
+      <p>6.4 Nana <strong>should</strong> keep a standing list of deeds she will reward. A standing deed <strong>may</strong> be done and rewarded more than once.</p>
+      <p>6.5 Nana <strong>may</strong> also retire coins, removing them from the money supply.</p>
+      <p>6.6 NanaCoin remains a better idea than using 100 terawatt-hours a year to create unspendable currency. A household board for the digital Notebook runs on roughly a watt. See <a routerLink="/about">NanaCoin vs Crypto</a>.</p>
+
+      <div class="example">
+        <h4>Example 6-A: a good deed creates money</h4>
+        <p>Money supply is 1,000 NC. Nana has 200 NC. Katie donates blood; Nana accepts her claim for the standing reward of 5 NC.</p>
+        <div class="table-scroll"><table>
+          <thead><tr><th>Line</th><th class="num">Before</th><th class="num">Change</th><th class="num">After</th></tr></thead>
+          <tbody>
+            <tr><td>Issuance (money created, shown negative)</td><td class="num">−1,000</td><td class="num">−5</td><td class="num">−1,005</td></tr>
+            <tr><td>Katie</td><td class="num">40</td><td class="num">+5</td><td class="num">45</td></tr>
+            <tr><td>Nana</td><td class="num">200</td><td class="num">0</td><td class="num">200</td></tr>
+            <tr class="total"><td>Money supply</td><td class="num">1,000</td><td class="num">+5</td><td class="num">1,005</td></tr>
+          </tbody></table></div>
+        <p>The entry balances (−5 and +5). Nana's own balance is untouched; the money supply grows by exactly the reward.</p>
+      </div>
+
+      <h3>7. Ordering NanaCoin</h3>
+      <p>7.1 NanaCoin <strong>may</strong> be ordered by landline, by phone call, or by an ALL-CAPS FACEBOOK POST.</p>
+      <p>7.2 Orders placed in lowercase <strong>may</strong> be treated as whispers.</p>
+      <p>7.3 An order is a request, not a purchase. Nothing moves until Nana writes it in the Notebook.</p>
+
+      <h3>8. Conformance</h3>
+      <p>A household conforms to NCS 2026 when it keeps one Notebook, never erases it, enforces its precision, lets members inspect it on the terms in section 4, issues money only through Nana, and keeps a lemon bar on hand for visitors.</p>
+    }
+
+    @case ('spec-nces') {
+      <header class="spec-head">
+        <h2>NanaCoin Extended Specification (NCES 2026)</h2>
+        <p>Status: describes the app as it stands in 2026 · Extends: NCS 2026</p>
+      </header>
+
+      <h3>1. Scope</h3>
+      <p>NCES describes how the NanaCoin app carries out the Notebook and what each part of it lets people do. It is written for household members, not programmers. Every rule in <button class="spec-link" (click)="tab.set('spec-ncs')">NCS 2026</button> still applies. Where the app is concerned, “the Notebook” means the app's shared ledger, and “writing an entry” means the app recording a transaction.</p>
+      <p>1.1 The app records money. It does not deliver goods, do chores or move real cash. The household <strong>must</strong> arrange those itself.</p>
+      <p>1.2 A <em>board</em> is the small computer that keeps a household's Notebook. The public <em>demo</em> keeps a pretend Notebook in one browser tab; reloading the page starts it over.</p>
+
+      <h3>2. People and roles</h3>
+      <p>2.1 Each household has exactly one <strong>Nana</strong> account and any number of <strong>member</strong> accounts.</p>
+      <p>2.2 Nana adds members, replaces forgotten passwords and disables access. A disabled member keeps their history but cannot act.</p>
+      <p>2.3 Nana's account is the household treasury. Nana <strong>should</strong> use an ordinary member account for her personal baking and chores.</p>
+      <p>2.4 Nana <strong>must not</strong> sell her own labor or buy tickets in her own lotto. She may buy work, trade goods and currencies, and lend coins she already owns.</p>
+      <p>2.5 A member <strong>must not</strong> spend more than they have. Balances are never negative, except the issuance line described in NCS 2.6.</p>
+
+      <h3>3. The Notebook in the app</h3>
+      <p>3.1 Every signed-in member, and every visitor to the board, may read <strong>The Notebook</strong>. It can be filtered by category and searched by person or description.</p>
+      <p>3.2 Each entry has a category that says what kind of exchange it was: a gift, a purchase of goods, a purchase of labor, a loan, interest, an exchange of currencies, issuance, or a message. Categories drive the reports in section 12.</p>
+      <p>3.3 A <strong>reversal</strong> moves the full amount back and marks the original. A <strong>refund</strong> moves part or all of the amount back, linked to the original. Neither erases anything. The total refunded against a payment <strong>must not</strong> exceed that payment.</p>
+      <p>3.4 Nana makes reversals from Household → Ledger and <strong>must</strong> give a reason. Some entries cannot be reversed on their own: loan payments are corrected through their loan, and digital art sales are not reversed without returning the art.</p>
+      <p>3.5 Readers may choose lined paper and handwritten cursive for the Notebook (NCS 3.5). The preference is personal and changes only how that reader sees it.</p>
+
+      <div class="example">
+        <h4>Example 3-A: a partial refund</h4>
+        <p>Bobby buys a dozen cookies from Sally for 10 NC. Three are burnt. Sally refunds 3 NC.</p>
+        <div class="table-scroll"><table>
+          <thead><tr><th>No.</th><th>Entry</th><th class="num">Bobby</th><th class="num">Sally</th></tr></thead>
+          <tbody>
+            <tr><td>50</td><td>Bobby bought a dozen cookies from Sally (goods)</td><td class="num">−10.0000</td><td class="num">+10.0000</td></tr>
+            <tr><td>52</td><td>Refund of no. 50: “three were burnt”</td><td class="num">+3.0000</td><td class="num">−3.0000</td></tr>
+            <tr class="total"><td></td><td>Net effect</td><td class="num">−7.0000</td><td class="num">+7.0000</td></tr>
+          </tbody></table></div>
+        <p>A further refund of at most 7 NC remains possible against no. 50. A refund of 8 NC would be refused.</p>
+      </div>
+
+      <h3>4. Accounts and payments</h3>
+      <p>4.1 <strong>My Account</strong> shows a member's balance, transactions newest first, work and deliveries still owed (TODO), loans and debts, lotto tickets, and outstanding offers.</p>
+      <p>4.2 <strong>Send Money</strong> pays another member with an amount and a note. A zero or empty amount sends a message without moving coins.</p>
+      <p>4.3 <strong>Allowances</strong> are weekly or monthly payments a member sets up in Send Money. In 2026 they are remembered by that member's browser and sent when the member checks allowances with the app open.</p>
+      <p>4.4 <strong>Messages</strong> are private between the people in them and never appear in the Notebook.</p>
+      <p>4.5 <strong>Demographics</strong> lists everyone on the board. A profile is a read-only report built from the public Notebook: money in and out by kind, trading partners, loans, lotto tickets, art, gift requests, listings and open offers. A member may write a one-line bio on their own profile.</p>
+      <p>4.6 <strong>Invitations</strong> drafts a note for friends or family. The member chooses whether to post it anywhere, in capitals or otherwise (NCS 7.1).</p>
+
+      <h3>5. Market, offers and fulfillment</h3>
+      <p>5.1 A member may list an item for sale, offer work for hire, or post something they want to buy. Buying pays the seller immediately.</p>
+      <p>5.2 An <strong>offer</strong> proposes a trade to one person. Posting it moves nothing; accepting it moves the agreed coins. Either side may decline or withdraw before acceptance.</p>
+      <p>5.3 A paid purchase of goods or work creates a TODO: something still owed to the buyer. The buyer records it as done or delivered when it arrives, or reports that it did not, which is a <strong>dispute</strong>. A buyer who simply changed their mind may say so and ask for the money back. Recording something as done does not move money a second time.</p>
+      <p>5.4 While a TODO is open or disputed, the seller may give the money back. Otherwise a disputed payment goes to Nana, who may reverse it (NCS 5.4). The buyer may withdraw a dispute once the problem is fixed.</p>
+
+      <h3>6. Good deeds</h3>
+      <p>6.1 Nana posts standing good deeds, each with a reward. A starter set of 25 is available in one click. Good deeds appear at the top of the Market.</p>
+      <p>6.2 A member who did one presses “I did this” and says what they did. Nana accepts or declines the claim.</p>
+      <p>6.3 An accepted claim issues new coins to the member, exactly as in NCS Example 6-A. A declined claim moves nothing.</p>
+
+      <h3>7. Gift requests</h3>
+      <p>7.1 A member may ask the household to chip in for something, with an optional target and an optional last day. This is sometimes called cyberbegging.</p>
+      <p>7.2 Gifts arrive immediately and belong to the requester. They <strong>may</strong> exceed the target and are not returned if the target is missed. A member cannot give to their own request.</p>
+      <p>7.3 The requester closes the request when done. A refund of a gift reduces the request's received total.</p>
+
+      <div class="example">
+        <h4>Example 7-A: a gift request past its target</h4>
+        <p>Katie asks for 30 NC toward a bicycle bell. Bobby gives 10 NC, then Sally gives 25 NC.</p>
+        <div class="table-scroll"><table>
+          <thead><tr><th>Entry</th><th class="num">Katie</th><th class="num">Received / target</th></tr></thead>
+          <tbody>
+            <tr><td>Bobby gave Katie 10 NC (gift, bicycle bell)</td><td class="num">+10</td><td class="num">10 / 30</td></tr>
+            <tr><td>Sally gave Katie 25 NC (gift, bicycle bell)</td><td class="num">+25</td><td class="num">35 / 30</td></tr>
+          </tbody></table></div>
+        <p>Katie keeps all 35 NC. Gifts are not income from work, so they do not count toward the household's production figures.</p>
+      </div>
+
+      <h3>8. Digital art and Nana-nickles</h3>
+      <p>8.1 A member may register an edition of a picture they host elsewhere on the web, then sell it, give it, or show it on their profile. The Notebook records who owns each edition and a fingerprint of the picture, not the picture. Owning an edition does not transfer copyright. This is not an NFT: no blockchain is involved.</p>
+      <p>8.2 A <strong>Nana-nickel</strong> in the app is a one-use voucher that packages coins the maker already owns. Whoever holds the code may redeem it once. A copy of the code is as good as the original, so it <strong>should</strong> be kept safe. Only Nana's own rewards create new money; a member's nickel only moves existing coins. In 2026 app vouchers are available in the demo only.</p>
+
+      <h3>9. Currency: issuance, retirement and reform</h3>
+      <p>9.1 Nana may <strong>issue</strong> coins to herself or others and <strong>retire</strong> coins from her own account. Each is an entry against the issuance line.</p>
+      <p>9.2 Nana may <strong>record dollars</strong> she holds. Recording dollars does not create real cash; it notes cash that exists in the real world.</p>
+      <p>9.3 A <strong>currency reform</strong> changes the household's precision, its unit, or both. Nana <strong>must</strong> preview a reform before applying it. A reform applies to every balance, price, offer, loan and past entry at once, so charts do not jump.</p>
+      <p>9.4 A reform <strong>must</strong> be exact. If converting any amount anywhere would lose even the smallest spendable unit, the reform is refused and nothing changes.</p>
+      <p>9.5 After a reform, forms opened before it are refused and must be filled in again, and allowances must be set up again.</p>
+
+      <div class="example">
+        <h4>Example 9-A: two kinds of reform</h4>
+        <div class="table-scroll"><table>
+          <thead><tr><th>Reform</th><th class="num">Katie before</th><th class="num">Katie after</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td>Precision 4 → 6, same unit</td><td class="num">12.3456</td><td class="num">12.345600</td><td>Same value, finer change allowed.</td></tr>
+            <tr><td>Precision 4 → 7, 1 new NC = 1,000 old NC</td><td class="num">5,000.0000</td><td class="num">5.0000000</td><td>Three zeros knocked off after inflation. Prices shrink the same way.</td></tr>
+            <tr><td>Precision 4 → 2, same unit</td><td class="num">12.3456</td><td class="num">refused</td><td>Would drop 0.0056 NC. Not exact.</td></tr>
+          </tbody></table></div>
+      </div>
+
+      <h3>10. Dollars and exchange (Forex)</h3>
+      <p>10.1 A member may hold recorded dollars alongside coins. Dollars are recorded in whole cents.</p>
+      <p>10.2 <strong>Forex</strong> quotes offer to buy or sell a stated number of coins at a stated dollar price per coin. A quote is filled all at once or not at all, and <strong>must</strong> come to an exact number of cents.</p>
+      <p>10.3 The app records the trade. Handing over real cash is up to the people involved.</p>
+      <p>10.4 Nana's <strong>market desk</strong> posts a ladder of quotes sized to the money supply. Early sellers get a good price; later rungs pay less, so Nana's greatest possible dollar outflow is fixed and shown before she posts. This keeps a run on the bank from draining her real dollars.</p>
+
+      <div class="example">
+        <h4>Example 10-A: Nana buys back coins</h4>
+        <p>Nana's quote: she buys 10 NC at $1.00 each. Katie accepts.</p>
+        <div class="table-scroll"><table>
+          <thead><tr><th>Line</th><th class="num">Coins</th><th class="num">Dollars</th></tr></thead>
+          <tbody>
+            <tr><td>Katie</td><td class="num">−10.0000 NC</td><td class="num">+$10.00</td></tr>
+            <tr><td>Nana</td><td class="num">+10.0000 NC</td><td class="num">−$10.00</td></tr>
+            <tr class="total"><td>Net</td><td class="num">0</td><td class="num">$0.00</td></tr>
+          </tbody></table></div>
+        <p>The money supply is unchanged: the coins moved to Nana rather than being retired. Nana may retire them separately (9.1).</p>
+      </div>
+
+      <h3>11. Loans, credit and lotto</h3>
+      <p>11.1 Any member, including Nana, may offer a loan of coins they already own to another member. Only the borrower can accept it, and the lender must have the coins at that moment. Lending never creates money.</p>
+      <p>11.2 Terms state principal, an interest rate per day, week, month or year, a principal installment and a payment interval of a day, a week or a month. Interest is <strong>simple</strong>, charged on the principal still owed, and never compounded. Each payment is the installment <strong>plus</strong> the interest due.</p>
+      <p>11.3 Payments are collected automatically from available coins, interest first. Anything that cannot be paid stays owed. There are no penalties and no negative balances. The borrower may repay early. On final payoff, any fraction smaller than the smallest spendable unit is waived.</p>
+      <p>11.4 <strong>Credit at zero</strong> is a loan offer that waits: once accepted, it draws its amount once, the moment the borrower's balance reaches exactly zero, if the lender can fund it.</p>
+
+      <div class="example">
+        <h4>Example 11-A: a simple-interest loan</h4>
+        <p>Nana lends Bobby 100 NC at 1% per week, with a principal installment of 10 NC weekly.</p>
+        <div class="table-scroll"><table>
+          <thead><tr><th>Week</th><th class="num">Principal owed</th><th class="num">Interest (1%)</th><th class="num">Payment</th><th class="num">Principal after</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td class="num">100.0000</td><td class="num">1.0000</td><td class="num">11.0000</td><td class="num">90.0000</td></tr>
+            <tr><td>2</td><td class="num">90.0000</td><td class="num">0.9000</td><td class="num">10.9000</td><td class="num">80.0000</td></tr>
+            <tr><td>3</td><td class="num">80.0000</td><td class="num">0.8000</td><td class="num">10.8000</td><td class="num">70.0000</td></tr>
+            <tr><td>…</td><td></td><td></td><td></td><td></td></tr>
+            <tr><td>10</td><td class="num">10.0000</td><td class="num">0.1000</td><td class="num">10.1000</td><td class="num">0.0000</td></tr>
+            <tr class="total"><td>Total</td><td></td><td class="num">5.5000</td><td class="num">105.5000</td><td></td></tr>
+          </tbody></table></div>
+        <p>Each payment is written as two entries: principal returned (not income) and interest (income to Nana). If in week 3 Bobby has only 4 NC, he pays 0.8 NC interest and 3.2 NC principal; the remaining 6.8 NC stays owed.</p>
+      </div>
+
+      <p>11.5 Nana runs the <strong>lotto</strong>. Three kinds exist:</p>
+      <dl>
+        <dt>Simple</dt><dd>The pool of ticket money goes to one winner.</dd>
+        <dt>Delayed</dt><dd>The pool plus interest goes to one winner after 30 days.</dd>
+        <dt>Savings</dt><dd>Everyone gets their ticket money back after 30 days; one winner also gets the interest.</dd>
+      </dl>
+      <p>11.6 Nana pays lotto interest from her own coins. If she does not have enough, the shortfall is newly issued.</p>
+
+      <div class="example">
+        <h4>Example 11-B: a savings lotto</h4>
+        <p>Four members each buy a 5 NC ticket. The lotto pays 10% interest. Sally wins. Nana has only 1.5 NC.</p>
+        <div class="table-scroll"><table>
+          <thead><tr><th>Line</th><th class="num">Tickets</th><th class="num">Payout</th><th class="num">Net</th></tr></thead>
+          <tbody>
+            <tr><td>Sally (winner)</td><td class="num">−5.0</td><td class="num">+7.0</td><td class="num">+2.0</td></tr>
+            <tr><td>Bobby, Katie, Tom</td><td class="num">−5.0 each</td><td class="num">+5.0 each</td><td class="num">0</td></tr>
+            <tr><td>Nana (pays interest)</td><td></td><td class="num">−1.5</td><td class="num">−1.5</td></tr>
+            <tr><td>Issuance (shortfall)</td><td></td><td class="num">−0.5</td><td class="num">−0.5</td></tr>
+            <tr class="total"><td>Sum</td><td></td><td></td><td class="num">0</td></tr>
+          </tbody></table></div>
+        <p>Nobody lost their savings, Sally gained 2 NC, and the money supply grew by 0.5 NC.</p>
+      </div>
+
+      <h3>12. Reports</h3>
+      <p>12.1 <strong>Economy</strong> charts spending, work, prices and money supply over the history available.</p>
+      <p>12.2 <strong>Nana as Central Bank</strong> reports money supply, coins held by the household, Nana's dollar reserve, the reserve ratio, backing per coin, inflation, money supply growth and the latest exchange rate. Every signed-in member can read it, as they could the paper Notebook. Loans owed to Nana are shown to Nana only.</p>
+      <dl>
+        <dt>Reserve ratio</dt><dd>Nana's dollars divided by the dollars she would owe if every one of her open buy quotes were taken.</dd>
+        <dt>Backing per coin</dt><dd>Nana's dollars divided by coins held by the household: what each coin would fetch if everyone cashed out equally.</dd>
+        <dt>Seigniorage</dt><dd>Net new coins valued at the latest exchange price: what Nana “earned” by creating money.</dd>
+      </dl>
+
+      <div class="example">
+        <h4>Example 12-A: reading the central bank report</h4>
+        <p>Money supply 1,000 NC, of which Nana holds 200. Nana records $50.00. Her buy ladder could pay out at most $82.50.</p>
+        <div class="table-scroll"><table>
+          <tbody>
+            <tr><td>Held by the household</td><td class="num">1,000 − 200 = 800 NC</td></tr>
+            <tr><td>Reserve ratio</td><td class="num">$50.00 ÷ $82.50 = 61%</td></tr>
+            <tr><td>Backing per coin</td><td class="num">$50.00 ÷ 800 = $0.0625</td></tr>
+          </tbody></table></div>
+        <p>A ratio under 100% means Nana could not honor every buy quote at once. She may record more dollars or post a smaller ladder.</p>
+      </div>
+
+      <h3>13. Privacy and system information</h3>
+      <p>13.1 The Notebook, profiles and reports are visible to the household. Messages are private. An offer's note is visible only to the two people in the deal.</p>
+      <p>13.2 Passwords, voucher codes and private log details <strong>should not</strong> be shared in public help requests.</p>
+      <p>13.3 System Info pages (board health, configuration, database and logs) exist to help diagnose problems. Nana may download a snapshot of the board's state for inspection or safekeeping.</p>
+    }
+
+    @case ('spec-roadmap') {
+      <header class="spec-head">
+        <h2>Roadmap</h2>
+        <p>Informative, not normative. Nothing on this page is part of NCS or NCES 2026.</p>
+      </header>
+      <p>The following are planned for a future edition. Until they are specified, a household <strong>must not</strong> assume they work.</p>
+      <dl>
+        <dt>Interbank exchange</dt><dd>Two households, each with its own Nana and Notebook, recognising each other and settling payments between them. Each Notebook would record what the other household owes it; neither Nana issues the other's coins.</dd>
+        <dt>Foreign currency exchange</dt><dd>Exchange between NanaCoin and currencies other than the US dollar, including other households' coins. Foreign money held is not local issuance and would be reported separately from the money supply.</dd>
+        <dt>Foreign trade</dt><dd>Buying and selling goods and work across households, priced in either household's coin, with delivery disputes challengeable by both Nanas.</dd>
+        <dt>Corporations</dt><dd>Shared accounts run by authorised members, such as a lemonade stand or a band, where every payment names the person who made it. Shares, dividends, payroll and voting would follow later.</dd>
+      </dl>
+      <p>Each addition will get the same treatment as everything above: plain rules, a balanced Notebook, and worked examples.</p>
+    }
+  }
+</article>

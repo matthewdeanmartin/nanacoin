@@ -9,6 +9,7 @@ import { IS_DEMO } from './demo/demo';
  */
 export const routes: Routes = [
   { path: 'docs', loadComponent: () => import('./pages/docs').then(m => m.DocsPage), title: 'Docs — NanaCoin' },
+  { path: 'specification', loadComponent: () => import('./pages/specification').then(m => m.SpecificationPage), title: 'NanaCoin Specification (2026) — NanaCoin' },
   { path: 'error-log', loadComponent: () => import('./pages/error-log').then(m => m.ErrorLogPage), title: 'Error Log — NanaCoin' },
   { path: 'database', loadComponent: () => import('./pages/database').then(m => m.DatabasePage), title: 'Database — NanaCoin' },
   { path: 'configuration', loadComponent: () => import('./pages/configuration').then(m => m.ConfigurationPage), title: 'Configuration — NanaCoin' },

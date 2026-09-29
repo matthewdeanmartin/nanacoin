@@ -14,12 +14,46 @@
       "sourceRoot": "src",
       "prefix": "app",
       "architect": {
+        "storybook": {
+          "builder": "@storybook/angular:start-storybook",
+          "options": {
+            "browserTarget": "nanacoin-web:build:development",
+            "configDir": "../design_system/.storybook",
+            "tsConfig": "../design_system/.storybook/tsconfig.json",
+            "styles": [
+              "src/styles.css",
+              "../design_system/preview.css"
+            ],
+            "compodoc": false,
+            "port": 6010,
+            "host": "127.0.0.1",
+            "open": false,
+            "sourceMap": false
+          }
+        },
+        "build-storybook": {
+          "builder": "@storybook/angular:build-storybook",
+          "options": {
+            "browserTarget": "nanacoin-web:build:development",
+            "configDir": "../design_system/.storybook",
+            "tsConfig": "../design_system/.storybook/tsconfig.json",
+            "styles": [
+              "src/styles.css",
+              "../design_system/preview.css"
+            ],
+            "compodoc": false,
+            "outputDir": "../design_system/dist",
+            "sourceMap": false
+          }
+        },
         "build": {
           "builder": "@angular/build:application",
           "options": {
             "browser": "src/main.ts",
             "tsConfig": "tsconfig.app.json",
-            "allowedCommonJsDependencies": ["qrcode"],
+            "allowedCommonJsDependencies": [
+              "qrcode"
+            ],
             "assets": [
               {
                 "glob": "**/*",

@@ -99,6 +99,7 @@ import { IS_DEMO } from '../demo/demo';
          <a routerLink="/about/smbc" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">SMBC</a>
          <a routerLink="/recipes" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Lemon Bars</a>
          <a routerLink="/docs" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Docs</a>
+         <a routerLink="/specification" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">NanaCoin Specification (2026)</a>
        </div>
      </details>
    </nav>

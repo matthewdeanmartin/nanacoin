@@ -1,0 +1,20 @@
+{
+  "extends": "../../nanacoin_ui/tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "typeRoots": ["../../nanacoin_ui/node_modules/@types"],
+    "paths": {
+      "@storybook/angular": [
+        "../../nanacoin_ui/node_modules/@storybook/angular/dist/index"
+      ],
+      "@angular/*": ["../../nanacoin_ui/node_modules/@angular/*"],
+      "@storybook/*": ["../../nanacoin_ui/node_modules/@storybook/*"],
+      "storybook/*": ["../../nanacoin_ui/node_modules/storybook/*"],
+      "qrcode": ["../../nanacoin_ui/node_modules/qrcode"],
+      "rxjs": ["../../nanacoin_ui/node_modules/rxjs"],
+      "tslib": ["../../nanacoin_ui/node_modules/tslib"]
+    }
+  },
+  "include": ["./preview.ts", "./main.ts", "../stories/**/*.ts"],
+  "exclude": ["../../nanacoin_ui/src/**/*.spec.ts"]
+}

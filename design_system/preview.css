@@ -1,0 +1,109 @@
+/* Preview-only additions. The builder also loads the application's real
+ * nanacoin_ui/src/styles.css, which is the single source of every token.
+ *
+ * The app picks light or dark from prefers-color-scheme alone. So that the
+ * Storybook theme toolbar can force either palette regardless of the OS, the
+ * two palettes are repeated here under [data-theme]. rules/theme-sync.test.mjs
+ * fails if these drift from styles.css; change styles.css first, then copy.
+ */
+
+:root[data-theme="light"] {
+  --bg: #fbf7f0;
+  --surface: #fffdfa;
+  --ink: #2a2520;
+  --ink-soft: #6c6257;
+  --line: #e6ded1;
+  --accent: #b8562f;
+  --accent-soft: #f3e2d8;
+  --credit: #2f6b45;
+  --debit: #9a3d2a;
+  --warn-bg: #fdecea;
+  --warn-ink: #8a2418;
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  --bg: #1b1815;
+  --surface: #241f1b;
+  --ink: #efe7dc;
+  --ink-soft: #a89c8d;
+  --line: #3a332c;
+  --accent: #e08050;
+  --accent-soft: #3a2a21;
+  --credit: #6fbf8e;
+  --debit: #e08b76;
+  --warn-bg: #3d211c;
+  --warn-ink: #f0b0a0;
+  color-scheme: dark;
+}
+
+body {
+  background: var(--bg);
+}
+
+.ds-sheet {
+  max-width: 44rem;
+  margin: 0 auto;
+  color: var(--ink);
+}
+
+.ds-sheet h1 {
+  margin-bottom: 0.25rem;
+}
+
+.ds-section {
+  padding-block: 1rem;
+  border-top: 1px solid var(--line);
+}
+
+.ds-section:first-of-type {
+  border-top: 0;
+}
+
+.ds-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.ds-swatches {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+}
+
+.ds-swatch {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.ds-swatch__chip {
+  height: 3.5rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.ds-swatch__name {
+  display: block;
+  padding: 0.4rem 0.6rem 0;
+  font:
+    0.8125rem ui-monospace,
+    monospace;
+}
+
+.ds-swatch__use {
+  display: block;
+  padding: 0 0.6rem 0.5rem;
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+}
+
+.ds-result {
+  margin-top: 1rem;
+  font:
+    0.875rem ui-monospace,
+    monospace;
+  color: var(--ink-soft);
+}

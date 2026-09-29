@@ -55,6 +55,6 @@ describe('responsive site navigation', () => {
    expect(groups.find(g=>g.querySelector('summary')?.textContent==='Accounts')?.textContent).toContain('My Account');
    expect(groups.find(g=>g.querySelector('summary')?.textContent==='Accounts')?.textContent).toContain('Good Deeds');
    const help=groups.find(g=>g.querySelector('summary')?.textContent==='Help')!;
-   expect(Array.from(help.querySelectorAll('a')).map(a=>a.textContent)).toEqual(['NanaCoin vs Crypto','About Nana-nickles','SMBC','Lemon Bars','Docs']);
+   expect(Array.from(help.querySelectorAll('a')).map(a=>a.textContent)).toEqual(['NanaCoin vs Crypto','About Nana-nickles','SMBC','Lemon Bars','Docs','NanaCoin Specification (2026)']);
  });
 });
