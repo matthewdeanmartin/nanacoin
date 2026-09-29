@@ -12,6 +12,7 @@
 
 import { DemoLedger } from './ledger';
 import { DEMO_ART_BASE } from '../art/art-media';
+import { bucketStart } from '../economy/series';
 import { GOOD_DEED, GOOD_DEED_IDEAS } from '../nana/good-deeds';
 
 const DAY = 86_400;
@@ -213,8 +214,11 @@ export function seed(ledger: DemoLedger): void {
   ledger.postQuote(sam, 'ASK', 30, 8);
 
   // Keep current-week employment visible after the historical seed and the
-  // market examples have advanced the demo clock.
-  ledger.advance(DAY);
+  // market examples have advanced the demo clock. The history above spans a
+  // fixed number of days, so it ends somewhere in the last week depending on
+  // the weekday; jump to the present (but never before this Monday) instead.
+  const present = Math.floor(Date.now() / 1000);
+  ledger.advanceTo(Math.max(bucketStart(present, 'week'), present - 3600));
   ledger.transfer(dad, sam.account, 11, 'Tidy the pantry', {
     economic_kind: 'LABOR', thing: 'thing-demo-tidy-the-pantry',
     quantity_milli: 1000, unit: 'TASK',

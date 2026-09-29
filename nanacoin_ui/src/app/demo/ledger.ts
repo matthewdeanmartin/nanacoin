@@ -1067,4 +1067,9 @@ export class DemoLedger {
   advance(seconds: number): void {
     this.clock += seconds;
   }
+
+  /** Moves the clock forward to `unixSeconds`, never backward. */
+  advanceTo(unixSeconds: number): void {
+    this.clock = Math.max(this.clock, unixSeconds);
+  }
 }
