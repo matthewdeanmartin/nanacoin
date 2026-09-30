@@ -376,3 +376,15 @@ export type CommerceAction =
   | {buy_art: {art:number;expected_owner:number;expected_revision:number;expected_price:number}}
   | {gift_art: {art:number;to:number}}
   | {equip_art: {art:number;equipped:boolean}};
+
+/** GET/DELETE /me/api-key. created_at is in the same seconds as other server times. */
+export interface ApiKeyStatus {
+  active: boolean;
+  created_at: number | null;
+}
+
+/** POST /me/api-key: the only time the key itself is ever sent. */
+export interface NewApiKey {
+  api_key: string;
+  created_at: number | null;
+}

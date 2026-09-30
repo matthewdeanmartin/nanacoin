@@ -296,7 +296,23 @@ pub fn handle_keyed<J: Journal>(
         let token = authorization
             .strip_prefix("Bearer ")
             .ok_or(Error::Unauthorized)?;
-        let actor = service.auth.lookup(&service.state, token, now)?;
+        // A session, or else the member's API key. A key acts with its
+        // member's permissions except that it can never change credentials:
+        // a leaked key must not be able to lock its owner out.
+        let by_key = token.starts_with(crate::auth::API_KEY_PREFIX);
+        let actor = if by_key {
+            service.state.api_key_member(token)?
+        } else {
+            service.auth.lookup(&service.state, token, now)?
+        };
+        if by_key
+            && (route_path == "/api/v1/me/api-key" || changes_password(method, route_path, body))
+        {
+            return Err(Error::Forbidden);
+        }
+        if route_path == "/api/v1/me/api-key" {
+            return api_key(service, actor, method, body, now, output);
+        }
         if path == "/api/v1/admin/light" {
             service.state.admin(actor)?;
             if method == "POST" {
@@ -435,6 +451,7 @@ pub fn handle_keyed<J: Journal>(
                         | Command::CreateMember { .. }
                         | Command::UpdateMember { .. }
                         | Command::MigrateMember { .. }
+                        | Command::SetApiKey { .. }
                 ) {
                     return Err(Error::Forbidden);
                 }
@@ -471,6 +488,87 @@ pub fn handle_keyed<J: Journal>(
         Err(error) => error_response(error, output),
     }
 }
+/// Whether a member-update request would set a password. Both update routes
+/// name the field `password`; anything unparseable is treated as a change.
+fn changes_password(method: &str, path: &str, body: &[u8]) -> bool {
+    let update = (method == "POST" && path == "/api/v1/users/update")
+        || (method == "PATCH" && path.starts_with("/api/v1/users/"));
+    #[derive(Deserialize)]
+    struct Probe {
+        #[serde(default)]
+        password: Option<String<128>>,
+    }
+    update && parse::<Probe>(body).map_or(true, |p| p.password.is_some())
+}
+
+/// `/api/v1/me/api-key`: GET reports whether the member has a key, POST with
+/// `{"password"}` makes or replaces it (shown once), DELETE revokes it.
+fn api_key<J: Journal>(
+    service: &mut Service<J>,
+    actor: MemberId,
+    method: &str,
+    body: &[u8],
+    now: u64,
+    output: &mut [u8],
+) -> Result<usize, Error> {
+    #[derive(Serialize)]
+    struct Status {
+        active: bool,
+        created_at: Option<u64>,
+    }
+    #[derive(Serialize)]
+    struct Created {
+        api_key: String<46>,
+        created_at: Option<u64>,
+    }
+    let key = match method {
+        "GET" => None,
+        "POST" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields)]
+            struct Confirm {
+                password: String<128>,
+            }
+            let req: Confirm = parse(body)?;
+            service
+                .auth
+                .confirm_password(&service.state, actor, &req.password, now)?;
+            Some(crate::auth::Auth::new_api_key()?)
+        }
+        "DELETE" => None,
+        _ => return Err(Error::NotFound),
+    };
+    if method != "GET" {
+        let key_hash = key.as_ref().map_or([0; 32], |k| crate::auth::digest(k));
+        let nonce = service.state.member(actor)?.last_request + 1;
+        service.execute(
+            actor,
+            nonce,
+            Command::SetApiKey {
+                member: actor,
+                key_hash,
+            },
+        )?;
+    }
+    let created_at = service.state.api_key_created(actor)?;
+    match key {
+        Some(api_key) => serialize(
+            &Created {
+                api_key,
+                created_at,
+            },
+            output,
+        ),
+        None => serialize(
+            &Status {
+                active: created_at.is_some(),
+                created_at,
+            },
+            output,
+        ),
+    }
+}
+
 pub(crate) fn parse<T: serde::de::DeserializeOwned>(body: &[u8]) -> Result<T, Error> {
     crate::json::decode(body).map_err(|_| Error::InvalidInput)
 }

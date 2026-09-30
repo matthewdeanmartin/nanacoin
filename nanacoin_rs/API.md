@@ -47,6 +47,9 @@ IDs use user-1, account-1, listing-5 and tx-6 forms. Roles are nana/user and mem
 | GET `/me`, `/users` | Current user and members |
 | POST `/users` | Nana creates member with username, display_name, password, optional role/grant/mastodon_id |
 | PATCH `/users/user-N` | Name/password/Mastodon ID/`bio` (public profile line, 96 UTF-8 bytes, no control characters; only the member themselves); Nana can also change role/status or other members |
+| GET `/me/api-key` | `{active, created_at}` for the caller's API key; never the key |
+| POST `/me/api-key` | `{password}` makes or replaces the caller's key; the response's `api_key` (`nc_…`) is the only copy. Send it as `Authorization: Bearer nc_…` |
+| DELETE `/me/api-key` | Revokes the caller's key. Requests authenticated by a key get 403 here and on any password change |
 | GET `/transactions`, `/transactions/tx-N` | Recent ledger and individual transaction |
 | GET `/accounts/account-N`, `/accounts/account-N/transactions` | Any active member may read any account's balance and money movements (profiles); zero-value messages appear only to their sender and recipient; `account-N-usd` selects dollars |
 | POST `/transfers` | Transfer with to, amount, memo |

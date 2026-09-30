@@ -4,7 +4,9 @@ import { inject as moneyInject } from '@angular/core';
 
 import { Component, computed, inject, resource, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router, RouterLink } from '@angular/router';
+import { NgTemplateOutlet } from '@angular/common';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 
 import { EconomicKind, EconomicUnit, Listing, ListingSide, Thing } from '../api/models';
 import { ApiError, NanacoinService, newIdempotencyKey } from '../api/nanacoin.service';
@@ -16,10 +18,19 @@ import { catalogEconomics, formatQuantity, validQuantity } from '../catalog/econ
 import { isGoodDeed } from '../nana/good-deeds';
 import { ArtPicture } from '../art/art-picture';
 import { nameOf } from '../people/people';
+import { SectionTabs } from '../ui/section-tabs';
+
+const MARKET_TABS = [
+  { id: 'market-buy', label: 'Offers to Buy' },
+  { id: 'market-sell', label: 'Offers to Sell' },
+  { id: 'market-art', label: 'Art' },
+  { id: 'market-deeds', label: 'Good Deeds' },
+  { id: 'market-closed', label: 'Closed & Cancelled' },
+] as const;
 
 @Component({
   selector: 'app-market',
-  imports: [MoneyPipe, FormsModule, RouterLink, ArtPicture],
+  imports: [MoneyPipe, FormsModule, RouterLink, ArtPicture, SectionTabs, NgTemplateOutlet],
   templateUrl: './market.html',
 })
 export class MarketPage {
@@ -69,13 +80,37 @@ export class MarketPage {
   protected readonly offering = signal<string | null>(null);
 
   constructor() {
+    inject(ActivatedRoute).queryParamMap.pipe(takeUntilDestroyed()).subscribe((params) => {
+      const tab = params.get('tab');
+      this.tab.set(MARKET_TABS.some((t) => t.id === tab) ? tab! : 'market-sell');
+    });
     const repeated = history.state?.['repeat'] as Listing | undefined;
     if (this.listingPage && repeated?.id) this.prefill(repeated);
   }
 
   /** Nana's standing good deeds, shown apart from ordinary buying and selling. */
   protected readonly goodDeeds = computed(() => this.session.forSale().filter(isGoodDeed));
-  protected readonly market = computed(() => this.session.forSale().filter((l) => !isGoodDeed(l)));
+  private readonly market = computed(() => this.session.forSale().filter((l) => !isGoodDeed(l)));
+  /** Want-ads: someone has the coins and wants a thing or a job done. */
+  protected readonly wantAds = computed(() => this.market().filter((l) => this.wanted(l)));
+  protected readonly forSale = computed(() => this.market().filter((l) => !this.wanted(l)));
+
+  /** The open section; kept in ?tab= so reload and Back return to it. */
+  protected readonly tab = signal('market-sell');
+  protected readonly tabs = computed(() => {
+    const counts: Record<string, number | null> = {
+      'market-buy': this.wantAds().length,
+      'market-sell': this.forSale().length,
+      'market-art': this.commerce.hasValue() ? this.artForSale().length : null,
+      'market-deeds': this.goodDeeds().length,
+      'market-closed': this.session.closed().length,
+    };
+    return MARKET_TABS.map((t) => ({ id: t.id, label: `${t.label} (${counts[t.id] ?? '…'})` }));
+  });
+  protected select(tab: string): void {
+    this.tab.set(tab);
+    void this.router.navigate([], { queryParams: { tab }, replaceUrl: true });
+  }
   /** Art editions on sale; buying happens in the gallery, where ownership changes hands with the coins. */
   private readonly commerce = resource({
     params: () => (this.listingPage ? undefined : this.session.me()?.account),

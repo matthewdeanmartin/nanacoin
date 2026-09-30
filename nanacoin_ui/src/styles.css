@@ -4,6 +4,10 @@
  * vanilla client that came first; this is the Angular site's copy.
  */
 
+/* Colour themes. With no data-theme the app follows the device: the warm
+ * palette below, or its dark twin. My Settings > Appearance sets data-theme on
+ * <html> to pin one (app/ui/theme.ts). Every theme defines every colour token;
+ * design_system/rules/theme-sync.test.mjs checks that. */
 :root {
   --bg: #fbf7f0;
   --surface: #fffdfa;
@@ -12,6 +16,7 @@
   --line: #e6ded1;
   --accent: #b8562f;
   --accent-soft: #f3e2d8;
+  --on-accent: #fff;
   --credit: #2f6b45;
   --debit: #9a3d2a;
   --warn-bg: #fdecea;
@@ -21,7 +26,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme]) {
     --bg: #1b1815;
     --surface: #241f1b;
     --ink: #efe7dc;
@@ -29,11 +34,110 @@
     --line: #3a332c;
     --accent: #e08050;
     --accent-soft: #3a2a21;
+    --on-accent: #fff;
     --credit: #6fbf8e;
     --debit: #e08b76;
     --warn-bg: #3d211c;
     --warn-ink: #f0b0a0;
   }
+}
+
+:root[data-theme="light"] {
+  --bg: #fbf7f0;
+  --surface: #fffdfa;
+  --ink: #2a2520;
+  --ink-soft: #6c6257;
+  --line: #e6ded1;
+  --accent: #b8562f;
+  --accent-soft: #f3e2d8;
+  --on-accent: #fff;
+  --credit: #2f6b45;
+  --debit: #9a3d2a;
+  --warn-bg: #fdecea;
+  --warn-ink: #8a2418;
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  --bg: #1b1815;
+  --surface: #241f1b;
+  --ink: #efe7dc;
+  --ink-soft: #a89c8d;
+  --line: #3a332c;
+  --accent: #e08050;
+  --accent-soft: #3a2a21;
+  --on-accent: #fff;
+  --credit: #6fbf8e;
+  --debit: #e08b76;
+  --warn-bg: #3d211c;
+  --warn-ink: #f0b0a0;
+  color-scheme: dark;
+}
+
+:root[data-theme="garden"] {
+  --bg: #f3f7ef;
+  --surface: #fbfdf8;
+  --ink: #1f2a1f;
+  --ink-soft: #55655a;
+  --line: #d5e1d0;
+  --accent: #3b7336;
+  --accent-soft: #dcebd5;
+  --on-accent: #fff;
+  --credit: #2d6a43;
+  --debit: #9a3d2a;
+  --warn-bg: #fbeae6;
+  --warn-ink: #8a2418;
+  color-scheme: light;
+}
+
+:root[data-theme="night"] {
+  --bg: #10151f;
+  --surface: #171e2b;
+  --ink: #e4e9f2;
+  --ink-soft: #93a0b5;
+  --line: #2a3446;
+  --accent: #7aa7ff;
+  --accent-soft: #1f2c47;
+  --on-accent: #0b1020;
+  --credit: #6fbf8e;
+  --debit: #e8907c;
+  --warn-bg: #3a1f22;
+  --warn-ink: #f3b3a8;
+  color-scheme: dark;
+}
+
+/* Monochrome: no hue at all. Credit and debit still differ in weight of grey,
+ * and amounts always carry their sign, so no meaning rests on colour. */
+:root[data-theme="mono-light"] {
+  --bg: #ffffff;
+  --surface: #f7f7f7;
+  --ink: #111111;
+  --ink-soft: #595959;
+  --line: #d9d9d9;
+  --accent: #222222;
+  --accent-soft: #ebebeb;
+  --on-accent: #fff;
+  --credit: #111111;
+  --debit: #595959;
+  --warn-bg: #ebebeb;
+  --warn-ink: #111111;
+  color-scheme: light;
+}
+
+:root[data-theme="mono-dark"] {
+  --bg: #0e0e0e;
+  --surface: #191919;
+  --ink: #ededed;
+  --ink-soft: #a6a6a6;
+  --line: #333333;
+  --accent: #e6e6e6;
+  --accent-soft: #2a2a2a;
+  --on-accent: #111111;
+  --credit: #f2f2f2;
+  --debit: #a6a6a6;
+  --warn-bg: #2a2a2a;
+  --warn-ink: #f2f2f2;
+  color-scheme: dark;
 }
 
 * {
@@ -151,7 +255,7 @@ summary:focus-visible {
   border: 1px solid transparent;
   border-radius: 8px;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   cursor: pointer;
   justify-self: start;
 }
@@ -740,7 +844,7 @@ textarea {
 .btn--danger {
   background: var(--debit);
   border-color: var(--debit);
-  color: #fff;
+  color: var(--bg);
 }
 
 /* --- Pick a person (the public demo's login) --- */
@@ -1354,3 +1458,60 @@ app-invite textarea { height:auto; min-height:8rem; line-height:1.5; resize:vert
 .account-tabs > .btn + .btn { margin-inline-start:0; }
 app-loans label.checkbox { white-space:normal; align-items:flex-start; }
 app-loans label.checkbox input { margin-top:.25rem; }
+
+/* --- Segmented control: a radio group that reads as one switch. Use for
+ * two to four mutually exclusive views of the same content (Metric / US). */
+.segmented {
+  display: inline-flex;
+  margin: 0 0 1rem;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--surface);
+}
+.segmented label { display: block; position: relative; margin: 0; font-size: 0.875rem; color: var(--ink-soft); }
+.segmented label + label { border-inline-start: 1px solid var(--line); }
+.segmented input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.segmented span { display: block; padding: 0.4rem 0.9rem; min-height: 2.25rem; }
+.segmented input:checked + span { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+.segmented input:focus-visible + span { outline: 3px solid #467791; outline-offset: -3px; }
+
+/* --- Ingredient list (app-ingredient-list): grouped, bulleted, amount first. */
+.ingredient-list h4.ingredient-list__group {
+  margin: 1rem 0 0.25rem;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-soft);
+}
+.ingredient-list h4.ingredient-list__group:first-child { margin-top: 0.25rem; }
+.ingredient-list ul { margin: 0; padding-inline-start: 1.25rem; list-style: disc; }
+.ingredient-list li { padding-block: 0.15rem; }
+.ingredient-list li::marker { color: var(--accent); }
+.ingredient-list__amount { font-variant-numeric: tabular-nums; }
+.ingredient-list__note { color: var(--ink-soft); }
+.ingredient-list__note::before { content: ", "; }
+
+/* --- Theme picker: one radio card per palette, with a four-colour swatch. */
+.theme-picker { display: grid; gap: 0.5rem; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); margin: 0 0 1rem; padding: 0; border: 0; }
+.theme-picker legend { padding: 0; margin-bottom: 0.5rem; font-weight: 600; }
+.theme-picker__choice {
+  display: flex; align-items: center; gap: 0.75rem; position: relative;
+  padding: 0.65rem 0.75rem; border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--surface); color: var(--ink); cursor: pointer;
+}
+.theme-picker__choice input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.theme-picker__choice:has(input:checked) { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.theme-picker__choice:has(input:focus-visible) { outline: 3px solid #467791; outline-offset: 2px; }
+.theme-picker__swatch { display: grid; grid-template-columns: repeat(2, 0.9rem); grid-template-rows: repeat(2, 0.9rem); flex: none; border-radius: 6px; overflow: hidden; border: 1px solid var(--line); }
+.theme-picker__swatch i { display: block; }
+.theme-picker__text { display: grid; font-size: 0.875rem; }
+.theme-picker__text span { color: var(--ink-soft); font-size: 0.8rem; }
+
+/* --- A secret shown exactly once (a new API key). */
+.secret-reveal { margin: 1rem 0; padding: 1rem; border: 1px solid var(--accent); border-radius: var(--radius); background: var(--accent-soft); }
+.secret-reveal p { margin-top: 0; }
+.secret-reveal__value { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; }
+.secret-reveal__value input { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 0.875rem; }
+.secret-reveal pre { overflow-x: auto; padding: 0.5rem 0.75rem; background: var(--surface); border-radius: 6px; font-size: 0.8rem; }

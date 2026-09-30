@@ -2,7 +2,7 @@ import { Money, MoneyPipe } from '../api/money';
 import { inject as moneyInject } from '@angular/core';
 import { Component, computed, inject, resource, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 
 import { EconomicKind, EconomicUnit, User } from '../api/models';
 import { Mastodon } from '../api/mastodon';
@@ -25,7 +25,7 @@ interface RecentSend {
 
 @Component({
   selector: 'app-send',
-  imports: [MoneyPipe, FormsModule],
+  imports: [MoneyPipe, FormsModule, RouterLink],
   template: `
     <h1>Send Money or a Message</h1>
 
@@ -97,6 +97,9 @@ interface RecentSend {
           <input name="sendDm" type="checkbox" [(ngModel)]="sendDm" />
           Also send a copy through Mastodon
         </label>
+        @if (sendDm && !mastodon.connected()) {
+          <p class="muted small">Connect Mastodon first in <a routerLink="/settings" [queryParams]="{ tab: 'settings-mastodon' }">My Settings</a>.</p>
+        }
         <button class="btn" title="Record a payment or message in NanaCoin" type="submit" [disabled]="busy()">
           {{ busy() ? 'Sending…' : (isPayment() ? 'Send money' : 'Send message') }}
         </button>
@@ -237,12 +240,6 @@ export class SendPage {
     if (amount) this.amount = amount;
 
     this.memo = q.get('memo') ?? '';
-    const code = q.get('mastodon_code');
-    const state = q.get('mastodon_state');
-    if (code && state) {
-      history.replaceState(null, '', location.pathname + location.search + '#/send');
-      void this.finishMastodon(code, state);
-    }
   }
 
   private readonly pendingKeys = new Map<string, string>();
@@ -364,11 +361,6 @@ export class SendPage {
     this.memo = next.text;
     this.memoBeforeCaps = next.saved;
     this.allCaps = on;
-  }
-
-  private async finishMastodon(code: string, state: string): Promise<void> {
-    try { this.toasts.ok(`Connected Mastodon as ${await this.mastodon.finish(code, state)}.`); }
-    catch (e) { this.toasts.error(e instanceof Error ? e.message : 'Could not finish Mastodon sign-in.'); }
   }
 
   protected when(unixSeconds: number): string {

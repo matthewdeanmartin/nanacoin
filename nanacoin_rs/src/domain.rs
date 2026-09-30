@@ -245,6 +245,12 @@ pub enum Command {
     WithdrawOffer {
         offer: OfferId,
     },
+    /// A member's API key: only its SHA-256 is recorded. An all-zero hash
+    /// revokes. Credential-bearing, so never a public command or audit record.
+    SetApiKey {
+        member: MemberId,
+        key_hash: TokenHash,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -342,6 +348,11 @@ pub struct Member {
     pub last_request: u64,
     #[serde(skip)]
     pub(crate) token_hash: TokenHash,
+    /// SHA-256 of the member's API key; all zero when they have none.
+    #[serde(skip)]
+    pub(crate) api_key: TokenHash,
+    #[serde(skip)]
+    pub(crate) api_key_created: u64,
     #[serde(skip)]
     pub(crate) last_command: TokenHash,
     #[serde(skip)]
@@ -548,6 +559,28 @@ impl State {
             }
         }
         found.ok_or(Error::Unauthorized)
+    }
+
+    /// The active member an API key belongs to. Every stored hash is compared,
+    /// in constant time, so timing reveals neither which member nor whether any.
+    pub fn api_key_member(&self, key: &str) -> Result<MemberId, Error> {
+        let hash: TokenHash = Sha256::digest(key.as_bytes()).into();
+        let mut found = None;
+        for member in &self.members {
+            if bool::from(member.api_key.ct_eq(&hash)) && member.api_key != [0; 32] {
+                found = Some(member);
+            }
+        }
+        match found {
+            Some(m) if !m.disabled && m.password.is_some() => Ok(m.id),
+            _ => Err(Error::Unauthorized),
+        }
+    }
+
+    /// When the member's API key was made, if they have one.
+    pub fn api_key_created(&self, id: MemberId) -> Result<Option<u64>, Error> {
+        let m = self.member(id)?;
+        Ok((m.api_key != [0; 32]).then_some(m.api_key_created))
     }
 
     pub fn member(&self, id: MemberId) -> Result<&Member, Error> {
@@ -779,6 +812,16 @@ impl State {
                         .count()
                         == 1
                 {
+                    return Err(Error::Forbidden);
+                }
+            }
+            Command::SetApiKey { member, key_hash } => {
+                let target = self.member(*member)?;
+                // Only the member mints their own key. Nana may revoke anyone's.
+                if actor != *member && (*key_hash != [0; 32] || self.admin(actor).is_err()) {
+                    return Err(Error::Forbidden);
+                }
+                if *key_hash != [0; 32] && (target.password.is_none() || target.disabled) {
                     return Err(Error::Forbidden);
                 }
             }
@@ -1227,6 +1270,10 @@ impl State {
                 if let Some(password) = password {
                     m.password = Some(password.clone());
                     m.token_hash = [0; 32];
+                    // A password change is how a member says "I may be
+                    // compromised"; a standing key must not outlive it.
+                    m.api_key = [0; 32];
+                    m.api_key_created = 0;
                 }
                 if let Some(role) = role {
                     m.role = *role;
@@ -1237,6 +1284,15 @@ impl State {
                 if let Some(value) = mastodon_id {
                     m.mastodon_id = value.clone();
                 }
+            }
+            Command::SetApiKey { member, key_hash } => {
+                let m = self.members.iter_mut().find(|m| m.id == *member).unwrap();
+                m.api_key = *key_hash;
+                m.api_key_created = if *key_hash == [0; 32] {
+                    0
+                } else {
+                    event.timestamp
+                };
             }
             Command::MigrateMember {
                 member,
@@ -1272,6 +1328,8 @@ impl State {
                         created_at: event.timestamp,
                         last_request: 0,
                         token_hash: *token_hash,
+                        api_key: [0; 32],
+                        api_key_created: 0,
                         last_command: [0; 32],
                         last_sequence: 0,
                     })
@@ -1685,6 +1743,8 @@ impl State {
                 bio: Memo::new(),
                 password: Some(password.clone()),
                 token_hash: [0; 32],
+                api_key: [0; 32],
+                api_key_created: 0,
                 balance: 0,
                 usd_cents: 0,
                 created_at,

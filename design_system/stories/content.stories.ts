@@ -1,4 +1,5 @@
-import { type Meta, type StoryObj } from "@storybook/angular";
+import { type Meta, type StoryObj, moduleMetadata } from "@storybook/angular";
+import { IngredientList } from "../../nanacoin_ui/src/app/ui/ingredient-list";
 
 const meta: Meta = { title: "Content" };
 export default meta;
@@ -123,6 +124,43 @@ export const Stats: StoryObj = {
         <div class="stat"><span>12</span><span class="stat__label">members</span></div>
         <div class="stat"><span>9</span><span class="stat__label">active</span></div>
         <div class="stat"><span>3</span><span class="stat__label">disabled</span></div>
+      </div>
+    `,
+  }),
+};
+
+export const Ingredients: StoryObj = {
+  name: "Ingredient list (app-ingredient-list)",
+  decorators: [moduleMetadata({ imports: [IngredientList] })],
+  render: () => ({
+    props: {
+      groups: [
+        {
+          name: "Base",
+          items: [
+            { amount: "150 g", name: "plain flour" },
+            { amount: "115 g", name: "unsalted butter", note: "softened" },
+            { name: "a pinch of salt" },
+          ],
+        },
+        {
+          name: "Filling",
+          items: [
+            { amount: "3", name: "large eggs" },
+            { amount: "120 ml", name: "lemon juice" },
+            { name: "zest of 2 lemons" },
+          ],
+        },
+      ],
+    },
+    template: `
+      <div class="ds-sheet">
+        <p class="muted small">
+          Grouped, one bulleted line per ingredient, amount first in bold so the
+          eye can scan down it. Pass amounts already in the reader's units; the
+          list does no conversion. No allergen or safety notes: the packets do that.
+        </p>
+        <app-ingredient-list [groups]="groups" />
       </div>
     `,
   }),

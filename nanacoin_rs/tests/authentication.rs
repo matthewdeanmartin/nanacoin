@@ -431,3 +431,198 @@ fn request_cannot_bypass_server_side_password_hashing() {
     let body = json!({"request_id":3,"command":{"add_member":{"name":"Backdoor","token_hash":vec![1;32]}}});
     assert_eq!(common::call(&mut s, "/api/v1/commands", &nana, body).0, 403);
 }
+
+fn send<J: Journal>(
+    s: &mut Service<J>,
+    method: &str,
+    auth: &str,
+    path: &str,
+    body: serde_json::Value,
+) -> (u16, serde_json::Value) {
+    let mut out = vec![0; api::RESPONSE_LIMIT];
+    let body = serde_json::to_vec(&body).unwrap();
+    let (status, len) = api::handle(s, method, path, auth, &body, &mut out);
+    let value = if len == 0 {
+        serde_json::Value::Null
+    } else {
+        serde_json::from_slice(&out[..len]).unwrap()
+    };
+    (status, value)
+}
+
+const KEY: &str = "/api/v1/me/api-key";
+
+#[test]
+fn api_keys_act_as_their_member_survive_restart_and_rotate() {
+    let (mut s, memory) = setup();
+    let alice = common::login_as(&mut s, "alice", "5678");
+    assert_eq!(
+        get(&mut s, &alice, KEY).1,
+        json!({"active": false, "created_at": null})
+    );
+    assert_eq!(
+        send(&mut s, "POST", &alice, KEY, json!({"password": "0000"})).0,
+        401
+    );
+    let (status, made) = send(&mut s, "POST", &alice, KEY, json!({"password": "5678"}));
+    assert_eq!(status, 200, "{made}");
+    let first = made["api_key"].as_str().unwrap().to_owned();
+    assert!(first.starts_with("nc_") && first.len() == 46);
+    assert_eq!(get(&mut s, &alice, KEY).1["active"], true);
+
+    // The key is Alice, with Alice's permissions and no more.
+    let bearer = format!("Bearer {first}");
+    let (status, me) = get(&mut s, &bearer, "/api/v1/me");
+    assert_eq!(status, 200);
+    assert_eq!(me["username"], "alice");
+    assert_eq!(get(&mut s, &bearer, "/api/v1/state").0, 403);
+
+    // Only the digest was journaled, and it survives a restart where sessions do not.
+    assert!(!memory
+        .0
+        .borrow()
+        .iter()
+        .any(|f| f.windows(first.len()).any(|w| w == first.as_bytes())));
+    drop(s);
+    let mut s = Service::open(memory).unwrap();
+    assert_eq!(get(&mut s, &bearer, "/api/v1/me").1["username"], "alice");
+
+    // Rotating replaces the old key.
+    let alice = common::login_as(&mut s, "alice", "5678");
+    let second = send(&mut s, "POST", &alice, KEY, json!({"password": "5678"})).1["api_key"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert_ne!(first, second);
+    assert_eq!(get(&mut s, &bearer, "/api/v1/me").0, 401);
+    let bearer = format!("Bearer {second}");
+    assert_eq!(get(&mut s, &bearer, "/api/v1/me").0, 200);
+
+    // Revoking ends it.
+    assert_eq!(
+        send(&mut s, "DELETE", &alice, KEY, json!({})).1["active"],
+        false
+    );
+    assert_eq!(get(&mut s, &bearer, "/api/v1/me").0, 401);
+}
+
+#[test]
+fn api_keys_cannot_change_credentials_and_die_with_the_password_or_account() {
+    let (mut s, _) = setup();
+    let nana = common::login(&mut s);
+    let alice = common::login_as(&mut s, "alice", "5678");
+    let mint = |s: &mut Service<Memory>| {
+        format!(
+            "Bearer {}",
+            send(s, "POST", &alice, KEY, json!({"password": "5678"})).1["api_key"]
+                .as_str()
+                .unwrap()
+        )
+    };
+    let key = mint(&mut s);
+    assert_eq!(
+        send(&mut s, "POST", &key, KEY, json!({"password": "5678"})).0,
+        403
+    );
+    assert_eq!(send(&mut s, "DELETE", &key, KEY, json!({})).0, 403);
+    assert_eq!(
+        patch(
+            &mut s,
+            &key,
+            "/api/v1/users/user-2",
+            json!({"password": "9999"})
+        )
+        .0,
+        403
+    );
+    assert_eq!(
+        send(
+            &mut s,
+            "POST",
+            &key,
+            "/api/v1/users/update",
+            json!({"member": 2, "password": "9999"})
+        )
+        .0,
+        403
+    );
+    // Other profile edits are the member's to make, so the key may make them.
+    assert_eq!(
+        patch(&mut s, &key, "/api/v1/users/user-2", json!({"bio": "Hi"})).0,
+        200
+    );
+    // Credential commands are never accepted through the command endpoint.
+    let forged = json!({"request_id": 99, "command": {"set_api_key": {"member": 1, "key_hash": vec![1; 32]}}});
+    assert_eq!(
+        common::call(&mut s, "/api/v1/commands", &alice, forged).0,
+        403
+    );
+
+    // A new password revokes the key.
+    assert_eq!(
+        patch(
+            &mut s,
+            &alice,
+            "/api/v1/users/user-2",
+            json!({"password": "9999"})
+        )
+        .0,
+        200
+    );
+    assert_eq!(get(&mut s, &key, "/api/v1/me").0, 401);
+
+    // So does disabling the member; Nana can also revoke it directly.
+    let alice = common::login_as(&mut s, "alice", "9999");
+    let key = format!(
+        "Bearer {}",
+        send(&mut s, "POST", &alice, KEY, json!({"password": "9999"})).1["api_key"]
+            .as_str()
+            .unwrap()
+    );
+    assert_eq!(
+        patch(
+            &mut s,
+            &nana,
+            "/api/v1/users/user-2",
+            json!({"status": "DISABLED"})
+        )
+        .0,
+        200
+    );
+    assert_eq!(get(&mut s, &key, "/api/v1/me").0, 401);
+    assert_eq!(
+        patch(
+            &mut s,
+            &nana,
+            "/api/v1/users/user-2",
+            json!({"status": "ACTIVE"})
+        )
+        .0,
+        200
+    );
+    assert_eq!(get(&mut s, &key, "/api/v1/me").0, 200);
+    let id = s.state().member(MemberId(1)).unwrap().last_request + 1;
+    s.execute(
+        MemberId(1),
+        id,
+        Command::SetApiKey {
+            member: MemberId(2),
+            key_hash: [0; 32],
+        },
+    )
+    .unwrap();
+    assert_eq!(get(&mut s, &key, "/api/v1/me").0, 401);
+    // Nobody mints a key for someone else.
+    let id = s.state().member(MemberId(1)).unwrap().last_request + 1;
+    assert_eq!(
+        s.execute(
+            MemberId(1),
+            id,
+            Command::SetApiKey {
+                member: MemberId(2),
+                key_hash: [7; 32]
+            }
+        ),
+        Err(Error::Forbidden)
+    );
+}

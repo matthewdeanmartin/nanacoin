@@ -1,14 +1,14 @@
 # NVS keys, recovery and retention
 
 The Rust server stores its journal, checkpoints and archive in ESP-IDF NVS.
-The [partition table](../../nanacoin_rs/partitions.csv) assigns `ledger` 8 MiB at
+The [partition table](https://github.com/matthewdeanmartin/nanacoin/blob/main/nanacoin_rs/partitions.csv) assigns `ledger` 8 MiB at
 `0x410000`; device configuration has a separate NVS partition. NVS controls
 physical placement and reclamation. Application slots do not measure erase
 cycles or physical write amplification.
 
 ## Namespaces and keys
 
-[NvsJournal](../../nanacoin_rs/src/bin/esp32/journal.rs) uses these logical keys:
+[NvsJournal](https://github.com/matthewdeanmartin/nanacoin/blob/main/nanacoin_rs/src/bin/esp32/journal.rs) uses these logical keys:
 
 | Namespace | Key | Value |
 |---|---|---|
@@ -74,7 +74,7 @@ to provisioning. Old pages are ignored, not securely erased. Desktop storage
 uses two checkpoint/log banks and a synchronized `.archive` bounded to 4 MiB;
 back up all companions together while stopped.
 
-See [the storage contract](../../nanacoin_rs/spec/STORAGE_V2.md) and
-[retention/retry rules](../../nanacoin_rs/spec/RETENTION.md). Fault tests cover
+See [the storage contract](https://github.com/matthewdeanmartin/nanacoin/blob/main/nanacoin_rs/spec/STORAGE_V2.md) and
+[retention/retry rules](https://github.com/matthewdeanmartin/nanacoin/blob/main/nanacoin_rs/spec/RETENTION.md). Fault tests cover
 orphans, ambiguous publication, pruning and replay. Physical power-cut testing
 and board endurance measurement are separate from those deterministic checks.

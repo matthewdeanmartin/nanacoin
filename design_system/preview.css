@@ -1,41 +1,7 @@
 /* Preview-only additions. The builder also loads the application's real
- * nanacoin_ui/src/styles.css, which is the single source of every token.
- *
- * The app picks light or dark from prefers-color-scheme alone. So that the
- * Storybook theme toolbar can force either palette regardless of the OS, the
- * two palettes are repeated here under [data-theme]. rules/theme-sync.test.mjs
- * fails if these drift from styles.css; change styles.css first, then copy.
+ * nanacoin_ui/src/styles.css, which is the single source of every token and
+ * every colour theme; the toolbar sets data-theme exactly as the app does.
  */
-
-:root[data-theme="light"] {
-  --bg: #fbf7f0;
-  --surface: #fffdfa;
-  --ink: #2a2520;
-  --ink-soft: #6c6257;
-  --line: #e6ded1;
-  --accent: #b8562f;
-  --accent-soft: #f3e2d8;
-  --credit: #2f6b45;
-  --debit: #9a3d2a;
-  --warn-bg: #fdecea;
-  --warn-ink: #8a2418;
-  color-scheme: light;
-}
-
-:root[data-theme="dark"] {
-  --bg: #1b1815;
-  --surface: #241f1b;
-  --ink: #efe7dc;
-  --ink-soft: #a89c8d;
-  --line: #3a332c;
-  --accent: #e08050;
-  --accent-soft: #3a2a21;
-  --credit: #6fbf8e;
-  --debit: #e08b76;
-  --warn-bg: #3d211c;
-  --warn-ink: #f0b0a0;
-  color-scheme: dark;
-}
 
 body {
   background: var(--bg);

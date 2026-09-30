@@ -80,6 +80,14 @@ import { IS_DEMO } from '../demo/demo';
            }
          </div>
        </details>
+       <details name="site-menu-group" class="menu-group" routerLinkActive="current">
+         <summary>My Settings</summary>
+         <div class="menu-group__items">
+           <a routerLink="/settings" [queryParams]="{ tab: 'settings-appearance' }" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Appearance</a>
+           <a routerLink="/settings" [queryParams]="{ tab: 'settings-api-keys' }" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">API Keys</a>
+           <a routerLink="/settings" [queryParams]="{ tab: 'settings-mastodon' }" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Mastodon</a>
+         </div>
+       </details>
      } @else {
        <a routerLink="/ledger" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">The Notebook</a>
          <details name="site-menu-group" class="menu-group">
@@ -89,6 +97,12 @@ import { IS_DEMO } from '../demo/demo';
              <a routerLink="/error-log" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Error Log</a>
              <a routerLink="/database" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Database</a>
              <a routerLink="/configuration" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Configuration</a>
+           </div>
+         </details>
+         <details name="site-menu-group" class="menu-group" routerLinkActive="current">
+           <summary>My Settings</summary>
+           <div class="menu-group__items">
+             <a routerLink="/settings" [queryParams]="{ tab: 'settings-appearance' }" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Appearance</a>
            </div>
          </details>
      }

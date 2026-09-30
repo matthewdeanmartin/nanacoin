@@ -72,4 +72,5 @@ not local money, and it never counts toward a bank's own issuance.
 How an exchange settles between two ledgers (reservations, acceptance,
 timeouts, replay protection and reconciliation) is deliberately not designed
 here. The constraints already listed under *Federation* in `../../roadmap.md`
-apply, and a separate reviewed spec comes before any code.
+apply, and a separate reviewed spec comes before any code. That spec, still a
+proposal, is [INTERBANK_PROTOCOL.md](INTERBANK_PROTOCOL.md).

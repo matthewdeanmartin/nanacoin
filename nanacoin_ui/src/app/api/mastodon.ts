@@ -7,7 +7,11 @@ import { digestSha256 } from './sha256';
 
 const PENDING_KEY = 'nanacoin:mastodon:oauth';
 const CREDENTIAL_KEY = 'nanacoin:mastodon:credentials:';
+const LAST_SERVER_KEY = 'nanacoin:mastodon:last-server';
 const SCOPES = 'read:accounts write:statuses';
+
+/** Offered first in My Settings: the household's own Mastomini board. */
+export const SUGGESTED_SERVERS = ['mastomini.local', 'mastodon.social'] as const;
 
 interface PendingOAuth {
   userId: string;
@@ -50,6 +54,22 @@ function normalizeServer(value: string): string {
   return url.origin;
 }
 
+/**
+ * fetch, but a network failure names the likely cause. A household server
+ * such as mastomini.local signs HTTPS with its own certificate authority, and
+ * until this device trusts it the browser reports only "Failed to fetch".
+ */
+async function reach(server: string, path: string, init?: RequestInit): Promise<Response> {
+  try {
+    return await fetch(`${server}${path}`, init);
+  } catch {
+    const host = new URL(server).host;
+    throw new Error(
+      `Could not reach ${host}. Check the name and that it is switched on. If it is a household server with its own certificate, open http://${host}/trust on this device to trust it, then try again.`,
+    );
+  }
+}
+
 async function responseJson<T>(response: Response): Promise<T> {
   if (response.ok) return response.json() as Promise<T>;
   let detail = `Mastodon returned ${response.status}.`;
@@ -79,16 +99,28 @@ export class Mastodon {
     return id ? this.credentials(id)?.acct ?? null : null;
   });
 
+  readonly server = computed(() => {
+    this.changed();
+    const id = this.session.me()?.id;
+    return id ? this.credentials(id)?.server ?? null : null;
+  });
+
+  /** The server this browser last connected to, or the household board. */
+  lastServer(): string {
+    try { return localStorage.getItem(LAST_SERVER_KEY) ?? SUGGESTED_SERVERS[0]; }
+    catch { return SUGGESTED_SERVERS[0]; }
+  }
+
   /** Register a browser app and leave for the selected instance's PKCE login. */
   async connect(serverEntry: string): Promise<never> {
     const userId = this.session.me()?.id;
     if (!userId) throw new Error('Sign in to NanaCoin first.');
     const server = normalizeServer(serverEntry);
     // Hash fragments are not sent in OAuth redirect URIs. Return to the app
-    // root and let App move the callback query into the /send hash route.
+    // root and let App move the callback query into My Settings.
     const redirectUri = new URL(document.baseURI).toString();
     const app = await responseJson<{ client_id: string; client_secret?: string }>(
-      await fetch(`${server}/api/v1/apps`, {
+      await reach(server, '/api/v1/apps', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -107,6 +139,7 @@ export class Mastodon {
       redirectUri, verifier, state,
     };
     sessionStorage.setItem(PENDING_KEY, JSON.stringify(pending));
+    try { localStorage.setItem(LAST_SERVER_KEY, new URL(server).host); } catch { /* Only a default. */ }
     const params = new URLSearchParams({
       client_id: pending.clientId,
       redirect_uri: redirectUri,
@@ -142,10 +175,10 @@ export class Mastodon {
       client_secret: pending.clientSecret, redirect_uri: pending.redirectUri,
       code_verifier: pending.verifier, scope: SCOPES,
     });
-    const token = await responseJson<{ access_token: string }>(await fetch(`${pending.server}/oauth/token`, {
+    const token = await responseJson<{ access_token: string }>(await reach(pending.server, '/oauth/token', {
       method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: tokenBody,
     }));
-    const account = await responseJson<MastodonAccount>(await fetch(`${pending.server}/api/v1/accounts/verify_credentials`, {
+    const account = await responseJson<MastodonAccount>(await reach(pending.server, '/api/v1/accounts/verify_credentials', {
       headers: { Authorization: `Bearer ${token.access_token}` },
     }));
     const host = new URL(pending.server).host;
@@ -182,7 +215,7 @@ export class Mastodon {
     if (!recipient.mastodon_id) throw new Error(`${recipient.display_name} has no registered Mastodon ID.`);
     const text = message.trim();
     if (!text) throw new Error('Write a message first.');
-    await responseJson(await fetch(`${credentials.server}/api/v1/statuses`, {
+    await responseJson(await reach(credentials.server, '/api/v1/statuses', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${credentials.accessToken}`,

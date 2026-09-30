@@ -22,7 +22,6 @@ import { ToastList } from './ui/toast-list';
 import { Toasts } from './ui/toasts';
 import { SiteMenu } from './ui/site-menu';
 import { KeyboardHelp } from './ui/keyboard-help';
-import { MastodonConnect } from './ui/mastodon-connect';
 import { Dialogs } from './ui/dialog';
 import { bankHost } from './api/bank-host';
 
@@ -34,7 +33,6 @@ type Phase = 'loading' | 'connect' | 'setup' | 'login' | 'app' | 'logs';
     RouterOutlet, RouterLink,
     SiteMenu,
     KeyboardHelp,
-    MastodonConnect,
     ConnectForm,
     LoginForm,
     LogsPage,
@@ -98,7 +96,7 @@ export class App {
 
   constructor() {
     // Mastodon redirects cannot target a hash route. Move its root-level query
-    // into Angular's /send route before the callback component is created.
+    // into My Settings before the callback component is created.
     const callback = new URLSearchParams(location.search);
     if (callback.has('code') && callback.has('state') && sessionStorage.getItem('nanacoin:mastodon:oauth')) {
       this.mastodonCallback = { code: callback.get('code')!, state: callback.get('state')! };
@@ -111,7 +109,7 @@ export class App {
         void this.session.checkForChanges();
         const path = event.urlAfterRedirects.split('?')[0];
         this.aboutPage.set(path === '/about' || path.startsWith('/about/'));
-        this.publicPage.set(['/about', '/about/nickles', '/about/smbc', '/docs', '/recipes', '/ledger', '/diagnostics', '/error-log', '/database', '/configuration'].includes(path));
+        this.publicPage.set(['/about', '/about/nickles', '/about/smbc', '/docs', '/recipes', '/ledger', '/diagnostics', '/error-log', '/database', '/configuration', '/settings'].includes(path));
         requestAnimationFrame(() => document.getElementById('main-content')?.focus());
       }
     });
@@ -217,8 +215,8 @@ export class App {
     const callback = this.mastodonCallback;
     if (!callback) return;
     this.mastodonCallback = null;
-    await this.router.navigate(['/send'], {
-      queryParams: { mastodon_code: callback.code, mastodon_state: callback.state },
+    await this.router.navigate(['/settings'], {
+      queryParams: { tab: 'settings-mastodon', mastodon_code: callback.code, mastodon_state: callback.state },
     });
   }
 

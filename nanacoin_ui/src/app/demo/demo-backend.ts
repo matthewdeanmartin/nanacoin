@@ -206,6 +206,22 @@ function handle(req: HttpRequest<unknown>): unknown {
 
   if (path === '/me') return demoLedger.view(me, me);
 
+  // The demo has no real credentials, so any password mints a key that only
+  // this tab knows. It demonstrates the flow; it authenticates nothing.
+  if (path === '/me/api-key') {
+    if (method === 'POST') {
+      if (!String(body['password'] ?? '')) throw new DemoError(400, 'invalid_input', 'Enter your password.');
+      const created_at = Math.floor(Date.now() / 1000);
+      demoApiKeys.set(me.id, created_at);
+      const random = crypto.getRandomValues(new Uint8Array(32));
+      const api_key = 'nc_' + btoa(String.fromCharCode(...random)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+      return { api_key, created_at };
+    }
+    if (method === 'DELETE') demoApiKeys.delete(me.id);
+    const created_at = demoApiKeys.get(me.id) ?? null;
+    return { active: created_at !== null, created_at };
+  }
+
   if (path === '/users' && method === 'GET') {
     return { users: demoLedger.allUsers(me) };
   }
@@ -390,6 +406,9 @@ function subject(id: string) {
   if (!user) throw new DemoError(404, 'not_found', 'No such member.');
   return user;
 }
+
+/** Demo API keys by user id: just the creation time, since nothing checks them. */
+const demoApiKeys = new Map<string, number>();
 
 function lastSegment(path: string): string {
   return path.slice(path.lastIndexOf('/') + 1);

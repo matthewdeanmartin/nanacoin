@@ -24,6 +24,7 @@ export const routes: Routes = [
   { path: 'about', loadComponent: () => import('./pages/about').then(m => m.AboutPage), title: 'NanaCoin vs Crypto — NanaCoin' },
   { path: 'about/nickles', loadComponent: () => import('./pages/about-nickles').then(m => m.AboutNicklesPage), title: 'Nana-nickles — NanaCoin' },
   { path: 'about/smbc', loadComponent: () => import('./pages/smbc').then(m => m.SmbcPage), title: 'Inspired by SMBC — NanaCoin' },
+  { path: 'settings', loadComponent: () => import('./pages/settings').then(m => m.SettingsPage), title: 'My Settings — NanaCoin' },
   { path: 'recipes', loadComponent: () => import('./pages/recipes').then(m => m.RecipesPage), title: 'Lemon bars — NanaCoin' },
   { path: 'ledger', loadComponent: () => import('./pages/public-ledger').then(m => m.PublicLedger), title: 'The notebook — NanaCoin' },
   { path: 'nickles', loadComponent: () => import('./pages/nickles').then(m => m.NicklesPage), title: 'Nana-nickles — NanaCoin' },

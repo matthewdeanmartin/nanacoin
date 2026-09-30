@@ -107,6 +107,8 @@ struct PrivateMember<'a> {
     member: &'a Member,
     password: &'a Option<crate::auth::PasswordVerifier>,
     token_hash: &'a TokenHash,
+    api_key: &'a TokenHash,
+    api_key_created: u64,
     last_command: &'a TokenHash,
     last_sequence: u64,
 }
@@ -115,6 +117,8 @@ struct StoredMember {
     member: Member,
     password: Option<crate::auth::PasswordVerifier>,
     token_hash: TokenHash,
+    api_key: TokenHash,
+    api_key_created: u64,
     last_command: TokenHash,
     last_sequence: u64,
 }
@@ -232,6 +236,8 @@ pub(super) fn save<J: Journal>(
                 member: m,
                 password: &m.password,
                 token_hash: &m.token_hash,
+                api_key: &m.api_key,
+                api_key_created: m.api_key_created,
                 last_command: &m.last_command,
                 last_sequence: m.last_sequence,
             },
@@ -352,6 +358,8 @@ pub(super) fn restore<J: Journal>(
         let mut m: StoredMember = read(j, &mut index, 1)?;
         m.member.password = m.password;
         m.member.token_hash = m.token_hash;
+        m.member.api_key = m.api_key;
+        m.member.api_key_created = m.api_key_created;
         m.member.last_command = m.last_command;
         m.member.last_sequence = m.last_sequence;
         if m.member.id.0 as usize != s.members.len() + 1 || m.member.last_sequence > s.sequence {

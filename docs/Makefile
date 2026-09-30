@@ -10,7 +10,7 @@
 
 # Wrapping in `uv run` is slower, so skip it if a venv is already active.
 ifeq ($(origin VIRTUAL_ENV),undefined)
-    VENV := uv run
+    VENV := uv run --no-project --with-requirements docs/requirements.txt
 else
     VENV :=
 endif

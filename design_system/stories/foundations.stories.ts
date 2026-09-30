@@ -11,6 +11,7 @@ const palette = [
   { token: "--line", use: "Borders and dividers" },
   { token: "--accent", use: "Primary action, emphasis" },
   { token: "--accent-soft", use: "Top bar, active tab, notes" },
+  { token: "--on-accent", use: "Text and icons on an --accent fill" },
   { token: "--credit", use: "Money coming in" },
   { token: "--debit", use: "Money going out" },
   { token: "--warn-bg", use: "Warning and error fill" },

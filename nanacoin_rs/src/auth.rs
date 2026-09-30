@@ -1,5 +1,6 @@
 //! The existing Nanacoin security model: salted passwords, S256 PKCE and
-//! expiring RAM-only sessions. No permanent access-token account credentials.
+//! expiring RAM-only sessions. The one standing credential is a member's own
+//! API key (`nc_` + 43 random characters), stored only as SHA-256 in State.
 use crate::domain::{Error, MemberId, State};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use heapless::String;
@@ -15,6 +16,7 @@ pub const LOCKOUT: u64 = 5 * 60;
 pub const MAX_SESSIONS: usize = 64;
 pub const MAX_CODES: usize = 16;
 pub type Secret = String<43>;
+pub const API_KEY_PREFIX: &str = "nc_";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -313,6 +315,42 @@ impl Auth {
         }
         Ok(member.id)
     }
+    /// A fresh `nc_` API key. The caller records only its digest.
+    pub fn new_api_key() -> Result<String<46>, Error> {
+        let mut key = String::new();
+        key.push_str(API_KEY_PREFIX)
+            .map_err(|_| Error::Unavailable)?;
+        key.push_str(&random_secret()?)
+            .map_err(|_| Error::Unavailable)?;
+        Ok(key)
+    }
+
+    /// Re-checks a signed-in member's password before a credential change,
+    /// sharing the login lockout so a stolen session cannot guess it.
+    pub fn confirm_password(
+        &mut self,
+        state: &State,
+        member: MemberId,
+        password: &str,
+        now: u64,
+    ) -> Result<(), Error> {
+        let member = state.member(member)?;
+        let username = digest(&member.username);
+        if self
+            .failures
+            .iter()
+            .flatten()
+            .any(|f| f.username == username && f.count >= 5 && now < f.until)
+        {
+            return Err(Error::RateLimited);
+        }
+        if !member.password.as_ref().is_some_and(|p| p.verify(password)) {
+            self.record_failure(username, now);
+            return Err(Error::InvalidCredentials);
+        }
+        Ok(())
+    }
+
     pub fn revoke(&mut self, token: &str) {
         let hash = digest(token);
         for session in &mut self.sessions {

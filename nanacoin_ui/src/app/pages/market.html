@@ -1,111 +1,158 @@
 <h1>{{ listingPage ? 'Buy, sell, hire' : 'Market' }}</h1>
 
-@if (goodDeeds().length) {
-<section class="good-deeds" aria-labelledby="good-deeds-heading">
-  <h2 id="good-deeds-heading">Good deeds from Nana</h2>
-  <p class="muted small">Nana rewards these with brand-new coins. Do one, tell her about it, and the reward is yours when she accepts. You can do them again.</p>
-  <div class="cards">
-    @for (l of goodDeeds(); track l.id) {
-      <article class="card" [attr.aria-label]="l.title">
-        <h3>{{ l.title }}</h3>
-        @if (l.description) { <p class="card__desc">{{ l.description }}</p> }
-        <p class="card__meta"><strong>{{ l.price | nc }} NC</strong> · new money from Nana</p>
-        @if (mine(l)) {
-          <a class="btn btn--quiet" routerLink="/good-deeds">Manage good deeds</a>
-        } @else {
-          <button class="btn" (click)="claim(l)" [disabled]="offering() !== null">{{ offering() === l.id ? 'Sending…' : 'I did this' }}</button>
-        }
-      </article>
-    }
-  </div>
-</section>
-}
-
 @if (!listingPage) {
 <p><a class="btn" routerLink="/list">Buy, sell, hire</a></p>
-@if (market().length === 0) {
-  <p class="muted">Nothing for sale right now.</p>
-} @else {
-  <div class="cards">
-    @for (l of market(); track l.id) {
-      <article class="card" data-keyboard-row tabindex="-1">
-        <h3>{{ l.title }}</h3>
 
-        @if (l.description) {
-          <p class="card__desc">{{ l.description }}</p>
-        }
+<app-section-tabs [tabs]="tabs()" [selected]="tab()" (selectedChange)="select($event)" label="Market sections" prefix="market" />
 
-        @if (l.kind === 'currency' && l.currency && l.minor_units) {
-          <p class="card__note">
-            Offers {{ cashAmount(l) }} in cash. NanaCoin records only the coin
-            side — the cash is between you and the seller.
-          </p>
-        }
+<!-- One card for both directions; only the verbs differ. -->
+<ng-template #listingCard let-l>
+  <article class="card" data-keyboard-row tabindex="-1">
+    <h3>{{ l.title }}</h3>
 
-        <p class="card__meta">
-          <strong>{{ l.price | nc }} NC</strong>
-          · {{ l.seller_name }}
-        </p>
-        @if (l.quantity_milli) {
-          <p class="card__note">{{ l.economic_kind }} · {{ quantityLabel(l) }}{{ l.standard ? ' · standard item' : '' }}</p>
-        }
+    @if (l.description) {
+      <p class="card__desc">{{ l.description }}</p>
+    }
 
-        @if (mine(l)) {
-          <button class="btn btn--quiet" title="Remove your listing from the active market" (click)="cancel(l)">Cancel listing</button>
-        } @else if (wanted(l)) {
-          <!--
-            A want-ad: they have the money and want the thing. There is
-            nothing to buy, so the only move is to offer to do it.
-          -->
-          <button class="btn" title="Propose a different price or terms to the listing owner" (click)="offer(l)" [disabled]="offering() !== null">
-            {{ offering() === l.id ? 'Offering…' : 'Offer to do this' }}
-          </button>
+    @if (l.kind === 'currency' && l.currency && l.minor_units) {
+      <p class="card__note">
+        Offers {{ cashAmount(l) }} in cash. NanaCoin records only the coin
+        side — the cash is between you and the seller.
+      </p>
+    }
+
+    <p class="card__meta">
+      <strong>{{ l.price | nc }} NC</strong>
+      · {{ l.seller_name }}
+    </p>
+    @if (l.quantity_milli) {
+      <p class="card__note">{{ l.economic_kind }} · {{ quantityLabel(l) }}{{ l.standard ? ' · standard item' : '' }}</p>
+    }
+
+    @if (mine(l)) {
+      <button class="btn btn--quiet" title="Remove your listing from the active market" (click)="cancel(l)">Cancel listing</button>
+    } @else if (wanted(l)) {
+      <!--
+        A want-ad: they have the money and want the thing. There is
+        nothing to buy, so the only move is to offer to do it.
+      -->
+      <button class="btn" title="Propose a different price or terms to the listing owner" (click)="offer(l)" [disabled]="offering() !== null">
+        {{ offering() === l.id ? 'Offering…' : 'Offer to do this' }}
+      </button>
+    } @else {
+      <button
+        class="btn"
+        (click)="buy(l)"
+        [disabled]="!affordable(l) || buying() !== null"
+        [title]="affordable(l) ? '' : 'You do not have enough coins.'"
+      >
+        @if (buying() === l.id) {
+          Buying…
         } @else {
-          <button
-            class="btn"
-            (click)="buy(l)"
-            [disabled]="!affordable(l) || buying() !== null"
-            [title]="affordable(l) ? '' : 'You do not have enough coins.'"
-          >
-            @if (buying() === l.id) {
-              Buying…
-            } @else {
-              Buy for {{ l.price | nc }}
-            }
-          </button>
-
-          <!--
-            Haggling. Buying at the asking price was the only thing this
-            marketplace could do; an offer is a proposal the seller can turn
-            down, and no money moves until they accept.
-          -->
-          <button
-            class="btn btn--quiet"
-            (click)="offer(l)"
-            [disabled]="offering() !== null"
-          >
-            {{ offering() === l.id ? 'Offering…' : 'Offer a different price' }}
-          </button>
+          Buy for {{ l.price | nc }}
         }
-      </article>
-    }
-  </div>
-}
-}
+      </button>
 
-@if (!listingPage && artForSale().length) {
-<section class="market-art" aria-labelledby="market-art-heading">
-  <h2 id="market-art-heading">Digital art for sale</h2>
-  <div class="cards">
-    @for (a of artForSale(); track a.id) {
-      <article class="card" [attr.aria-label]="a.title">
-        <app-art-picture [art]="a" [controls]="false" />
-        <h3>{{ a.title }}</h3>
-        <p class="card__meta"><strong>{{ a.price | nc }} NC</strong> · {{ artist(a.owner) }}</p>
-        <a class="btn btn--quiet" routerLink="/art">See it in the gallery</a>
-      </article>
+      <!--
+        Haggling. An offer is a proposal the seller can turn down, and no
+        money moves until they accept.
+      -->
+      <button
+        class="btn btn--quiet"
+        (click)="offer(l)"
+        [disabled]="offering() !== null"
+      >
+        {{ offering() === l.id ? 'Offering…' : 'Offer a different price' }}
+      </button>
     }
-  </div>
+  </article>
+</ng-template>
+
+<section id="market-buy" role="tabpanel" aria-labelledby="market-tab-market-buy" [hidden]="tab() !== 'market-buy'">
+  <p class="muted small">People who have the coins and want something done or made. Offer to do it.</p>
+  @if (wantAds().length === 0) {
+    <p class="empty">Nobody is asking for anything right now.</p>
+  } @else {
+    <div class="cards">
+      @for (l of wantAds(); track l.id) { <ng-container *ngTemplateOutlet="listingCard; context: { $implicit: l }" /> }
+    </div>
+  }
+</section>
+
+<section id="market-sell" role="tabpanel" aria-labelledby="market-tab-market-sell" [hidden]="tab() !== 'market-sell'">
+  <p class="muted small">Things and help people are selling. Buy at the asking price or offer a different one.</p>
+  @if (forSale().length === 0) {
+    <p class="empty">Nothing for sale right now.</p>
+  } @else {
+    <div class="cards">
+      @for (l of forSale(); track l.id) { <ng-container *ngTemplateOutlet="listingCard; context: { $implicit: l }" /> }
+    </div>
+  }
+</section>
+
+<section id="market-art" role="tabpanel" aria-labelledby="market-tab-market-art" [hidden]="tab() !== 'market-art'">
+  <p class="muted small">Digital art editions on sale. Buying happens in the gallery, where ownership changes hands with the coins.</p>
+  @if (artForSale().length === 0) {
+    <p class="empty">No art for sale right now.</p>
+  } @else {
+    <div class="cards">
+      @for (a of artForSale(); track a.id) {
+        <article class="card" [attr.aria-label]="a.title">
+          <app-art-picture [art]="a" [controls]="false" />
+          <h3>{{ a.title }}</h3>
+          <p class="card__meta"><strong>{{ a.price | nc }} NC</strong> · {{ artist(a.owner) }}</p>
+          <a class="btn btn--quiet" routerLink="/art">See it in the gallery</a>
+        </article>
+      }
+    </div>
+  }
+</section>
+
+<section id="market-deeds" role="tabpanel" aria-labelledby="market-tab-market-deeds" [hidden]="tab() !== 'market-deeds'">
+  <p class="muted small">Nana rewards these with brand-new coins. Do one, tell her about it, and the reward is yours when she accepts. You can do them again.</p>
+  @if (goodDeeds().length === 0) {
+    <p class="empty">Nana has not posted any good deeds.</p>
+  } @else {
+    <div class="cards">
+      @for (l of goodDeeds(); track l.id) {
+        <article class="card" [attr.aria-label]="l.title">
+          <h3>{{ l.title }}</h3>
+          @if (l.description) { <p class="card__desc">{{ l.description }}</p> }
+          <p class="card__meta"><strong>{{ l.price | nc }} NC</strong> · new money from Nana</p>
+          @if (mine(l)) {
+            <a class="btn btn--quiet" routerLink="/good-deeds">Manage good deeds</a>
+          } @else {
+            <button class="btn" (click)="claim(l)" [disabled]="offering() !== null">{{ offering() === l.id ? 'Sending…' : 'I did this' }}</button>
+          }
+        </article>
+      }
+    </div>
+  }
+</section>
+
+<section id="market-closed" role="tabpanel" aria-labelledby="market-tab-market-closed" [hidden]="tab() !== 'market-closed'">
+  @if (session.closed().length === 0) {
+    <p class="empty">Nothing has been sold or cancelled yet.</p>
+  } @else {
+    <div class="cards">
+      @for (l of session.closed(); track l.id) {
+        <article class="card card--closed" data-keyboard-row tabindex="-1">
+          <h3>{{ l.title }}</h3>
+          <p class="card__meta">
+            <strong>{{ l.price | nc }} coins</strong> · {{ l.seller_name }}
+          </p>
+          <p class="card__status">
+            @if (l.status === 'SOLD') {
+              Sold to {{ l.buyer_name ?? 'someone' }}
+            } @else {
+              Cancelled
+            }
+          </p>
+          <button class="btn btn--quiet" type="button" (click)="offerAgain(l)">Offer again at a new price</button>
+        </article>
+      }
+    </div>
+  }
 </section>
 }
 
@@ -185,28 +232,4 @@
     </button>
   </form>
 </details>
-}
-
-@if (!listingPage && session.closed().length > 0) {
-  <details class="disclosure">
-    <summary>Sold and cancelled ({{ session.closed().length }})</summary>
-    <div class="cards">
-      @for (l of session.closed(); track l.id) {
-        <article class="card card--closed" data-keyboard-row tabindex="-1">
-          <h3>{{ l.title }}</h3>
-          <p class="card__meta">
-            <strong>{{ l.price | nc }} coins</strong> · {{ l.seller_name }}
-          </p>
-          <p class="card__status">
-            @if (l.status === 'SOLD') {
-              Sold to {{ l.buyer_name ?? 'someone' }}
-            } @else {
-              Cancelled
-            }
-          </p>
-          <button class="btn btn--quiet" type="button" (click)="offerAgain(l)">Offer again at a new price</button>
-        </article>
-      }
-    </div>
-  </details>
 }

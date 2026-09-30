@@ -98,4 +98,4 @@ paging buffers have reserved capacities. Lifetime counters use checked i128
 arithmetic, independent of history eviction. Original transaction units remain
 immutable; current-unit API projections require exact conversion. These bounds
 do not measure board endurance, latency or allocator behavior. See
-[storage v2](../../nanacoin_rs/spec/STORAGE_V2.md) for recovery and reset rules.
+[storage v2](https://github.com/matthewdeanmartin/nanacoin/blob/main/nanacoin_rs/spec/STORAGE_V2.md) for recovery and reset rules.

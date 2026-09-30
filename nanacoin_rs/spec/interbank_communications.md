@@ -6,6 +6,8 @@ designing interbank transfers and foreign trade: what each bank is, how to
 reach it, what it can and cannot do today, and which constraints any design
 must respect. Why there are two banks is in [SECOND_BANK.md](SECOND_BANK.md);
 how to build, deploy and probe them is in [../DEPLOY.md](../DEPLOY.md).
+The proposed protocol built on these facts is
+[INTERBANK_PROTOCOL.md](INTERBANK_PROTOCOL.md).
 
 ## The two banks
 

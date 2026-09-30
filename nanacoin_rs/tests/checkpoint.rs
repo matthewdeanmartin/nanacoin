@@ -182,11 +182,22 @@ fn checkpoint_preserves_passwords_balances_open_deals_deadlines_and_retries() {
             expires_at: now() + 3600,
         },
     );
+    let key = "nc_checkpointed-key-for-alice-000000000000000";
+    exec(
+        &mut s,
+        2,
+        Command::SetApiKey {
+            member: MemberId(2),
+            key_hash: nanacoin::auth::digest(key),
+        },
+    );
     let before = serde_json::to_value(s.state()).unwrap();
     s.checkpoint(MemberId(1)).unwrap();
     drop(s);
     let mut s = Service::open_with_clock(disk, now).unwrap();
     assert_eq!(serde_json::to_value(s.state()).unwrap(), before);
+    assert_eq!(s.state().api_key_member(key), Ok(MemberId(2)));
+    assert_eq!(s.state().api_key_created(MemberId(2)), Ok(Some(now())));
     assert_eq!(
         s.state()
             .offer(offer)

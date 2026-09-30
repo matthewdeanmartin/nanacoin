@@ -26,6 +26,10 @@ that is the sensible place to start.
 "serving a web page on your WiFi" on Windows, including the failures you will
 probably hit. Read this first if you have never flashed a board.
 
+[How accounting works](accounting/index.md) explains the books: every kind
+of account, what each payment does to them, corrections, currency reforms, and
+the planned foreign-currency accounts.
+
 [Rust and NanaCoin](rust/index.md) is the **active implementation**: the
 ledger, the JSON API, and the firmware that runs them. It covers the build,
 how ownership keeps allocation bounded, the domain and concurrency model, how
@@ -34,7 +38,7 @@ records survive a power cut in NVS, and what the diagnostics endpoint reports.
 [TinyGo and NanaCoin](tinygo/index.md) is where the project started. The
 firmware is frozen pending upstream PSRAM support, but the write-up is the more
 detailed one on memory budgets and on load-testing a board until it falls over —
-and the shared Angular client is now maintained in [`nanacoin_ui`](../nanacoin_ui/).
+and the shared Angular client is now maintained in [`nanacoin_ui`](https://github.com/matthewdeanmartin/nanacoin/tree/main/nanacoin_ui).
 
 ## The shape of it
 

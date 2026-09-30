@@ -6,8 +6,8 @@ const preview: Preview = {
     // The app is zoneless (signals throughout); the catalogue matches it.
     applicationConfig({ providers: [provideZonelessChangeDetection()] }),
     (story, context) => {
-      // "auto" follows the OS like the real app. light/dark force a palette
-      // through the preview-only overrides in preview.css.
+      // "auto" follows the OS like the real app; the rest pin one of the
+      // palettes in styles.css, as My Settings > Appearance does.
       const root = document.documentElement;
       const theme = context.globals["theme"];
       if (theme === "auto") root.removeAttribute("data-theme");
@@ -20,7 +20,15 @@ const preview: Preview = {
       toolbar: {
         title: "Theme",
         icon: "circlehollow",
-        items: ["auto", "light", "dark"],
+        items: [
+          "auto",
+          "light",
+          "dark",
+          "garden",
+          "night",
+          "mono-light",
+          "mono-dark",
+        ],
         dynamicTitle: true,
       },
     },

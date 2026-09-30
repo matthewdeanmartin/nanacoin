@@ -37,10 +37,19 @@ npm run design        # http://127.0.0.1:6010
 
 ## Theme toolbar
 
-The app chooses light or dark from `prefers-color-scheme` only. To let the
-toolbar force either palette, `preview.css` repeats both under `[data-theme]`.
-`rules/theme-sync.test.mjs` fails when those copies differ from `styles.css`:
-change `styles.css` first, then copy the values.
+The app has six colour themes, all in `styles.css`: warm light and warm dark
+(what "auto" shows, following `prefers-color-scheme`), garden, night sky, and
+monochrome light and dark. My Settings > Appearance pins one by setting
+`data-theme` on `<html>` (`app/ui/theme.ts`); the toolbar does the same.
+
+`rules/theme-sync.test.mjs` fails if a palette misses a colour token, if warm
+light/dark drift from the device-following palettes, or if the picker, CSS and
+toolbar disagree about which themes exist. To add a theme, add its block to
+`styles.css`, its entry (with swatch) to `THEMES`, and its id to the toolbar.
+
+Use tokens, never literal colours, in components: `--on-accent` is the text
+colour on an `--accent` fill (white in most themes, near-black in monochrome
+dark and night sky).
 
 ## Adding a story
 

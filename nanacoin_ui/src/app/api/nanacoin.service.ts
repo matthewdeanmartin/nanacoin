@@ -1,4 +1,4 @@
-import { Fulfillment, FulfillmentAction } from './models';
+import { ApiKeyStatus, Fulfillment, FulfillmentAction, NewApiKey } from './models';
 // The NanaCoin API client.
 //
 // One service, HttpClient, no state beyond the bearer token. Everything the
@@ -390,6 +390,25 @@ export class NanacoinService {
 
   setUserMastodonId(id: UserId, mastodonId: string): Promise<User> {
     return this.patch<User>(`/users/${encodeURIComponent(id)}`, { mastodon_id: mastodonId });
+  }
+
+  // --- API key: one per member, acting as them; the key itself is shown once ---
+
+  apiKeyStatus(): Promise<ApiKeyStatus> {
+    return this.get<ApiKeyStatus>('/me/api-key');
+  }
+
+  /** Makes a key, replacing any existing one. Needs the current password. */
+  createApiKey(password: string): Promise<NewApiKey> {
+    return this.post<NewApiKey>('/me/api-key', { password });
+  }
+
+  revokeApiKey(): Promise<ApiKeyStatus> {
+    return this.traced('DELETE', '/me/api-key', () =>
+      firstValueFrom(
+        this.http.delete<ApiKeyStatus>(this.base + '/me/api-key', { headers: this.headers() }).pipe(this.mapError()),
+      ),
+    );
   }
 
   // --- money ---

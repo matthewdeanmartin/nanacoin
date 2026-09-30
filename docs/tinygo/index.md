@@ -58,7 +58,7 @@ only record of real obligations on it.
 | `internal/auth` | Password checking, PKCE, sessions and login throttling |
 | `internal/storage` | Journal contract and backend implementations |
 | `internal/eventlog` | Bounded diagnostic history |
-| [`nanacoin_ui`](../../nanacoin_ui/) | Main browser application (shared with Rust) |
+| [`nanacoin_ui`](https://github.com/matthewdeanmartin/nanacoin/tree/main/nanacoin_ui) | Main browser application (shared with Rust) |
 | `patches` | Dependency fixes needed by the board build |
 
 The separate [nanacoin_load project](https://github.com/matthewdeanmartin/nanacoin/tree/main/nanacoin_load)
