@@ -3,7 +3,10 @@
 .brand { color:var(--ink); text-decoration:none; font-family:Georgia,serif; font-size:1.55rem; font-weight:700; white-space:nowrap; line-height:1.15; }
 .brand { justify-self:end; margin-right:1rem; }
 .brand span { display:block; margin-top:.2rem; font: .65rem system-ui,sans-serif; text-transform:uppercase; letter-spacing:.12em; color:var(--ink-soft); }
-nav { display:flex; min-width:0; align-items:center; justify-content:flex-start; flex-wrap:wrap; gap:.1rem 1.05rem; padding:0 1rem; }
+/* The menu starts where the page content starts but may run into the empty
+ * right-hand column, so a Nana's full menu stays on one line at 1024px even
+ * with wider fonts (CI's Linux fonts are wider than Windows'). */
+nav { grid-column:2 / 4; max-width:52rem; display:flex; min-width:0; align-items:center; justify-content:flex-start; flex-wrap:wrap; gap:.1rem 1.05rem; padding:0 1rem; }
 nav a { display:block; color:var(--ink); padding:.65rem 0 .45rem; border-bottom:2px solid transparent; text-decoration:none; font-size:.87rem; white-space:nowrap; }
 nav a:hover, nav a.current { color:var(--accent); border-bottom-color:var(--accent); }
 .about-link { margin-left:auto; }

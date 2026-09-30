@@ -400,3 +400,50 @@ fn desktop_generations_restart_and_reset() {
     }
     std::fs::remove_dir(dir).unwrap();
 }
+
+/// A household saved by the firmware from before API keys (commit d8301d3):
+/// one checkpoint plus a journal record after it. Upgrading must not lose it.
+#[test]
+fn pre_api_key_checkpoint_still_opens_and_then_keeps_keys() {
+    use nanacoin::journal::file::FileJournal;
+    let fixture =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/pre-api-keys");
+    let dir = std::env::temp_dir().join(format!("nanacoin-pre-api-keys-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    for entry in std::fs::read_dir(&fixture).unwrap() {
+        let entry = entry.unwrap();
+        if entry
+            .file_name()
+            .to_string_lossy()
+            .starts_with("economy.journal")
+        {
+            std::fs::copy(entry.path(), dir.join(entry.file_name())).unwrap();
+        }
+    }
+    let path = dir.join("economy.journal");
+    let mut s = Service::open(FileJournal::open(&path).unwrap()).unwrap();
+    assert_eq!(s.generation(), 1);
+    assert_eq!(s.state().member(MemberId(2)).unwrap().balance, 50);
+    let key = "nc_upgraded-household-key-00000000000000000000";
+    exec(
+        &mut s,
+        2,
+        Command::SetApiKey {
+            member: MemberId(2),
+            key_hash: nanacoin::auth::digest(key),
+        },
+    );
+    s.checkpoint(MemberId(1)).unwrap();
+    drop(s);
+    let s = Service::open(FileJournal::open(&path).unwrap()).unwrap();
+    assert_eq!(s.generation(), 2);
+    assert_eq!(s.state().api_key_member(key), Ok(MemberId(2)));
+    assert_eq!(s.state().member(MemberId(2)).unwrap().balance, 50);
+    s.state().check_invariants().unwrap();
+    drop(s);
+    // Only files created in this test's explicitly named temporary directory.
+    for entry in std::fs::read_dir(&dir).unwrap() {
+        std::fs::remove_file(entry.unwrap().path()).unwrap();
+    }
+    std::fs::remove_dir(dir).unwrap();
+}

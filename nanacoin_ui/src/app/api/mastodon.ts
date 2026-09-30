@@ -10,7 +10,7 @@ const CREDENTIAL_KEY = 'nanacoin:mastodon:credentials:';
 const LAST_SERVER_KEY = 'nanacoin:mastodon:last-server';
 const SCOPES = 'read:accounts write:statuses';
 
-/** Offered first in My Settings: the household's own Mastomini board. */
+/** Suggestions only: each household runs or joins its own server. */
 export const SUGGESTED_SERVERS = ['mastomini.local', 'mastodon.social'] as const;
 
 interface PendingOAuth {
@@ -105,10 +105,10 @@ export class Mastodon {
     return id ? this.credentials(id)?.server ?? null : null;
   });
 
-  /** The server this browser last connected to, or the household board. */
+  /** The server this browser last connected to, if any. */
   lastServer(): string {
-    try { return localStorage.getItem(LAST_SERVER_KEY) ?? SUGGESTED_SERVERS[0]; }
-    catch { return SUGGESTED_SERVERS[0]; }
+    try { return localStorage.getItem(LAST_SERVER_KEY) ?? ''; }
+    catch { return ''; }
   }
 
   /** Register a browser app and leave for the selected instance's PKCE login. */

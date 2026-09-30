@@ -93,7 +93,7 @@ const MASTODON = { id: 'settings-mastodon', label: 'Mastodon' };
           <label>
             Your Mastodon server
             <input name="server" [(ngModel)]="server" list="mastodon-servers" required autocomplete="url"
-                   autocapitalize="off" spellcheck="false" />
+                   autocapitalize="off" spellcheck="false" placeholder="mastomini.local or mastodon.social" />
             <datalist id="mastodon-servers">
               @for (s of suggestions; track s) { <option [value]="s"></option> }
             </datalist>

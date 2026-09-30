@@ -107,8 +107,6 @@ struct PrivateMember<'a> {
     member: &'a Member,
     password: &'a Option<crate::auth::PasswordVerifier>,
     token_hash: &'a TokenHash,
-    api_key: &'a TokenHash,
-    api_key_created: u64,
     last_command: &'a TokenHash,
     last_sequence: u64,
 }
@@ -117,11 +115,20 @@ struct StoredMember {
     member: Member,
     password: Option<crate::auth::PasswordVerifier>,
     token_hash: TokenHash,
-    api_key: TokenHash,
-    api_key_created: u64,
     last_command: TokenHash,
     last_sequence: u64,
 }
+
+/// A member's API key digest. Written after every counted section, one row
+/// per member who has a key, so a checkpoint made before API keys existed
+/// (no such rows) restores unchanged and the header layout never moved.
+#[derive(Serialize, Deserialize)]
+struct ApiKeyRow {
+    member: MemberId,
+    key: TokenHash,
+    created: u64,
+}
+const API_KEY_ROW: u8 = 16;
 
 fn write<J: Journal>(
     j: &mut J,
@@ -236,8 +243,6 @@ pub(super) fn save<J: Journal>(
                 member: m,
                 password: &m.password,
                 token_hash: &m.token_hash,
-                api_key: &m.api_key,
-                api_key_created: m.api_key_created,
                 last_command: &m.last_command,
                 last_sequence: m.last_sequence,
             },
@@ -289,6 +294,14 @@ pub(super) fn save<J: Journal>(
     for x in &s.commerce.artworks {
         write(j, &mut index, 15, x)?;
     }
+    for m in s.members.iter().filter(|m| m.api_key != [0; 32]) {
+        let row = ApiKeyRow {
+            member: m.id,
+            key: m.api_key,
+            created: m.api_key_created,
+        };
+        write(j, &mut index, API_KEY_ROW, &row)?;
+    }
     j.commit_checkpoint(index)?;
     Ok(archive)
 }
@@ -303,6 +316,24 @@ pub(super) fn restore<J: Journal>(
     }
     let mut index = 0;
     let h: Header = read(j, &mut index, 0)?;
+    let counted = 1
+        + h.corrections
+        + h.epochs
+        + h.audits
+        + h.requests
+        + h.artworks
+        + h.fulfillments
+        + h.members
+        + h.listings
+        + h.history
+        + h.offers
+        + h.quotes
+        + h.things
+        + h.loans
+        + h.lottos
+        + h.keys;
+    // Anything after the counted sections is API key rows, at most one per member.
+    let api_keys = j.checkpoint_rows().checked_sub(counted);
     if h.corrections > crate::ledger::CORRECTIONS
         || h.epochs > crate::ledger::EPOCHS
         || h.audits > crate::ledger::AUDIT_CACHE
@@ -320,22 +351,7 @@ pub(super) fn restore<J: Journal>(
         || h.quotes > crate::forex::QUOTES
         || h.things > THINGS
         || h.keys > MAX_RECORDS
-        || 1 + h.corrections
-            + h.epochs
-            + h.audits
-            + h.requests
-            + h.artworks
-            + h.fulfillments
-            + h.members
-            + h.listings
-            + h.history
-            + h.offers
-            + h.quotes
-            + h.things
-            + h.loans
-            + h.lottos
-            + h.keys
-            != j.checkpoint_rows()
+        || api_keys.is_none_or(|n| n > h.members)
         || h.sequence > MAX_SEQUENCE
     {
         return Err(Error::CorruptJournal);
@@ -358,8 +374,6 @@ pub(super) fn restore<J: Journal>(
         let mut m: StoredMember = read(j, &mut index, 1)?;
         m.member.password = m.password;
         m.member.token_hash = m.token_hash;
-        m.member.api_key = m.api_key;
-        m.member.api_key_created = m.api_key_created;
         m.member.last_command = m.last_command;
         m.member.last_sequence = m.last_sequence;
         if m.member.id.0 as usize != s.members.len() + 1 || m.member.last_sequence > s.sequence {
@@ -433,6 +447,19 @@ pub(super) fn restore<J: Journal>(
     }
     for _ in 0..h.artworks {
         s.commerce.artworks.push(read(j, &mut index, 15)?);
+    }
+    for _ in 0..api_keys.unwrap_or(0) {
+        let row: ApiKeyRow = read(j, &mut index, API_KEY_ROW)?;
+        let m = s
+            .members
+            .iter_mut()
+            .find(|m| m.id == row.member)
+            .ok_or(Error::CorruptJournal)?;
+        if row.key == [0; 32] || m.api_key != [0; 32] || row.created > s.last_timestamp {
+            return Err(Error::CorruptJournal);
+        }
+        m.api_key = row.key;
+        m.api_key_created = row.created;
     }
     if j.supports_archive() {
         if h.archive.transactions != s.transactions || h.archive.audit_sequence != s.sequence {
