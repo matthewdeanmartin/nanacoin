@@ -28,7 +28,7 @@ export class DemoLending {
     const copy = { ...l };
     let reason = '';
     try {
-      this.active(l.borrower); this.active(l.lender);
+      this.active(l.borrower); if (l.status !== 'REQUESTED') this.active(l.lender);
       if (l.status === 'ACTIVE') this.accrue(copy, now);
       if (l.status === 'ARMED') reason = this.host.balance(l.borrower) !== 0 ? 'Waiting for a zero balance'
         : this.blocked.has(l.borrower) ? 'Credit does not fund loan payments'
@@ -42,7 +42,7 @@ export class DemoLending {
     const outstanding = active.reduce((n,l) => n + BigInt(l.principal), 0n);
     const overdue = active.reduce((n,l) => n + BigInt(l.principalDue + l.interestDue), 0n);
     const weighted = active.reduce((n,l) => n + l.principal * l.rate_bps / 100 * 365 / l.rate_days, 0);
-    return { loans: this.loans.filter(l => actor.role === 'nana' || l.borrower === actor.account || l.lender === actor.account).slice().reverse().map(l => this.view(l, now)),
+    return { loans: this.loans.filter(l => l.status === 'REQUESTED' || actor.role === 'nana' || l.borrower === actor.account || l.lender === actor.account).slice().reverse().map(l => this.view(l, now)),
       summary: { outstanding: String(outstanding), overdue: String(overdue), active: active.length, weighted_annual_percent: outstanding ? weighted / Number(outstanding) : null },
       decimals, money_epoch: epoch, sequence };
   }
@@ -54,16 +54,22 @@ export class DemoLending {
         return viewer.role === 'nana' || viewer.account === l.lender || viewer.account === l.borrower ? v : { ...v, memo: '' };
       });
   }
-  offer(actor: User, input: LoanOfferInput, now: number): Loan {
+  offer(actor: User, input: LoanOfferInput, now: number, request = false, responding?: number): Loan {
     this.active(actor.account); const borrower = this.active(input.borrower);
-    if (actor.account === input.borrower || !Number.isSafeInteger(input.amount) || input.amount <= 0 || input.amount > MAX_MONEY
+    if ((request ? actor.account !== input.borrower : actor.account === input.borrower) || !Number.isSafeInteger(input.amount) || input.amount <= 0 || input.amount > MAX_MONEY
       || !Number.isSafeInteger(input.installment) || input.installment <= 0 || input.installment > input.amount
       || !Number.isInteger(input.rate_bps) || input.rate_bps < 0 || input.rate_bps > 4294967295
       || ![1,7,30,365].includes(input.rate_days) || ![1,7,30].includes(input.payment_days)
       || new TextEncoder().encode(input.memo).length > 96 || /[\u0000-\u001f\u007f]/.test(input.memo)) throw new Error('Invalid loan terms.');
+    if (responding !== undefined) {
+      const application = this.find(responding);
+      if (application.status !== 'REQUESTED' || application.borrower !== input.borrower) throw new Error('Application is no longer available.');
+      Object.assign(application, input, { lender: actor.account, lender_name: actor.display_name, status:'OFFERED', updated_at:now });
+      return this.view(application,now);
+    }
     if (this.loans.length === 32) { const i = this.loans.findIndex(terminal); if (i < 0) throw new Error('Loan capacity reached.'); this.loans.splice(i,1); }
-    const loan: Stored = { ...input, id: this.nextId++, lender: actor.account, lender_name: actor.display_name, borrower_name: borrower.display_name,
-      status: 'OFFERED', principal: 0, interest: 0, overdue: 0, next_due_at: 0, created_at: now, updated_at: now,
+    const loan: Stored = { ...input, id: this.nextId++, lender: request ? '' : actor.account, lender_name: request ? 'Seeking lender' : actor.display_name, borrower_name: borrower.display_name,
+      status: request ? 'REQUESTED' : 'OFFERED', principal: 0, interest: 0, overdue: 0, next_due_at: 0, created_at: now, updated_at: now,
       waiting_reason: '', remainder: 0n, accruedAt: 0, principalDue: 0, interestDue: 0, attemptedBalance: 0 };
     this.loans.push(loan); return this.view(loan, now);
   }
@@ -80,7 +86,7 @@ export class DemoLending {
   }
   close(actor: User, id: number, now: number): Loan {
     this.active(actor.account); const l = this.find(id);
-    if (![l.borrower,l.lender].includes(actor.account) || !['OFFERED','ARMED'].includes(l.status)) throw new Error('This loan cannot be cancelled.');
+    if (![l.borrower,l.lender].includes(actor.account) || !['REQUESTED','OFFERED','ARMED'].includes(l.status)) throw new Error('This loan cannot be cancelled.');
     l.status = actor.account === l.borrower && l.status === 'OFFERED' ? 'DECLINED' : 'CANCELLED'; l.updated_at = now;
     return this.view(l,now);
   }

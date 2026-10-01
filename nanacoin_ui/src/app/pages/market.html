@@ -29,6 +29,14 @@
       <p class="card__note">{{ l.economic_kind }} · {{ quantityLabel(l) }}{{ l.standard ? ' · standard item' : '' }}</p>
     }
 
+    @if (mine(l) && pendingResponses(l.id).length) {
+      <p role="status"><strong>{{pendingResponses(l.id).length}} response(s) awaiting your acceptance</strong></p>
+      @for (response of pendingResponses(l.id); track response.id) {
+        <p>{{response.offerer_name}} offered {{response.amount | nc}} NC. {{response.message}}</p>
+      }
+      <a class="btn" routerLink="/offers">Review responses & accept</a>
+    }
+    @if (responses.error() && mine(l)) { <p role="alert">Could not load offer status. <button (click)="responses.reload()">Retry</button></p> }
     @if (mine(l)) {
       <button class="btn btn--quiet" title="Remove your listing from the active market" (click)="cancel(l)">Cancel listing</button>
     } @else if (wanted(l)) {

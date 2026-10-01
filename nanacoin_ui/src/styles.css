@@ -1515,3 +1515,9 @@ app-loans label.checkbox input { margin-top:.25rem; }
 .secret-reveal__value { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; }
 .secret-reveal__value input { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 0.875rem; }
 .secret-reveal pre { overflow-x: auto; padding: 0.5rem 0.75rem; background: var(--surface); border-radius: 6px; font-size: 0.8rem; }
+
+.request-state { display:inline-flex; gap:.4rem; align-items:center; min-width:5rem; font-size:.85rem; }
+.request-spinner { width:1rem; height:1rem; border:2px solid currentColor; border-right-color:transparent; border-radius:50%; animation:request-spin 1s linear infinite; }
+.request-failed { color:var(--danger, #b42318); }
+@keyframes request-spin { to { transform:rotate(360deg); } }
+@media (prefers-reduced-motion:reduce) { .request-spinner { animation:none; } }

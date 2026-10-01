@@ -66,6 +66,27 @@ fn key(prefix: char, index: usize) -> Result<heapless::String<8>, Error> {
     Ok(key)
 }
 impl Journal for NvsJournal {
+    fn supports_screen(&self) -> bool {
+        true
+    }
+    fn screen_outbox(&self) -> Result<nanacoin::screen::Outbox, Error> {
+        let mut bytes = [0; nanacoin::screen::STORAGE_BYTES];
+        match self
+            .metadata
+            .get_blob("screen_outbox", &mut bytes)
+            .map_err(|_| Error::Storage)?
+        {
+            Some(bytes) => nanacoin::screen::Outbox::decode(bytes),
+            None => Ok(Default::default()),
+        }
+    }
+    fn set_screen_outbox(&mut self, outbox: &nanacoin::screen::Outbox) -> Result<(), Error> {
+        let mut bytes = [0; nanacoin::screen::STORAGE_BYTES];
+        self.metadata
+            .set_blob("screen_outbox", outbox.encode(&mut bytes)?)
+            .map_err(|_| Error::Storage)
+    }
+
     fn light_config(&self) -> Result<nanacoin::board_status::LightConfig, Error> {
         let mut bytes = [0; 512];
         match self

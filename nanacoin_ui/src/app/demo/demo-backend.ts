@@ -104,6 +104,10 @@ function handle(req: HttpRequest<unknown>): unknown {
   const body = (req.body ?? {}) as Record<string, string & number>;
   const method = req.method;
 
+  if (method === 'POST' && /^\/transactions\/[^/]+\/screen(?:\/read)?$/.test(path)) {
+    throw new DemoError(501, 'unavailable', 'Kitchen screen delivery requires the Rust NanaCoin server.');
+  }
+
   // --- open endpoints ---
 
   if (path === '/status') return demoLedger.status();
@@ -194,8 +198,10 @@ function handle(req: HttpRequest<unknown>): unknown {
   if (path === '/loans' && method === 'GET' && query.has('member')) return {...demoLedger.lending.book(me,demoLedger.decimals,demoLedger.moneyEpoch,demoLedger.revision,Math.floor(Date.now()/1000)),loans:demoLedger.lending.memberBook(me,subject(query.get('member')!),Math.floor(Date.now()/1000))};
   if (path === '/loans' && method === 'GET') return demoLedger.lending.book(me,demoLedger.decimals,demoLedger.moneyEpoch,demoLedger.revision,Math.floor(Date.now()/1000));
   if (path === '/loans' && method === 'POST') return demoLedger.lending.offer(me,req.body as LoanOfferInput,Math.floor(Date.now()/1000));
+  if (path === '/loans/request' && method === 'POST') return demoLedger.lending.offer(me,req.body as LoanOfferInput,Math.floor(Date.now()/1000),true);
   if (path.startsWith('/loans/') && method === 'POST') {
     const [, , rawId, action] = path.split('/'); const id=Number(rawId),now=Math.floor(Date.now()/1000);
+    if (action==='offer') return demoLedger.lending.offer(me,req.body as LoanOfferInput,now,false,id);
     if (action==='accept') return demoLedger.lending.accept(me,id,now);
     if (action==='close') return demoLedger.lending.close(me,id,now);
     if (action==='repay') return demoLedger.lending.repay(me,id,Number(body['amount']),now);

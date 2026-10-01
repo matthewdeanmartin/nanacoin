@@ -16,7 +16,7 @@ export type EconomicKind = 'LABOR' | 'GOOD' | 'GIFT' | 'OTHER' | 'LOAN_PRINCIPAL
 export interface Loan {
   id: number; lender: AccountId; lender_name: string; borrower: AccountId; borrower_name: string;
   amount: number; rate_bps: number; rate_days: number; payment_days: number; installment: number;
-  credit: boolean; memo: string; status: 'OFFERED' | 'ARMED' | 'ACTIVE' | 'PAID' | 'DECLINED' | 'CANCELLED';
+  credit: boolean; memo: string; status: 'REQUESTED' | 'OFFERED' | 'ARMED' | 'ACTIVE' | 'PAID' | 'DECLINED' | 'CANCELLED';
   principal: number; interest: number; overdue: number; next_due_at: number;
   created_at: number; updated_at: number; waiting_reason: string;
 }

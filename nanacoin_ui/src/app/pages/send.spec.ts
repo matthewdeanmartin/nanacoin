@@ -20,13 +20,24 @@ describe('bank messages',()=>{
    session.refresh=()=>Promise.resolve();
    api.accountHistory=()=>Promise.resolve({account:'account-2',balance:10000,transactions:[]});
    const send=vi.spyOn(api,'transfer').mockResolvedValue({id:'tx-5',kind:'MESSAGE'} as Transaction);
+   const screen=vi.spyOn(api,'screenMessage').mockResolvedValue({queued:true});
    const fixture=TestBed.createComponent(SendPage);fixture.detectChanges();await fixture.whenStable();
-   const page=fixture.componentInstance as unknown as {to:string;amount:string|null;memo:string;send():Promise<void>};page.to='account-3';
-   return {page,send,mastodon};
+   const page=fixture.componentInstance as unknown as {to:string;amount:string|null;memo:string;sendScreen:boolean;send():Promise<void>};page.to='account-3';
+   return {page,send,mastodon,screen};
  }
  for(const amount of ['0',null,'']) it(`saves ${String(amount)} as a zero-value transaction without Mastodon`,async()=>{
    const {page,send,mastodon}=await setup();page.amount=amount;page.memo='Can you return the ladder?';await page.send();
    expect(send).toHaveBeenCalledWith('account-3',0,'Can you return the ladder?',expect.any(String),undefined);expect(mastodon.sendDirect).not.toHaveBeenCalled();
+ });
+ it('queues the saved message only when the kitchen screen checkbox is checked',async()=>{
+   const {page,send,screen}=await setup(); page.amount='0';page.memo='Dinner time';page.sendScreen=true;
+   await page.send();expect(send).toHaveBeenCalledTimes(1);expect(screen).toHaveBeenCalledExactlyOnceWith('tx-5');
+   expect(page.sendScreen).toBe(false);
+ });
+ it('screen copy failure does not repeat or leave the saved message ready to resubmit',async()=>{
+   const {page,send,screen}=await setup();screen.mockRejectedValueOnce(new Error('Unavailable'));
+   page.amount='0';page.memo='Dinner time';page.sendScreen=true;await page.send();await page.send();
+   expect(send).toHaveBeenCalledTimes(1);expect(screen).toHaveBeenCalledTimes(1);expect(page.memo).toBe('');
  });
  it('rejects blank messages and reuses the same key after an uncertain send',async()=>{
    const {page,send}=await setup();page.amount='0';page.memo=' ';await page.send();expect(send).not.toHaveBeenCalled();

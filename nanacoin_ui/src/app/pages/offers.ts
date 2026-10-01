@@ -1,13 +1,13 @@
 import { RouterLink } from '@angular/router';
 import { Money, MoneyPipe } from '../api/money';
 import { inject as moneyInject } from '@angular/core';
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, inject, resource, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
 import { offerGroup, offerPayment, offerSentence } from './offer-language';
 import { Offer } from '../api/models';
 import { ApiError, NanacoinService, newIdempotencyKey } from '../api/nanacoin.service';
-import { Session } from '../api/session';
+import { Session, reloadOnLedgerChange } from '../api/session';
 import { Dialogs } from '../ui/dialog';
 import { Toasts } from '../ui/toasts';
 import { Mastodon } from '../api/mastodon';
@@ -31,9 +31,11 @@ import { Mastodon } from '../api/mastodon';
           <p class="muted small">{{group.description}}</p>
           <div class="cards">
             @for (o of group.offers; track o.id) {
-              <article class="card">
+              <article class="card" [id]="o.id">
                 <h3>{{o.listing_title || 'Listing no longer available'}}</h3>
                 <p>{{sentence(o)}}</p>
+                @if (o.status === 'OPEN') { <p class="tag">{{o.listing_owner === session.me()?.account ? 'Response received - awaiting your acceptance' : 'Awaiting listing owner acceptance'}}</p> }
+                @if (o.status === 'ACCEPTED' || o.status === 'SETTLED') { <p class="tag">Accepted - money moved</p> }
                 @if (o.settled_tx && o.status !== 'REVERSED') { <p><a routerLink="/history" fragment="my-todos">Track work or delivery in My Account TODO</a></p> }
                 <p class="card__meta"><strong>{{o.amount | nc}} NC</strong> · {{payment(o)}} · {{o.status.toLowerCase().replaceAll('_', ' ')}}</p>
                 @if (o.message) { <p class="card__desc">{{o.message}}</p> }
@@ -90,9 +92,9 @@ export class OffersPage {
   });
   protected readonly toDecide = computed(() => this.offers().filter(o => o.status === 'OPEN' && o.listing_owner === this.session.me()?.account));
 
-  constructor() {
-    void this.load();
-  }
+  private readonly changes = resource({params:()=>this.session.me()?.account, loader:async()=>{ await this.load(); return true; }});
+  private readonly followOffers = reloadOnLedgerChange(this.changes);
+  constructor() {}
 
   protected async load(): Promise<void> {
     this.loading.set(true);

@@ -5,7 +5,7 @@ CARGO ?= cargo
 PYTHON ?= python
 export CARGO
 
-.PHONY: help run migrate-login build test test-s2 check fmt smoke certs certs-check rotate-certs firmware web bundle deploy provision probe-board web-check run-bundle require-board
+.PHONY: smoke-screen help run migrate-login build test test-s2 check fmt smoke certs certs-check rotate-certs firmware web bundle deploy provision probe-board web-check run-bundle require-board
 
 help:
 	@printf '%s\n' \
@@ -55,6 +55,9 @@ check:
 
 fmt:
 	$(CARGO) fmt
+
+smoke-screen: build
+	$(PYTHON) scripts/minicloud-smoke.py
 
 smoke: build
 	$(PYTHON) scripts/smoke.py

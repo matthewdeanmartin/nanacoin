@@ -86,6 +86,11 @@
           }
         </div>
 
+        <span class="request-state" role="status" aria-live="polite">
+          @if (activity.failed()) { <span class="request-failed">Server failed</span> }
+          @else if (activity.pending()) { <span class="request-spinner" aria-hidden="true"></span> <span>Working…</span> }
+        </span>
+
         <div class="topbar__balance" [attr.aria-label]="money.format(session.balance()) + ' NanaCoin'">
           {{ session.balance() | nc }}
           <span class="topbar__unit">NC</span>

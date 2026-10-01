@@ -26,28 +26,31 @@ struct LoanView<'a> {
 }
 fn view<'a>(s: &'a State, l: &'a Loan, now: u64) -> LoanView<'a> {
     let mut accrued = l.clone();
-    let waiting_reason =
-        if s.member(l.lender).unwrap().disabled || s.member(l.terms.borrower).unwrap().disabled {
-            "An account is disabled"
-        } else if l.status == LoanStatus::Active && accrued.accrue(now).is_err() {
-            "Clock or arithmetic limit; payment is paused"
-        } else if l.status == LoanStatus::Armed {
-            if s.member(l.terms.borrower).unwrap().balance != 0 {
-                "Waiting for a zero balance"
-            } else if s.credit_blocked & (1u16 << (l.terms.borrower.0 - 1)) != 0 {
-                "Credit does not fund loan payments"
-            } else if s.member(l.lender).unwrap().balance < l.terms.amount {
-                "Waiting for lender funds"
-            } else {
-                "Ready for automatic funding"
-            }
+    let waiting_reason = if s.member(l.lender).is_ok_and(|m| m.disabled)
+        || s.member(l.terms.borrower).unwrap().disabled
+    {
+        "An account is disabled"
+    } else if l.status == LoanStatus::Active && accrued.accrue(now).is_err() {
+        "Clock or arithmetic limit; payment is paused"
+    } else if l.status == LoanStatus::Armed {
+        if s.member(l.terms.borrower).unwrap().balance != 0 {
+            "Waiting for a zero balance"
+        } else if s.credit_blocked & (1u16 << (l.terms.borrower.0 - 1)) != 0 {
+            "Credit does not fund loan payments"
+        } else if s.member(l.lender).unwrap().balance < l.terms.amount {
+            "Waiting for lender funds"
         } else {
-            ""
-        };
+            "Ready for automatic funding"
+        }
+    } else {
+        ""
+    };
     LoanView {
         id: l.id,
         lender: account(l.lender),
-        lender_name: s.member(l.lender).unwrap().name.as_str(),
+        lender_name: s
+            .member(l.lender)
+            .map_or("Seeking lender", |m| m.name.as_str()),
         borrower: account(l.terms.borrower),
         borrower_name: s.member(l.terms.borrower).unwrap().name.as_str(),
         amount: l.terms.amount,
@@ -237,7 +240,10 @@ pub(super) fn route<J: Journal>(
         if method != "POST" {
             return Err(Error::NotFound);
         }
-        let (command, existing) = if path == "/api/v1/loans" {
+        let (command, existing) = if path == "/api/v1/loans"
+            || path == "/api/v1/loans/request"
+            || path.ends_with("/offer")
+        {
             #[derive(Deserialize)]
             #[serde(deny_unknown_fields)]
             struct Offer {
@@ -252,8 +258,8 @@ pub(super) fn route<J: Journal>(
             }
             let r: Offer = parse(body)?;
             (
-                Command::OfferLoan {
-                    terms: LoanTerms {
+                {
+                    let terms = LoanTerms {
                         borrower: member_id(&r.borrower, "account-")?,
                         amount: r.amount,
                         rate_bps: r.rate_bps,
@@ -262,9 +268,33 @@ pub(super) fn route<J: Journal>(
                         installment: r.installment,
                         credit: r.credit,
                         memo: r.memo,
-                    },
+                    };
+                    if path == "/api/v1/loans/request" {
+                        Command::RequestLoan { terms }
+                    } else if let Some(id) = path
+                        .strip_prefix("/api/v1/loans/")
+                        .and_then(|t| t.strip_suffix("/offer"))
+                    {
+                        Command::RespondLoan {
+                            loan: id.parse().map_err(|_| Error::InvalidInput)?,
+                            terms,
+                        }
+                    } else {
+                        Command::OfferLoan { terms }
+                    }
                 },
-                None,
+                if path.ends_with("/offer") {
+                    Some(
+                        path.trim_end_matches("/offer")
+                            .rsplit('/')
+                            .next()
+                            .unwrap()
+                            .parse()
+                            .map_err(|_| Error::InvalidInput)?,
+                    )
+                } else {
+                    None
+                },
             )
         } else {
             let tail = path.strip_prefix("/api/v1/loans/").unwrap();

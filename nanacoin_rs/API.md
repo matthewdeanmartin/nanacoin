@@ -265,3 +265,37 @@ policy, and remain available when a storage failure has latched:
   clears at reboot. Also available on the desktop server.
 
 See [diagnostics](../docs/rust/diagnostics.md) for measurement limits and UI details.
+
+## Kitchen screen copies
+
+Both routes require a normal NanaCoin session or API key and return
+`{"queued":true}` after persisting the outbox. They accept an empty JSON object
+and do not write financial journal events:
+
+- `POST /api/v1/transactions/tx-N/screen`: only the sender of a retained,
+  zero-value NanaCoin message can request its kitchen screen copy.
+- `POST /api/v1/transactions/tx-N/screen/read`: only that message's recipient can
+  dismiss its copy. Reads may precede delivery; Minicloud saves a read tombstone.
+
+Payment transactions are rejected. Retries use the same stable screen/event ID.
+Notification expiry is the original message timestamp plus 86,400 seconds;
+expired messages cannot be newly copied. A full outbox returns a capacity
+error; storage errors are separate from the earlier successful transfer.
+
+
+### Loan applications
+
+POST /api/v1/loans/request takes the same body as a loan offer, with borrower
+set to the authenticated applicant's account. It journals REQUESTED terms and
+moves no money. GET /api/v1/loans includes open applications for every signed-in
+household member. Existing private loan offers remain visible only to the two
+parties and Nana.
+
+POST /api/v1/loans/{id}/offer takes lender-proposed terms for that application's
+original borrower. The first valid proposal claims the application and changes
+it to OFFERED. The lender cannot accept on the borrower's behalf. Existing
+/accept funds the loan only after borrower consent; /close lets the applicant
+withdraw a REQUESTED application. All mutations require idempotency keys and
+retain ordinary restart/replay and accounting checks. Applications share the
+bounded 32-entry loan book. Competing proposals after the first receive conflict;
+multiple simultaneous lender bids are a future extension.

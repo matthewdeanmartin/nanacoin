@@ -76,8 +76,9 @@ fn reset_reason(reason: esp_idf_svc::sys::esp_reset_reason_t) -> &'static str {
     }
 }
 
-fn scheduled_payments(shared: &Mutex<Service<NvsJournal>>) {
+fn scheduled_payments(shared: &Mutex<Service<NvsJournal>>, screen: &mut nanacoin::screen::Worker) {
     let mut service = shared.lock().unwrap();
+    screen.pump(&mut service);
     let failed_before = service.storage_failed();
     if let Err(error) = service.tick() {
         log::warn!("Scheduled payments: {error:?}");
@@ -272,6 +273,17 @@ fn online(
     let _sampler = std::thread::Builder::new()
         .stack_size(4096)
         .spawn(move || sampler.run())?;
+    #[cfg(feature = "board-s2")]
+    ThreadSpawnConfiguration {
+        name: Some(c"nanacoin-screen"),
+        stack_alloc_caps: MallocCap::Spiram | MallocCap::Cap8bit,
+        ..Default::default()
+    }
+    .set()?;
+    #[cfg(not(feature = "board-s2"))]
+    ThreadSpawnConfiguration::default().set()?;
+    let mut screen = nanacoin::screen::Worker::spawn()?;
+    ThreadSpawnConfiguration::default().set()?;
     // Independent of HTTP traffic and potentially blocking Wi-Fi reconnection.
     // The S2 cannot spare another 24 KiB internal stack (the tick writes
     // flash, so PSRAM is not an option); its main loop runs the tick instead.
@@ -288,7 +300,7 @@ fn online(
             .stack_size(24 * 1024)
             .spawn(move || loop {
                 std::thread::sleep(Duration::from_secs(1));
-                scheduled_payments(&scheduler);
+                scheduled_payments(&scheduler, &mut screen);
             })?;
     }
     ThreadSpawnConfiguration::default().set()?;
@@ -316,7 +328,7 @@ fn online(
         http.serve(move || {
             if last_tick.elapsed() >= Duration::from_secs(1) {
                 last_tick = std::time::Instant::now();
-                scheduled_payments(&shared);
+                scheduled_payments(&shared, &mut screen);
             }
             if last_house.elapsed() >= Duration::from_secs(10) {
                 last_house = std::time::Instant::now();

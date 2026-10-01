@@ -27,7 +27,9 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         "{},http://{address},http://localhost:{port}",
         std::env::var("NANACOIN_ORIGINS").unwrap_or_else(|_| api::DEFAULT_ORIGINS.into())
     );
+    let mut screen = nanacoin::screen::Worker::spawn()?;
     loop {
+        screen.pump(&mut service);
         if let Err(error) = service.tick() {
             eprintln!("scheduled payments: {error:?}");
         }

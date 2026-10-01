@@ -81,6 +81,9 @@ export class MessagesPage {
  protected unread(row: MailRow): boolean { const seen = this.seen()[this.scope()]; return !row.sent && !(Array.isArray(seen) && seen.includes(row.revision)); }
  protected open(row: MailRow): void {
    this.selected.set(row.id);
+   if (row.kind === 'Message' && !row.sent) {
+     void this.api.screenRead(row.id).catch(error => console.warn('Kitchen screen read update was not queued', error));
+   }
    const old = this.seen()[this.scope()];
    const updated = {...this.seen(),[this.scope()]: [...(Array.isArray(old) ? old : []).filter(id => id !== row.revision),row.revision].slice(-512)};
    this.seen.set(updated); try {localStorage.setItem('nanacoin-mail-seen',JSON.stringify(updated));} catch { /* still read this session */ }

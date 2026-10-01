@@ -767,3 +767,71 @@ changes were performed.
 Interactive browser checks were unavailable because no browser surface was
 enabled; the strict live probe is the documented automated substitute. Local
 logs are `.local/lunacoin-{dry,check,web-check,deploy,boot,probe}-2026-09-27.log`.
+
+### September 30, 2026: Minicloud notification integration
+
+Deployed the current working tree, including the Minicloud notification outbox
+and Angular message checkbox, to the user-confirmed S3 bank. Native USB COM9
+reported MAC `ac:a7:04:2c:2c:04`; the live diagnostic uptime reset from 130 to
+5 seconds after the USB watchdog restart, tying that port to `nanacoin.local`
+at `192.168.1.158`. Existing working-tree changes were retained.
+
+The dry run and ordinary `bash scripts/deploy.sh s3 COM9` verified the board
+identity and partition layout. Only the application at `0x10000` was written,
+3,497,456 bytes within the existing 4 MiB partition; esptool verified the hash.
+Image SHA-256:
+`a88653b6ebdf2bba61dd19206a9e373663d9f98e089b677b2615f3451d300d72`.
+The image includes the notification destination `http://minicloud.local`.
+USB boot capture reached `Ready at https://nanacoin.local` at 6,948 ms.
+
+`make check` and `make web-check` passed, including Rust notification tests,
+HTTP/restart smoke, bundled-asset smoke and nine deployment safety tests.
+The disposable local NanaCoin/Minicloud integration smoke also passed offline
+outbox recovery, Lotto event delivery and idempotency, optional message copies,
+sender/recipient authorization, anonymous board posting, read dismissal and
+the original 24-hour expiration. It used isolated local data, not the live bank.
+
+The strict live S3 probe passed trusted CA and hostname verification, API and
+balanced-ledger checks, all 70 bundled assets in identity/gzip forms, ETags,
+concurrent keep-alive and slow-reader transfers, public notebook, public Board
+Health and matching `/ca`. Every status field matched the pre-flash snapshot:
+sequence 18, five users, seven transactions, three active listings, circulation
+4,000,000, money epoch 0 and journal generation 0. The ledger remained balanced.
+Minicloud's public status endpoint returned HTTP 200 with a synchronized clock.
+
+No financial transaction was created on the live bank to test notifications;
+live event delivery and browser interaction are not claimed. No provisioning,
+credential/certificate changes, economy resets or storage erases were performed.
+Deployment evidence is in `.embuild/minicloud-deploy-*.log` and the before/after
+JSON snapshots beside those logs.
+
+
+### Prepared kitchen update: September 30, 2026 (not deployed)
+
+The owner requested PC review first and deferred both board flashes and the
+GitHub Pages push until morning. See README's Kitchen update section for the
+loopback preview launcher and review steps. No board was accessed or modified
+while preparing this change.
+
+The S3 release image is 3,523,296 / 4,194,304 bytes. SHA-256:
+`a1dd46c9d2851aa846dc4d92292b487357575d368f0ea72a3cb607e43b551daa`.
+The C6 landscape image is recorded in Minicloud's deployment image manifest;
+its runbook remains the authority for that separate board. Rebuild from the
+reviewed tree immediately before any flash; these hashes describe preparation
+artifacts, not an assertion about firmware currently running on hardware.
+
+Prepared features: landscape word wrapping and paging, coalesced economic
+spacers, expanded committed-event notifications, durable borrower applications
+and lender proposals, header request/failure feedback, and marketplace cards
+showing responses awaiting owner acceptance. Loan proposals do not authorize
+funding; the borrower still reviews and accepts. No bank reset, provisioning,
+certificate rotation, flash, Git push or Pages publication occurred.
+
+After PC acceptance, use the existing app-only S3 deployment procedure and
+strict live probe, then follow Minicloud's app-only update procedure. Observe
+orientation and wrapping physically, measure its wider strip's DMA heap impact,
+and test a real opt-in message and recipient read. Finally publish the demo
+through the existing Pages workflow after its static browser check passes.
+Local logs are .embuild/kitchen-*.log. Git Bash's Pages build needs
+`MSYS_NO_PATHCONV=1 npx ng build --configuration demo --base-href /nanacoin/`;
+otherwise MSYS can rewrite the base href into a Windows filesystem path.

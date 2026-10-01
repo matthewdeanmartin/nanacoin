@@ -434,3 +434,85 @@ fn profiles_show_funded_loans_to_anyone_but_the_note_only_to_parties() {
         .any(|l| l["id"] == proposal));
     assert_ne!(get(&mut s, "/api/v1/loans?member=user-9", &bob).0, 200);
 }
+
+#[test]
+fn loan_application_survives_restart_and_requires_borrower_consent() {
+    let (mut s, m) = house();
+    let terms = LoanTerms {
+        borrower: MemberId(2),
+        amount: 10000,
+        installment: 2000,
+        rate_bps: 500,
+        rate_days: 365,
+        payment_days: 7,
+        credit: false,
+        memo: Memo::try_from("Playground project").unwrap(),
+    };
+    let balances = (balance(&s, 2), balance(&s, 3));
+    assert_eq!(
+        exec(
+            &mut s,
+            3,
+            Command::RequestLoan {
+                terms: terms.clone()
+            }
+        ),
+        Err(Error::Forbidden)
+    );
+    let id = exec(
+        &mut s,
+        2,
+        Command::RequestLoan {
+            terms: terms.clone(),
+        },
+    )
+    .unwrap()
+    .sequence;
+    assert_eq!(s.state().loan(id).unwrap().status, LoanStatus::Requested);
+    assert!(s
+        .state()
+        .loan(id)
+        .unwrap()
+        .visible_to(s.state().member(MemberId(3)).unwrap()));
+    assert_eq!(
+        exec(&mut s, 2, Command::AcceptLoan { loan: id }),
+        Err(Error::Conflict)
+    );
+    drop(s);
+    let mut s = Service::open_with_clock(m, now).unwrap();
+    assert_eq!(s.state().loan(id).unwrap().status, LoanStatus::Requested);
+    assert_eq!((balance(&s, 2), balance(&s, 3)), balances);
+    assert_eq!(
+        exec(
+            &mut s,
+            2,
+            Command::RespondLoan {
+                loan: id,
+                terms: terms.clone()
+            }
+        ),
+        Err(Error::SelfDeal)
+    );
+    exec(
+        &mut s,
+        3,
+        Command::RespondLoan {
+            loan: id,
+            terms: terms.clone(),
+        },
+    )
+    .unwrap();
+    assert_eq!((balance(&s, 2), balance(&s, 3)), balances);
+    assert_eq!(
+        exec(&mut s, 3, Command::AcceptLoan { loan: id }),
+        Err(Error::Forbidden)
+    );
+    assert_eq!(
+        exec(&mut s, 1, Command::RespondLoan { loan: id, terms }),
+        Err(Error::Conflict)
+    );
+    exec(&mut s, 2, Command::AcceptLoan { loan: id }).unwrap();
+    assert_eq!(balance(&s, 2), balances.0 + 10000);
+    assert_eq!(balance(&s, 3), balances.1 - 10000);
+    s.state().check_invariants().unwrap();
+}

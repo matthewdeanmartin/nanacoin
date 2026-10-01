@@ -11,6 +11,15 @@ pub const MAX_RECORDS: usize = crate::board::MAX_RECORDS;
 /// A successful append means durable storage. An error may be ambiguous;
 /// Service latches read-only until restart/replay instead of reusing the slot.
 pub trait Journal {
+    fn supports_screen(&self) -> bool {
+        false
+    }
+    fn screen_outbox(&self) -> Result<crate::screen::Outbox, Error> {
+        Ok(Default::default())
+    }
+    fn set_screen_outbox(&mut self, _: &crate::screen::Outbox) -> Result<(), Error> {
+        Err(Error::Storage)
+    }
     fn light_config(&self) -> Result<crate::board_status::LightConfig, Error> {
         Ok(Default::default())
     }
@@ -69,6 +78,7 @@ pub trait Journal {
 }
 
 pub struct Service<J> {
+    pub(crate) screen_outbox: Box<crate::screen::Outbox>,
     pub light_config: crate::board_status::LightConfig,
     // Allocate fixed state once; returning/moving Service must not copy a
     // growing inline state through the small firmware startup stack.
@@ -103,6 +113,13 @@ impl<J: Journal> Service<J> {
     pub fn open_with_clock(mut journal: J, clock: fn() -> u64) -> Result<Self, Error> {
         let https_only = journal.https_only();
         let light_config = journal.light_config()?;
+        let screen_outbox = match journal.screen_outbox() {
+            Ok(outbox) => Box::new(outbox),
+            Err(error) => {
+                eprintln!("Kitchen screen outbox unavailable: {error:?}");
+                Box::default()
+            }
+        };
         let mut state = Box::new(State::default());
         let mut frame = [0; FRAME_SIZE];
         let mut records = 0;
@@ -134,6 +151,7 @@ impl<J: Journal> Service<J> {
         state.check_invariants()?;
         Ok(Self {
             light_config,
+            screen_outbox,
             state,
             auth: Box::default(),
             journal,
@@ -442,6 +460,7 @@ impl<J: Journal> Service<J> {
             }
         }
         self.records += 1;
+        self.screen_event(&event);
         Ok(Receipt {
             sequence,
             replayed: false,

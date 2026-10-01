@@ -251,6 +251,13 @@ pub enum Command {
         member: MemberId,
         key_hash: TokenHash,
     },
+    RequestLoan {
+        terms: crate::loans::LoanTerms,
+    },
+    RespondLoan {
+        loan: u64,
+        terms: crate::loans::LoanTerms,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -704,7 +711,9 @@ impl State {
             Command::CreateLotto { .. } | Command::BuyTickets { .. } | Command::RunLotto { .. } => {
                 self.validate_lotto(actor, command, now)?
             }
-            Command::OfferLoan { .. }
+            Command::RequestLoan { .. }
+            | Command::RespondLoan { .. }
+            | Command::OfferLoan { .. }
             | Command::AcceptLoan { .. }
             | Command::CloseLoan { .. }
             | Command::RepayLoan { .. }
@@ -1190,7 +1199,9 @@ impl State {
             Command::CreateLotto { .. } | Command::BuyTickets { .. } | Command::RunLotto { .. } => {
                 self.apply_lotto(event)
             }
-            Command::OfferLoan { .. }
+            Command::RequestLoan { .. }
+            | Command::RespondLoan { .. }
+            | Command::OfferLoan { .. }
             | Command::AcceptLoan { .. }
             | Command::CloseLoan { .. }
             | Command::RepayLoan { .. }
@@ -1658,7 +1669,14 @@ impl State {
                 || l.id > self.sequence
                 || self.loans[..index].iter().any(|other| other.id == l.id)
                 || l.lender == l.terms.borrower
-                || self.member(l.lender).is_err()
+                || (l.lender == MemberId(0)
+                    && !matches!(
+                        l.status,
+                        crate::loans::LoanStatus::Requested | crate::loans::LoanStatus::Cancelled
+                    ))
+                || (l.lender != MemberId(0) && self.member(l.lender).is_err())
+                || (l.status == crate::loans::LoanStatus::Requested
+                    && (l.lender != MemberId(0) || l.principal != 0 || l.interest != 0))
                 || self.member(l.terms.borrower).is_err()
                 || !(1..=MAX_AMOUNT).contains(&l.terms.amount)
                 || !(1..=l.terms.amount).contains(&l.terms.installment)

@@ -49,6 +49,7 @@ fn aliases(key: &str) -> &'static [&'static str] {
         "NANACOIN_WIFI_SSID" => &["NANACOIN_WIFI_SSID", "WIFI_SSID"],
         "NANACOIN_WIFI_PASSWORD" => &["NANACOIN_WIFI_PASSWORD", "WIFI_PASSWORD"],
         "NANACOIN_STATUS_LED_PIN" => &["NANACOIN_STATUS_LED_PIN"],
+        "NANACOIN_MINICLOUD_URL" => &["NANACOIN_MINICLOUD_URL"],
         "NANACOIN_ORIGINS" => &["NANACOIN_ORIGINS"],
         "NANACOIN_NTP_SERVER" => &["NANACOIN_NTP_SERVER", "NTP_SERVER"],
         _ => &[],
@@ -104,6 +105,7 @@ fn main() {
         "NANACOIN_STATUS_LED_PIN",
         "NANACOIN_ORIGINS",
         "NANACOIN_NTP_SERVER",
+        "NANACOIN_MINICLOUD_URL",
     ] {
         println!("cargo:rerun-if-env-changed={key}");
         if std::env::var_os(key).is_some() {

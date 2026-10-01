@@ -12,6 +12,10 @@ use heapless::String;
 use serde::{ser::SerializeSeq, Deserialize, Serialize};
 
 type Id = String<32>;
+#[derive(Serialize)]
+struct ScreenQueued {
+    queued: bool,
+}
 mod forex;
 mod fulfillment;
 mod loans;
@@ -410,6 +414,17 @@ pub(crate) fn route<J: Journal>(
     body: &[u8],
     output: &mut [u8],
 ) -> Result<usize, Error> {
+    if method == "POST" {
+        if let Some(tail) = uri.strip_prefix("/api/v1/transactions/") {
+            if let Some(value) = tail
+                .strip_suffix("/screen/read")
+                .or_else(|| tail.strip_suffix("/screen"))
+            {
+                s.screen_message(actor, number(value, "tx-")?, tail.ends_with("/screen/read"))?;
+                return serialize(&ScreenQueued { queued: true }, output);
+            }
+        }
+    }
     if let Some(result) = commerce::route(
         s,
         actor,

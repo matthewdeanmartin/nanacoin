@@ -14,6 +14,7 @@ pub struct FileJournal {
     head_path: PathBuf,
     transport_path: PathBuf,
     light_path: PathBuf,
+    screen_path: PathBuf,
     https_only: bool,
     generation: u64,
     rows: usize,
@@ -96,6 +97,7 @@ impl FileJournal {
             head_path,
             transport_path,
             light_path: companion(path, ".light"),
+            screen_path: companion(path, ".screen"),
             https_only,
             generation,
             rows,
@@ -107,6 +109,32 @@ impl FileJournal {
     }
 }
 impl Journal for FileJournal {
+    fn supports_screen(&self) -> bool {
+        true
+    }
+    fn screen_outbox(&self) -> Result<crate::screen::Outbox, Error> {
+        match File::open(&self.screen_path) {
+            Ok(file) => {
+                let mut bytes = Vec::new();
+                io(file
+                    .take((crate::screen::STORAGE_BYTES + 1) as u64)
+                    .read_to_end(&mut bytes))?;
+                crate::screen::Outbox::decode(&bytes)
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Default::default()),
+            Err(_) => Err(Error::Storage),
+        }
+    }
+    fn set_screen_outbox(&mut self, outbox: &crate::screen::Outbox) -> Result<(), Error> {
+        let temporary = companion(&self.screen_path, ".next");
+        let mut file = io(File::create(&temporary))?;
+        let mut bytes = [0; crate::screen::STORAGE_BYTES];
+        io(file.write_all(outbox.encode(&mut bytes)?))?;
+        io(file.sync_all())?;
+        drop(file);
+        io(publish(&temporary, &self.screen_path))
+    }
+
     fn light_config(&self) -> Result<crate::board_status::LightConfig, Error> {
         match std::fs::read(&self.light_path) {
             Ok(bytes) => crate::board_status::LightConfig::decode(&bytes),

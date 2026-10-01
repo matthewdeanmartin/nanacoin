@@ -9,6 +9,7 @@ import { HttpClient, HttpErrorResponse, HttpHeaders, HttpInterceptorFn, HttpResp
 import { Injectable, inject } from '@angular/core';
 import { Observable, catchError, firstValueFrom, throwError, timeout, TimeoutError, tap } from 'rxjs';
 
+import { Activity } from './activity';
 import { Accounts } from './accounts';
 import { IS_DEMO } from '../demo/demo';
 import { Log } from './log';
@@ -130,6 +131,7 @@ export class ApiError extends Error {
 
 @Injectable({ providedIn: 'root' })
 export class NanacoinService {
+  private readonly activity = inject(Activity);
   private readonly money = inject(Money);
   private readonly http = inject(HttpClient);
   private readonly apiBase = inject(ApiBase);
@@ -450,6 +452,14 @@ export class NanacoinService {
    * attempted operation, so that a retry after a dropped connection is
    * recognisably the same transfer rather than a second one.
    */
+  screenMessage(id: string): Promise<{ queued: boolean }> {
+    return this.post(`/transactions/${encodeURIComponent(id)}/screen`, {});
+  }
+
+  screenRead(id: string): Promise<{ queued: boolean }> {
+    return this.post(`/transactions/${encodeURIComponent(id)}/screen/read`, {});
+  }
+
   transfer(
     to: AccountId,
     amount: number,
@@ -701,6 +711,8 @@ export class NanacoinService {
     if (!IS_DEMO) return Promise.reject(new Error('This action is only available in the demo.'));
     return this.post('/demo/lottos/resolve', {}, key);
   }
+  requestLoan(input: LoanOfferInput, key: string): Promise<Loan> { return this.post('/loans/request', input, key); }
+  respondLoan(id: number, input: LoanOfferInput, key: string): Promise<Loan> { return this.post(`/loans/${id}/offer`, input, key); }
   async loans(): Promise<LoanBook> {
     const source = this.base;
     const result = await this.get<LoanBook>('/loans');
@@ -809,6 +821,7 @@ export class NanacoinService {
     body?: unknown,
     quiet = false,
   ): Promise<T> {
+    if (!quiet) this.activity.begin();
     const started = performance.now();
     this.log.debug('http', `${method} ${path}`, body === undefined ? undefined : { body });
 
@@ -821,6 +834,7 @@ export class NanacoinService {
       });
       return result;
     } catch (e) {
+      if (!quiet) this.activity.fail();
       const ms = Math.round(performance.now() - started);
       if (e instanceof BusyError) {
         this.log.warn('http', `${method} ${path} still busy after retries`, { ms });
@@ -837,6 +851,8 @@ export class NanacoinService {
         this.log.error('http', `${method} ${path} threw`, { ms, error: String(e) });
       }
       throw e;
+    } finally {
+      if (!quiet) this.activity.end();
     }
   }
 

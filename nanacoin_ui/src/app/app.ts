@@ -1,3 +1,4 @@
+import { Activity } from './api/activity';
 import { Money, MoneyPipe } from './api/money';
 import { inject as moneyInject } from '@angular/core';
 // The shell. Decides which of the three states the app is in - unprovisioned,
@@ -44,6 +45,7 @@ type Phase = 'loading' | 'connect' | 'setup' | 'login' | 'app' | 'logs';
   styleUrl: './app.css',
 })
 export class App {
+  protected readonly activity = inject(Activity);
   protected reloadCurrency(): void { window.location.reload(); }
   protected readonly money = moneyInject(Money);
   protected readonly publicPage = signal(false);

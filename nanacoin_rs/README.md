@@ -294,3 +294,170 @@ are validated and saved together, independently of money operations or currency
 revisions. On the board they occupy a single `ncmeta/led_phrases` value; desktop
 journals use a `.light` companion file (include it when backing up that journal).
 Existing journals default to the three messages without a ledger migration.
+
+## Kitchen screen / Minicloud
+
+The Rust server posts **New Lotto created** and **Lotto completed** events to
+`http://minicloud.local`. The Angular Message form has **Also show this message
+on the kitchen screen**, alongside the Mastodon checkbox. A checked copy is
+queued after the NanaCoin message is saved. The recipient opening that message
+in Mail queues a screen read/dismiss update; sender views do not dismiss it.
+Screen contents are public to the household and disappear within 24 hours.
+A failed copy never repeats the saved message or a financial operation.
+
+Desktop Git Bash setup, with Minicloud running on the same computer:
+
+```bash
+export NANACOIN_MINICLOUD_URL=http://127.0.0.1:8090
+make run
+```
+
+On the S3/S2 the default is `http://minicloud.local` (HTTP port 80). The optional
+`NANACOIN_MINICLOUD_URL` override is read at runtime on desktop and embedded at
+firmware build time; it may also be supplied in this crate's ignored `.env`.
+Firmware resolves `.local` with the existing Espressif mDNS service using
+[a bounded IPv4 query](https://docs.espressif.com/projects/esp-protocols/mdns/docs/latest/en/index.html#mdns-query).
+The browser calls NanaCoin, so it never needs to make an HTTP call to Minicloud
+from an HTTPS page. The browser-only demo cannot send kitchen screen copies.
+
+Delivery runs on a separate 16 KiB network worker stack (PSRAM on S2). Only the
+journal owner changes its bounded **8-entry** outbox. It persists as a checksum
+protected `.screen` companion file on desktop or `screen_outbox` in the board's
+`ncmeta` NVS namespace. Back it up with the journal. The original event/message
+timestamp plus 86,400 seconds is retained across retries and restarts. Failed
+delivery retries after 30 seconds; expired entries are dropped. Stable event
+and notice IDs allow Minicloud to deduplicate retries and ignore already read
+copies. A read supersedes a still-pending copy.
+
+This is optional notification delivery, not an atomic bank/display transaction.
+A crash between the ledger commit and outbox write, full outbox, or outbox
+storage failure can lose an automatic event notification; the committed bank
+operation still succeeds and an error is logged. Manual copy queue failures
+are reported separately in the UI. Starting without a valid clock defers
+network delivery. Neighbor-resistant producer pairing, credentials, TLS and
+quotas belong to the Minicloud roadmap; public screen posting is intentional.
+
+After building both desktop binaries, run the real two-server test:
+
+```bash
+# Default Minicloud binary: ../../mastomini/minicloud_rs/target/debug/minicloud.exe
+# Override MINICLOUD_EXE if you built it elsewhere.
+python scripts/minicloud-smoke.py
+```
+
+The smoke test uses temporary data and ephemeral loopback ports. It covers
+queued delivery after an offline restart, lotto event retries, optional mail
+copies, public Minicloud posting, read dismissal and original expiry deadlines.
+
+
+## Kitchen update: PC review before deployment
+
+Prepared September 30, 2026. The owner deferred both USB deployments and the
+GitHub Pages push until after morning PC testing. All preview data is separate
+from the household bank, and the preview relay targets loopback Minicloud.
+
+From Git Bash, build the bundled NanaCoin desktop site with `make bundle` in
+`nanacoin_rs`. In `../../mastomini/minicloud_rs`, run `make web` and `cargo build`.
+Then, back in `nanacoin_rs`, run:
+
+```bash
+python scripts/run-kitchen-preview.py
+```
+
+On this computer an alternate Minicloud build avoids replacing the existing
+user's desktop executable. The already-built preview can be selected with:
+
+```bash
+MINICLOUD_EXE=C:/github/mastomini/.local/minicloud-check/debug/minicloud.exe python scripts/run-kitchen-preview.py
+```
+
+NanaCoin is at http://127.0.0.1:8086/ and the kitchen preview is at
+http://127.0.0.1:8096/. Management uses the local-only token
+`kitchen-preview-admin-token`. First visit: provision a test household and add
+at least two test accounts. Data persists under `.local/kitchen-preview`.
+Ctrl+C stops only this launcher's two children. Busy ports fail rather than
+attaching to another bank. The public demo still uses tab-local demo data and
+has equivalent loan applications; it does not send notifications to a board.
+
+Morning review:
+
+1. Send a long Message with the screen checkbox. Check whole words, multiple
+   landscape pages and recipient read dismissal. Try Small, Medium and Large
+   through the Minicloud composer. BOOT behavior and physical orientation need
+   later hardware review.
+2. On Loans, post desired terms in Apply For Loan. Switch accounts, find the
+   application in Loans Wanted and propose terms. Switch back and review/accept.
+   Posting and proposing must leave balances alone; acceptance moves existing
+   funds. The first proposal claims an application. Multiple parallel lender
+   bids remain future work. Applications can be withdrawn before a proposal.
+3. Post a BUY listing such as a playground trip for 35 NC. Respond as another
+   member. Return to the owner's market card: it shows who responded and that
+   acceptance is needed, with a direct link to review. Accepted deals show
+   money moved and retain the work/delivery link.
+4. With network throttling, check Working between the name and balance. Failed
+   foreground requests show Server failed for three seconds. Concurrent
+   requests keep the indicator active until the last request finishes; server
+   backpressure retries keep it active too. Detailed errors remain in toasts.
+5. Wait up to five minutes for the two economy cards to refresh. They alternate
+   between messages and replace the startup welcome note. With no messages,
+   the two cards alternate by themselves.
+
+### Notification event inventory
+
+The following committed events now queue household notifications. Delivery
+uses the existing eight-entry durable outbox, stable event IDs and original
+24-hour deadlines; retries/replay do not emit another financial operation.
+An unavailable/full notification service never rolls back a bank operation.
+Sustained bursts can fill the bounded outbox and are reported in the server log.
+
+| Area | Events enabled |
+| --- | --- |
+| Marketplace | New listing, edited listing, withdrawn listing, direct purchase |
+| Negotiation | New response awaiting owner acceptance, acceptance, decline, withdrawal, undone acceptance |
+| Corrections | Reversal and refund |
+| Lending | Application, direct loan offer, proposal on an application, borrower acceptance, closure, repayment, fully paid scheduled loan |
+| Work/delivery | Completion, dispute, withdrawn dispute |
+| Lotto | Creation and final draw completion |
+| Exchange | Posted quote, completed exchange, withdrawn quote |
+| Gifts | New request, closed request, contribution |
+| Art | Mint, offer for sale, withdrawal from sale, purchase, gift |
+| Money supply | Issuance, retirement, currency reform |
+
+Other candidates found but intentionally left for later controls: ordinary
+positive payments/gifts, new household members, account disable/enable,
+configuration changes, ticket purchases, credit activation, overdue payment
+or funding-wait transitions, quote expiry, and automatic settlement deadlines.
+Time-based transitions require scheduler occurrences or a deduplicated watcher;
+repeated polling should not generate a fresh notice. Passwords, tokens, API
+keys, and private unchecked zero-value messages are never automatic events.
+
+### Economy spacers
+
+Card 1: average change in the last two observed unit prices per retained good,
+and the share of active non-Nana members receiving unreversed labor income.
+The observations cover retained history within the previous 365 days; this is
+not CPI or an eligibility-adjusted employment survey. The screen labels the
+window Retained year and shows No data when repeat prices are unavailable.
+
+Card 2: current annual simple interest weighted by funded outstanding principal,
+and the most recent unreversed completed exchange in retained quotes or paired ledger legs, in USD per NC. Empty
+loans or exchanges say No active loans or No trades. The two card slots coalesce
+in Minicloud instead of filling its inbox. Stats refresh every five minutes
+and expire within 24 hours if NanaCoin stops sending them. A content fingerprint
+keeps an updated snapshot distinct from an earlier retry in the same time slot.
+
+Validation logs: `.embuild/kitchen-{check,ui-tests,relay,s3}.log` and Minicloud's
+`.embuild/kitchen-{tests,web,c6}.log`. Re-run `make check`, `make web-check` and
+`make smoke-screen` before deployment. The hardware compile checks do not prove
+runtime heap, readable pixels, or orientation; those remain morning checks.
+
+
+PC handoff validation: Rust/default and S2 checks, bundled-web checks, 325 Angular
+tests, HTTP/MQTT smoke and the isolated relay test passed. The static Pages demo
+also passed its headless Edge showcase, including the complete new loan flow
+and no external API requests. The running PC preview was checked in a browser:
+NanaCoin setup rendered and Minicloud fit 320/390/768/1024px with no page errors.
+The local preview is left running at the URLs above; it starts with a fresh
+unprovisioned bank. If it has stopped overnight, use the launcher command above.
+Local browser screenshots are under .local/kitchen-preview/screenshots.
+No GitHub push or board flash has been performed.

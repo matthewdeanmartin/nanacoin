@@ -97,6 +97,13 @@ interface RecentSend {
           <input name="sendDm" type="checkbox" [(ngModel)]="sendDm" />
           Also send a copy through Mastodon
         </label>
+        @if (!isPayment()) {
+          <label class="checkbox">
+            <input name="sendScreen" type="checkbox" [(ngModel)]="sendScreen" />
+            Also show this message on the kitchen screen
+          </label>
+          @if (sendScreen) { <p class="muted small">Everyone in the household can see this copy. It disappears after 24 hours or when the recipient reads it in Mail.</p> }
+        }
         @if (sendDm && !mastodon.connected()) {
           <p class="muted small">Connect Mastodon first in <a routerLink="/settings" [queryParams]="{ tab: 'settings-mastodon' }">My Settings</a>.</p>
         }
@@ -170,6 +177,7 @@ export class SendPage {
   protected amount: string | number | null = null;
   protected memo = '';
   protected sendDm = false;
+  protected sendScreen = false;
   protected economicKind: EconomicKind | '' = '';
   protected quantity = '1';
   protected unit: EconomicUnit = 'EACH';
@@ -258,7 +266,7 @@ export class SendPage {
     if (amount > 0 && (!this.economicKind || !validQuantity(this.quantity))) {
       this.toasts.error('Choose an exchange kind and a positive quantity with at most three decimal places.'); return;
     }
-    const recipient = this.recipient(), wantsDm = this.sendDm;
+    const recipient = this.recipient(), wantsDm = this.sendDm, wantsScreen = amount === 0 && this.sendScreen;
     if (wantsDm && !memo) { this.toasts.error('Write a message for the Mastodon copy.'); return; }
     if (wantsDm && (!recipient?.mastodon_id || !this.mastodon.connected())) {
       this.toasts.error('A Mastodon copy needs a connected account and a registered recipient. Uncheck it to send through NanaCoin only.'); return;
@@ -272,12 +280,16 @@ export class SendPage {
     this.busy.set(true);
     const key = this.pendingKeys.get(identity) ?? newIdempotencyKey(); this.pendingKeys.set(identity,key);
     try {
-      await this.api.transfer(this.to,amount,memo,key,economic);
+      const transaction = await this.api.transfer(this.to,amount,memo,key,economic);
       this.pendingKeys.delete(identity);
-      this.amount = null; this.memo = ''; this.sendDm = false; this.allCaps = false;
+      this.amount = null; this.memo = ''; this.sendDm = false; this.sendScreen = false; this.allCaps = false;
       this.economicKind = ''; this.quantity = '1'; this.unit = 'EACH';
       this.history.reload();
       this.toasts.ok(amount === 0 ? 'Message saved in NanaCoin Mail.' : 'Coins sent.');
+      if (wantsScreen) {
+        try { await this.api.screenMessage(transaction.id); }
+        catch (e) { this.toasts.error(`Saved in NanaCoin, but the kitchen screen copy was not queued: ${e instanceof Error ? e.message : 'screen error'}`); }
+      }
       if (wantsDm && recipient) {
         try { await this.mastodon.sendDirect(recipient,memo); }
         catch (e) { this.toasts.error(`Saved in NanaCoin, but the Mastodon copy failed: ${e instanceof Error ? e.message : 'Mastodon error'}`); }

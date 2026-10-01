@@ -16,6 +16,7 @@ pub enum LoanStatus {
     Paid,
     Declined,
     Cancelled,
+    Requested,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -54,7 +55,10 @@ pub struct Loan {
 
 impl Loan {
     pub fn visible_to(&self, member: &Member) -> bool {
-        member.role == Role::Nana || member.id == self.lender || member.id == self.terms.borrower
+        self.status == LoanStatus::Requested
+            || member.role == Role::Nana
+            || member.id == self.lender
+            || member.id == self.terms.borrower
     }
     pub fn terminal(&self) -> bool {
         matches!(
@@ -206,8 +210,14 @@ impl State {
             return Err(Error::Unavailable);
         }
         match command {
-            Command::OfferLoan { terms } => {
-                if terms.borrower == actor {
+            Command::OfferLoan { terms }
+            | Command::RequestLoan { terms }
+            | Command::RespondLoan { terms, .. } => {
+                if matches!(command, Command::RequestLoan { .. }) {
+                    if terms.borrower != actor {
+                        return Err(Error::Forbidden);
+                    }
+                } else if terms.borrower == actor {
                     return Err(Error::SelfDeal);
                 }
                 if self.member(terms.borrower)?.disabled {
@@ -221,7 +231,19 @@ impl State {
                 {
                     return Err(Error::InvalidInput);
                 }
-                if self.loans.is_full() && !self.loans.iter().any(Loan::terminal) {
+                if let Command::RespondLoan { loan, .. } = command {
+                    let request = self.loan(*loan)?;
+                    if request.status != LoanStatus::Requested {
+                        return Err(Error::Conflict);
+                    }
+                    if request.terms.borrower != terms.borrower {
+                        return Err(Error::InvalidInput);
+                    }
+                }
+                if !matches!(command, Command::RespondLoan { .. })
+                    && self.loans.is_full()
+                    && !self.loans.iter().any(Loan::terminal)
+                {
                     return Err(Error::Capacity);
                 }
                 now.checked_add(terms.payment_days as u64 * DAY)
@@ -250,7 +272,10 @@ impl State {
                 if actor != l.lender && actor != l.terms.borrower {
                     return Err(Error::Forbidden);
                 }
-                if !matches!(l.status, LoanStatus::Offered | LoanStatus::Armed) {
+                if !matches!(
+                    l.status,
+                    LoanStatus::Offered | LoanStatus::Armed | LoanStatus::Requested
+                ) {
                     return Err(Error::Conflict);
                 }
             }
@@ -307,7 +332,14 @@ impl State {
 
     pub(crate) fn apply_loan(&mut self, event: &Event) {
         match &event.command {
-            Command::OfferLoan { terms } => {
+            Command::RespondLoan { loan, terms } => {
+                let l = self.loans.iter_mut().find(|l| l.id == *loan).unwrap();
+                l.lender = event.actor;
+                l.terms = terms.clone();
+                l.status = LoanStatus::Offered;
+                l.updated_at = event.timestamp;
+            }
+            Command::OfferLoan { terms } | Command::RequestLoan { terms } => {
                 if self.loans.is_full() {
                     let index = self
                         .loans
@@ -322,9 +354,17 @@ impl State {
                 self.loans
                     .push(Loan {
                         id: event.sequence,
-                        lender: event.actor,
+                        lender: if matches!(event.command, Command::RequestLoan { .. }) {
+                            MemberId(0)
+                        } else {
+                            event.actor
+                        },
                         terms: terms.clone(),
-                        status: LoanStatus::Offered,
+                        status: if matches!(event.command, Command::RequestLoan { .. }) {
+                            LoanStatus::Requested
+                        } else {
+                            LoanStatus::Offered
+                        },
                         principal: 0,
                         interest: 0,
                         remainder: 0,

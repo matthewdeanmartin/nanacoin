@@ -10,6 +10,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 
+import { Activity } from './activity';
 import { ApiBase } from './api-base';
 import { BusyError, NanacoinService } from './nanacoin.service';
 
@@ -30,6 +31,7 @@ describe('503 backpressure', () => {
 
   it('retries a 503 with Retry-After and succeeds on the second try', async () => {
     const promise = api.status();
+    const activity=TestBed.inject(Activity); expect(activity.pending()).toBe(true);
 
     const first = http.expectOne((r) => r.url.endsWith('/status'));
     first.flush('busy', {
@@ -45,6 +47,7 @@ describe('503 backpressure', () => {
     second.flush({ provisioned: true, household: 'H' });
 
     const result = await promise;
+    expect(activity.pending()).toBe(false); expect(activity.failed()).toBe(false);
     expect(result.household).toBe('H');
   });
 
@@ -65,6 +68,7 @@ describe('503 backpressure', () => {
 
     await new Promise((r) => setTimeout(r, 50));
     expect(failures.length).toBe(1);
+    expect(TestBed.inject(Activity).pending()).toBe(false); expect(TestBed.inject(Activity).failed()).toBe(true);
     const err = failures[0];
     expect(err instanceof BusyError).toBe(true);
     // The distinction that matters: this is not "unreachable".

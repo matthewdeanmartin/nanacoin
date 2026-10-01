@@ -10,7 +10,7 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 
 import { EconomicKind, EconomicUnit, Listing, ListingSide, Thing } from '../api/models';
 import { ApiError, NanacoinService, newIdempotencyKey } from '../api/nanacoin.service';
-import { Session } from '../api/session';
+import { Session, reloadOnLedgerChange } from '../api/session';
 import { Dialogs } from '../ui/dialog';
 import { Toasts } from '../ui/toasts';
 import { CATEGORIES, Category, ITEMS } from '../catalog/catalog';
@@ -40,6 +40,9 @@ export class MarketPage {
   private readonly dialogs = inject(Dialogs);
   private readonly router = inject(Router);
   protected readonly session = inject(Session);
+  protected readonly responses = resource({params:()=>this.session.me()?.account, loader:()=>this.api.offers()});
+  private readonly followOffers = reloadOnLedgerChange(this.responses);
+  protected pendingResponses(id: string) { return (this.responses.value()?.offers ?? []).filter(o=>o.listing === id && o.status === 'OPEN'); }
   protected readonly listingPage = this.router.url.split('?')[0] === '/list';
 
   protected title = '';

@@ -1,3 +1,4 @@
+import { SectionTabs } from '../ui/section-tabs';
 import { EconomyStat } from '../ui/economy-stat';
 import { Component, DestroyRef, computed, inject, resource, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
@@ -16,7 +17,7 @@ export function averageOfferRate(loans: Loan[], account: string, direction: 'len
 }
 
 @Component({
-  selector: 'app-loans', imports: [FormsModule, MoneyPipe, DatePipe, EconomyStat],
+  selector: 'app-loans', imports: [FormsModule, MoneyPipe, DatePipe, EconomyStat, SectionTabs],
   template: `
     <h1>Loans & credit</h1>
     <p>Lend coins you own. The borrower accepts the terms before money moves. Nana follows the same funding rule.</p>
@@ -26,13 +27,17 @@ export function averageOfferRate(loans: Loan[], account: string, direction: 'len
       <div class="stats loan-stats" aria-label="Annual loan interest rates">
         <app-economy-stat id="loan-current" label="Current household interest" [value]="rateLabel(book.value()?.summary?.weighted_annual_percent)" help="The same rate shown on Economy: annual simple interest weighted by outstanding principal. Excludes undrawn credit and unaccepted offers." />
         <app-economy-stat id="loan-offered" label="Average open offered rate" [value]="rateLabel(offeredRate())" help="Your outgoing offers awaiting acceptance. Equal-weight average of each offer's annual simple interest rate; not weighted by amount." />
-        <app-economy-stat id="loan-desired" label="Average open desired rate" [value]="rateLabel(desiredRate())" help="Incoming offers awaiting your acceptance, used here as desired borrowing opportunities. Borrower-posted desired rates are not currently recorded. Equal-weight annual simple interest average." />
+        <app-economy-stat id="loan-desired" label="Average open desired rate" [value]="rateLabel(desiredRate())" help="Your open loan applications record your desired borrowing rate. Equal-weight annual simple interest average." />
       </div>
-      <p class="muted small">Offered = your outgoing offers. Desired = incoming offers awaiting your acceptance.</p>
-      <section class="panel">
-        <h2>Offer a loan</h2>
+      <p class="muted small">Offered = your outgoing offers. Desired = your open loan applications.</p>
+      <app-section-tabs [tabs]="tabs" [selected]="tab()" (selectedChange)="select($event)" label="Loan sections" prefix="loans" />
+      <section [id]="tab()" role="tabpanel" [attr.aria-labelledby]="'loans-tab-'+tab()">
+      <section class="panel" [hidden]="tab() === 'wanted'">
+        <h2>{{tab() === 'apply' ? 'Apply for a loan' : 'Offer a loan'}}</h2>
         <form (ngSubmit)="offer()">
-          <label>Borrower <select name="borrower" [(ngModel)]="borrower" required><option value="">Choose someone</option>@for (user of session.recipients(); track user.account) { <option [value]="user.account">{{user.display_name}}</option> }</select></label>
+          @if (tab() === 'apply') { <p>Post your desired terms for household lenders. No money moves or payments are authorized by an application.</p> }
+          @if (responding() !== null && tab() === 'offer') { <p>Proposing terms for application #{{responding()}}. <button type="button" class="btn btn--quiet" (click)="responding.set(null)">Start a separate offer</button></p> }
+          @if (tab() === 'offer') { <label>Borrower <select name="borrower" [disabled]="responding() !== null" [(ngModel)]="borrower" required><option value="">Choose someone</option>@for (user of session.recipients(); track user.account) { <option [value]="user.account">{{user.display_name}}</option> }</select></label> }
           <label>Amount in NC <input name="amount" inputmode="decimal" [(ngModel)]="amount" required /></label>
           <label>Interest rate (%) <input name="rate" inputmode="decimal" [(ngModel)]="rate" required /></label>
           <label>Rate period <select name="rateDays" [(ngModel)]="rateDays"><option [ngValue]="1">Day</option><option [ngValue]="7">Week</option><option [ngValue]="30">30 days</option><option [ngValue]="365">Year (365 days)</option></select></label>
@@ -42,13 +47,16 @@ export function averageOfferRate(loans: Loan[], account: string, direction: 'len
           <label class="checkbox"><input type="checkbox" name="credit" [(ngModel)]="credit" /><span>Draw once when the borrower's balance reaches exactly zero</span></label>
           <label>Note <input name="memo" [(ngModel)]="memo" maxlength="96" /></label>
           <p class="muted small">Simple interest on outstanding principal, collected in addition to the principal installment. No negative rates, compounding, or late fees. A credit offer reserves no funds; it waits if the lender cannot fund it.</p>
-          <button class="btn" type="submit" [disabled]="!!busy() || !borrower">Offer {{credit ? 'credit' : 'loan'}}</button>
+          <button class="btn" type="submit" [disabled]="!!busy() || (tab() === 'offer' && !borrower)">{{tab() === 'apply' ? 'Post loan application' : 'Offer ' + (credit ? 'credit' : 'loan')}}</button>
         </form>
       </section>
       @if (book.isLoading()) { <p role="status">Loading loans…</p> }
-      @for (loan of book.value()?.loans ?? []; track loan.id) {
+      @for (loan of visibleLoans(); track loan.id) {
         <article class="card">
-          <h2>{{loan.lender_name}} → {{loan.borrower_name}}</h2>
+          <h2>{{loan.status === 'REQUESTED' ? loan.borrower_name + ' wants a loan' : loan.lender_name + ' to ' + loan.borrower_name}}</h2>
+          @if (loan.status === 'REQUESTED' && loan.borrower !== session.me()?.account) {
+            <button class="btn" (click)="respond(loan)">Propose a loan</button>
+          }
           <p><strong>{{loan.amount | nc}} NC</strong> · {{loan.rate_bps / 100}}% per {{period(loan.rate_days)}} · {{rateLabel(annualPercent(loan.rate_bps,loan.rate_days))}} · {{loan.status.toLocaleLowerCase()}}</p>
           <p>{{loan.installment | nc}} NC principal + accrued interest every {{loan.payment_days}} days{{loan.credit ? ' · credit at zero' : ''}}.</p>
           @if (loan.memo) { <p>{{loan.memo}}</p> }
@@ -60,18 +68,31 @@ export function averageOfferRate(loans: Loan[], account: string, direction: 'len
           @if (loan.status === 'OFFERED' && loan.borrower === session.me()?.account) {
             <button class="btn" [disabled]="!!busy()" (click)="accept(loan)">Review & accept</button>
           }
-          @if ((loan.status === 'OFFERED' || loan.status === 'ARMED') && (loan.borrower === session.me()?.account || loan.lender === session.me()?.account)) {
-            <button class="btn btn--quiet" [disabled]="!!busy()" (click)="close(loan)">{{loan.status === 'ARMED' ? 'Cancel undrawn credit' : loan.borrower === session.me()?.account ? 'Decline' : 'Withdraw'}}</button>
+          @if ((loan.status === 'REQUESTED' || loan.status === 'OFFERED' || loan.status === 'ARMED') && (loan.borrower === session.me()?.account || loan.lender === session.me()?.account)) {
+            <button class="btn btn--quiet" [disabled]="!!busy()" (click)="close(loan)">{{loan.status === 'REQUESTED' ? 'Withdraw application' : loan.status === 'ARMED' ? 'Cancel undrawn credit' : loan.borrower === session.me()?.account ? 'Decline' : 'Withdraw'}}</button>
           }
           @if (loan.status === 'ACTIVE' && loan.borrower === session.me()?.account) {
             <button class="btn" [disabled]="!!busy()" (click)="repay(loan)">Make a payment</button>
           }
         </article>
-      } @empty { @if (!book.isLoading()) { <p>No loans yet.</p> } }
+      } @empty { @if (!book.isLoading()) { <p>No loans in this section.</p> } }
+      </section>
     }
   `,
 })
 export class LoansPage {
+  protected readonly tab = signal('apply');
+  protected readonly tabs = [{id:'apply',label:'Apply For Loan'},{id:'offer',label:'Offer Loan'},{id:'wanted',label:'Loans Wanted'}];
+  protected readonly responding = signal<number | null>(null);
+  protected readonly visibleLoans = computed(() => (this.book.value()?.loans ?? []).filter(l => this.tab() === 'wanted' ? l.status === 'REQUESTED' : l.borrower === this.session.me()?.account || l.lender === this.session.me()?.account));
+  protected select(tab: string): void { if(this.busy()) return; if(tab !== 'offer') this.responding.set(null); this.tab.set(tab); }
+  protected respond(loan: Loan): void {
+    this.responding.set(loan.id); this.borrower = loan.borrower;
+    this.amount = this.money.format(loan.amount); this.installment = this.money.format(loan.installment);
+    this.rate = String(loan.rate_bps / 100); this.rateDays = loan.rate_days;
+    this.paymentDays = loan.payment_days; this.credit = loan.credit; this.memo = loan.memo;
+    this.tab.set('offer');
+  }
   protected readonly session = inject(Session);
   protected readonly money = inject(Money);
   private readonly api = inject(NanacoinService);
@@ -83,7 +104,7 @@ export class LoansPage {
   private readonly followLedger = reloadOnLedgerChange(this.book);
   protected readonly annualPercent=annualLoanPercent;
   protected readonly offeredRate=computed(()=>averageOfferRate(this.book.value()?.loans ?? [],this.session.me()?.account ?? '', 'lender'));
-  protected readonly desiredRate=computed(()=>averageOfferRate(this.book.value()?.loans ?? [],this.session.me()?.account ?? '', 'borrower'));
+  protected readonly desiredRate=computed(()=>{ const requests=(this.book.value()?.loans ?? []).filter(l=>l.status==='REQUESTED' && l.borrower===this.session.me()?.account); return requests.length ? requests.reduce((n,l)=>n+annualLoanPercent(l.rate_bps,l.rate_days),0)/requests.length : null; });
   protected rateLabel(value: number | null | undefined): string { return value===undefined ? 'Loading…' : value===null ? 'No open loans' : `${value.toLocaleString(undefined,{maximumFractionDigits:2})}%/yr`; }
   protected annualRateLabel(): string {
     try { return this.rateLabel(annualLoanPercent(parseMoney(this.rate,2,this.money.locale),this.rateDays)); }
@@ -102,17 +123,17 @@ export class LoansPage {
     if (this.busy()) return;
     this.busy.set(identity);
     const key = this.keys.get(identity) ?? newIdempotencyKey(); this.keys.set(identity, key);
-    try { await action(key); this.keys.delete(identity); this.book.reload(); await this.session.refresh(); this.toasts.ok('Loan updated.'); }
+    try { await action(key); this.keys.delete(identity); this.responding.set(null); this.book.reload(); await this.session.refresh(); this.toasts.ok('Loan updated.'); }
     catch (e) { this.toasts.fromError(e); }
     finally { this.busy.set(''); }
   }
   protected async offer(): Promise<void> {
     try {
-      const input: LoanOfferInput = { borrower: this.borrower, amount: this.money.parse(this.amount),
+      const input: LoanOfferInput = { borrower: this.tab() === 'apply' ? this.session.me()!.account : this.borrower, amount: this.money.parse(this.amount),
         rate_bps: parseMoney(this.rate, 2, this.money.locale), rate_days: this.rateDays, payment_days: this.paymentDays,
         installment: this.money.parse(this.installment), credit: this.credit, memo: this.memo.trim() };
       if (input.amount <= 0 || input.installment <= 0 || input.installment > input.amount || input.rate_bps > 4_294_967_295) throw new Error('Check the positive amount, principal installment, and nonnegative rate.');
-      await this.run(JSON.stringify(input), key => this.api.offerLoan(input, key));
+      await this.run(JSON.stringify(input), key => this.tab() === 'apply' ? this.api.requestLoan(input, key) : this.responding() !== null ? this.api.respondLoan(this.responding()!, input, key) : this.api.offerLoan(input, key));
     } catch (e) { this.toasts.fromError(e); }
   }
   protected async accept(loan: Loan): Promise<void> {
