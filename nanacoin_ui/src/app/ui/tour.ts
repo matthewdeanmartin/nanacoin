@@ -207,6 +207,7 @@ export class Tour {
   );
   readonly step = computed(() => (this.index() === null ? null : this.steps()[this.index()!]));
   private account: string | undefined;
+  private generation = 0;
   constructor() {
     this.router.events.pipe(takeUntilDestroyed()).subscribe(event => {
       if (!(event instanceof NavigationEnd) || this.index() === null || this.busy()) return;
@@ -232,6 +233,7 @@ export class Tour {
     await this.go(0);
   }
   stop(): void {
+    this.generation++;
     this.index.set(null);
   }
   async go(index: number): Promise<void> {
@@ -243,9 +245,13 @@ export class Tour {
     const step = this.steps()[index];
     if (!step) return;
     const account = this.session.me()?.id;
+    const generation = this.generation;
     this.busy.set(true);
     try {
-      if ((await this.router.navigateByUrl(step.path)) && account === this.session.me()?.id)
+      // The welcome page and the first tour step both use /market. Angular
+      // skips navigation to the current URL; that still means we are ready.
+      const arrived = this.router.url === step.path || await this.router.navigateByUrl(step.path);
+      if (arrived && generation === this.generation && account === this.session.me()?.id)
         this.index.set(index);
     } catch (error) {
       this.toasts.fromError(error);
@@ -264,6 +270,10 @@ export class Tour {
           {{ demo ? 'Demo tour' : 'Household tour' }} · {{ session.isNana() ? 'Nana' : 'Member' }} ·
           {{ tour.index()! + 1 }} / {{ tour.steps().length }}
         </p>
+        <div class="tour-progress" role="progressbar" aria-label="Tour progress"
+          [attr.aria-valuenow]="tour.index()! + 1" aria-valuemin="1" [attr.aria-valuemax]="tour.steps().length">
+          <span [style.width.%]="(tour.index()! + 1) / tour.steps().length * 100"></span>
+        </div>
         <h2>{{ step.title }}</h2>
         <p>{{ step.description }}</p>
       </div>
@@ -283,21 +293,24 @@ export class Tour {
     </aside>
   }`,
   styles: `
-    :host { display: contents; }
     .tour {
-      position: sticky;
-      top: 0;
+      position: fixed;
+      right: 1rem;
+      bottom: 1rem;
       z-index: 15;
-      margin: 1rem auto;
+      width: min(360px, calc(100vw - 2rem));
+      box-sizing: border-box;
+      max-height: calc(100dvh - 2rem);
+      overflow-y: auto;
       padding: 1rem 1.3rem;
       border: 2px solid var(--accent);
       border-radius: 8px;
       background: var(--surface);
-      max-width: 1100px;
-      display: flex;
-      gap: 1.5rem;
-      align-items: center;
+      box-shadow: 0 8px 28px rgb(0 0 0 / 22%);
+      color: var(--ink);
     }
+    .tour-progress { height: 4px; background: var(--line); border-radius: 4px; overflow: hidden; margin: .6rem 0; }
+    .tour-progress span { display: block; height: 100%; background: var(--accent); }
     .tour h2 {
       font-size: 1.2rem;
       margin: 0.2rem 0;
@@ -309,15 +322,11 @@ export class Tour {
       display: flex;
       flex-wrap: wrap;
       gap: 0.5rem;
-      flex-shrink: 0;
+      margin-top: 1rem;
     }
     @media (max-width: 750px) {
       .tour {
-        margin: 1rem;
-        display: block;
-      }
-      .tour-actions {
-        margin-top: 1rem;
+        max-height: 60dvh;
       }
     }
   `,

@@ -116,7 +116,38 @@ def main():
                 expect(page.locator('app-offer-selection')).not_to_contain_text('Shared offer')
                 return href
 
+            screenshots = ROOT / '__screenshots__'
+            screenshots.mkdir(exist_ok=True)
+            # Starting from the welcome page must start a tour, not just log in.
+            page.goto(base + '#/market')
+            page.get_by_role('button', name='Take a tour as Nana', exact=True).click()
+            tour = page.get_by_role('complementary', name='Guided tour')
+            expect(tour).to_be_visible()
+            expect(tour).to_contain_text('1 /')
+            tour.get_by_role('button', name='Next', exact=True).click()
+            expect(page).to_have_url(re.compile(r'#/list$'))
+            expect(tour).to_contain_text('2 /')
+            tour.get_by_role('button', name='Previous', exact=True).click()
+            expect(page).to_have_url(re.compile(r'#/market$'))
+            expect(tour.get_by_role('progressbar', name='Tour progress')).to_have_attribute('aria-valuenow', '1')
+            viewport(390, 844)
+            bounds = tour.bounding_box()
+            assert bounds['x'] >= 0 and bounds['x'] + bounds['width'] <= 390
+            page.screenshot(path=str(screenshots / 'tour-mobile.png'))
+            viewport(1024, 768)
+            total = int(tour.get_by_role('progressbar').get_attribute('aria-valuemax'))
+            visited = []
+            for step in range(1, total):
+                tour.get_by_role('button', name='Next', exact=True).click()
+                expect(tour.get_by_role('progressbar')).to_have_attribute('aria-valuenow', str(step + 1))
+                visited.append(urlsplit(page.url).fragment)
+            assert '/nana?tab=members' in visited and '/wealth' in visited
+            tour.get_by_role('button', name='Finish tour', exact=True).click()
+            expect(tour).not_to_be_visible()
+            # Keep the rest of the showcase in a fresh demonstration household.
+            page.evaluate('sessionStorage.clear()')
             page.goto(base + '#/about')
+            page.reload()
             expect(page.get_by_role('heading', name='A small bank. A very large notebook.')).to_be_visible()
             page.keyboard.press('?')
             expect(page.get_by_role('dialog', name='Keyboard shortcuts')).to_be_visible()
@@ -195,6 +226,15 @@ def main():
             page.get_by_role('link', name='NanaCoin app', exact=True).click()
             page.get_by_role('button', name=re.compile(r'^Log in as Dad\b')).click()
             expect(page.locator('app-market')).to_be_visible()
+            nav = open_navigation()
+            nav.locator('details').filter(has=page.get_by_text('Help', exact=True)).locator('summary').click()
+            nav.get_by_role('button', name='Take a tour', exact=True).click()
+            expect(tour).to_be_visible()
+            expect(tour).to_contain_text('Member')
+            member_total = int(tour.get_by_role('progressbar').get_attribute('aria-valuemax'))
+            assert member_total < total
+            tour.get_by_role('button', name='Exit tour', exact=True).click()
+            expect(tour).not_to_be_visible()
             account_left = page.locator('#site-navigation summary').filter(has_text=re.compile('^My Account$')).bounding_box()['x']
             content_left = page.locator('#main-content').bounding_box()['x']
             # Grid tracks and font metrics can yield fractional CSS positions.
@@ -583,7 +623,7 @@ def main():
     finally:
         server.shutdown()
         server.server_close()
-    print('Static showcase passed: offer QR images/deep links and detail selection, loan applications/proposals/borrower consent, notebook commerce/refunds, Loans at 320/390/768/1024px, Nana reserves and book, public routes, browser health, notebook/font/mobile, economic indicators/help, lotto purchases/draws/payouts, voucher issue/print/redeem/replay, gift requests give/post/close, demographics/profiles, digital art buy/equip/mint/digest, good deeds claim/grant/add-25, bios, history paging; no API or external requests.')
+    print('Static showcase passed: welcome/Help tour startup, all Nana steps, Previous/Next/Finish/Exit and mobile tour, offer QR images/deep links and detail selection, loan applications/proposals/borrower consent, notebook commerce/refunds, Loans at 320/390/768/1024px, Nana reserves and book, public routes, browser health, notebook/font/mobile, economic indicators/help, lotto purchases/draws/payouts, voucher issue/print/redeem/replay, gift requests give/post/close, demographics/profiles, digital art buy/equip/mint/digest, good deeds claim/grant/add-25, bios, history paging; no API or external requests.')
 
 if __name__ == '__main__':
     main()

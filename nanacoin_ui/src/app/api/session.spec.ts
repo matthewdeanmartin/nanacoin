@@ -50,6 +50,9 @@ describe('Session', () => {
         ApiBase,
       ],
     });
+    // HTTP expectations use the test origin, independent of remembered bank
+    // preferences changed by other suites sharing browser storage.
+    TestBed.inject(ApiBase).current.set('/api/v1');
     session = TestBed.inject(Session);
   });
 
