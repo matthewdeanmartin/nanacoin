@@ -124,6 +124,30 @@ trailing **extension header** row (a new kind) that carries counts for
 everything added after it, followed by those rows. From then on there is one
 place to grow.
 
+That extension now exists (bots, October 2026). Layout after the counted
+sections: one `Extension` row (kind 17), the rows it counts, then the API key
+rows (kind 16) as before. `restore` peeks at the kind of the first row after
+the counted sections: 17 means an extension, anything else (or nothing) means
+an older checkpoint. `Extension::values` is a list of slots that only ever
+grows; a slot an older checkpoint lacks reads as zero:
+
+| Slot | Meaning | Rows |
+| --- | --- | --- |
+| 0 | read-only API keys | `ReadKeyRow` (18) |
+| 1 | bot members (`MemberKind::Bot`) | `BotRow` (19) |
+| 2 | lottos with tickets held by members 17-32 | `LottoTicketsRow` (20) |
+| 3 | `credit_blocked` bits of members 17-32 (a value, not a count) | — |
+
+To add state: append a slot, write its rows after the existing extension
+rows, in slot order. Never reorder or reuse a slot.
+
+The same change raised `MEMBERS` from 16 to 32 without touching old rows:
+`Lotto::tickets` serializes only members 1-16 (`lotto.rs`, `first_sixteen`),
+`Header::credit_blocked` stays a `u16`, and members 17-32 live in the
+extension. Bot members and read keys arrived as new `Command` variants at the
+end (`CreateBot`, `SetReadKey`) rather than new fields on `CreateMember` and
+`SetApiKey`, and `Member::kind` is a `#[serde(skip)]` sidecar.
+
 ### 3. New field on an existing record: a sidecar, not an edit
 
 When a record needs a new field, leave the record alone and keep the value
@@ -163,6 +187,11 @@ To make a fixture for a future change:
    feature, checkpoints, and reopens.
 
 Keep old fixtures. Each one guards a released format.
+
+| Fixture | Written by | Guards |
+| --- | --- | --- |
+| `tests/fixtures/pre-api-keys/` | `d8301d3` | checkpoints and journals from before API keys |
+| `tests/fixtures/pre-bots/` | `64f1c7f` | an API key, a lotto with tickets, a funded loan and a quote, from before bots, read keys and 32 members (`tests/bots.rs`) |
 
 ## Before merging a storage change
 

@@ -26,6 +26,7 @@ pub struct Lotto {
     pub id: u64,
     pub house: MemberId,
     pub terms: LottoTerms,
+    #[serde(with = "first_sixteen")]
     pub tickets: [u32; MEMBERS],
     pub pool: i64,
     pub escrow: i64,
@@ -34,6 +35,25 @@ pub struct Lotto {
     pub winner: Option<MemberId>,
     /// 0 = draw; 1..=16 = principal; 17 = house interest; 18 = issuance; 19 = done.
     pub step: u8,
+}
+/// A lotto row stores the tickets of members 1-16, exactly as it did when a
+/// household had at most 16 members; checkpoints keep members 17-32 beside
+/// it (`journal/checkpoint.rs`, `LottoTicketsRow`).
+mod first_sixteen {
+    use super::MEMBERS;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    pub fn serialize<S: Serializer>(tickets: &[u32; MEMBERS], s: S) -> Result<S::Ok, S::Error> {
+        let low: &[u32; 16] = tickets[..16].try_into().unwrap();
+        low.serialize(s)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<[u32; MEMBERS], D::Error> {
+        let low = <[u32; 16]>::deserialize(d)?;
+        let mut tickets = [0; MEMBERS];
+        tickets[..16].copy_from_slice(&low);
+        Ok(tickets)
+    }
 }
 impl Lotto {
     pub fn due_at(&self) -> u64 {

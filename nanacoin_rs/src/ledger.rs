@@ -202,7 +202,9 @@ impl Audit {
                 | Command::AddMember { .. }
                 | Command::UpdateMember { .. }
                 | Command::MigrateMember { .. }
-                | Command::SetApiKey { .. },
+                | Command::SetApiKey { .. }
+                | Command::CreateBot { .. }
+                | Command::SetReadKey { .. },
             ) => Err(Error::CorruptJournal),
             AuditAction::Identity { member, .. }
                 if member.0 == 0 || member.0 as usize > MEMBERS =>
@@ -269,6 +271,20 @@ impl Ledger {
                 member: MemberId(0),
                 name: display_name.clone(),
                 role: Some(*role),
+                disabled: None,
+                credentials_changed: true,
+            },
+            Command::CreateBot { display_name, .. } => AuditAction::Identity {
+                member: MemberId(0),
+                name: display_name.clone(),
+                role: Some(Role::User),
+                disabled: None,
+                credentials_changed: true,
+            },
+            Command::SetReadKey { member, .. } => AuditAction::Identity {
+                member: *member,
+                name: Name::new(),
+                role: None,
                 disabled: None,
                 credentials_changed: true,
             },

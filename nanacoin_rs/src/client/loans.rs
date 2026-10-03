@@ -10,6 +10,8 @@ struct LoanView<'a> {
     borrower_name: &'a str,
     amount: i64,
     rate_bps: u32,
+    /// `rate_bps` as a yearly rate, for comparing loans.
+    apr_bps: u32,
     rate_days: u16,
     payment_days: u16,
     installment: i64,
@@ -35,7 +37,7 @@ fn view<'a>(s: &'a State, l: &'a Loan, now: u64) -> LoanView<'a> {
     } else if l.status == LoanStatus::Armed {
         if s.member(l.terms.borrower).unwrap().balance != 0 {
             "Waiting for a zero balance"
-        } else if s.credit_blocked & (1u16 << (l.terms.borrower.0 - 1)) != 0 {
+        } else if s.credit_blocked & (1u32 << (l.terms.borrower.0 - 1)) != 0 {
             "Credit does not fund loan payments"
         } else if s.member(l.lender).unwrap().balance < l.terms.amount {
             "Waiting for lender funds"
@@ -55,6 +57,7 @@ fn view<'a>(s: &'a State, l: &'a Loan, now: u64) -> LoanView<'a> {
         borrower_name: s.member(l.terms.borrower).unwrap().name.as_str(),
         amount: l.terms.amount,
         rate_bps: l.terms.rate_bps,
+        apr_bps: l.terms.apr_bps(),
         rate_days: l.terms.rate_days,
         payment_days: l.terms.payment_days,
         installment: l.terms.installment,

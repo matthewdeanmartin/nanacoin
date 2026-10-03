@@ -61,6 +61,8 @@ struct CreateMember {
     grant: bool,
     #[serde(default)]
     mastodon_id: MastodonId,
+    #[serde(default)]
+    kind: MemberKind,
 }
 fn default_role() -> Role {
     Role::User
@@ -300,18 +302,34 @@ pub fn handle_keyed<J: Journal>(
         // member's permissions except that it can never change credentials:
         // a leaked key must not be able to lock its owner out.
         let by_key = token.starts_with(crate::auth::API_KEY_PREFIX);
-        let actor = if by_key {
+        let (actor, scope) = if by_key {
             service.state.api_key_member(token)?
         } else {
-            service.auth.lookup(&service.state, token, now)?
+            (
+                service.auth.lookup(&service.state, token, now)?,
+                KeyScope::Full,
+            )
         };
+        // A read key reads: every GET its member may make, nothing else.
+        if scope == KeyScope::Read && method != "GET" {
+            return Err(Error::ReadOnlyKey);
+        }
+        let bot_key = route_path
+            .strip_prefix("/api/v1/users/")
+            .and_then(|p| p.strip_suffix("/api-key"));
         if by_key
-            && (route_path == "/api/v1/me/api-key" || changes_password(method, route_path, body))
+            && (route_path == "/api/v1/me/api-key"
+                || bot_key.is_some()
+                || changes_password(method, route_path, body))
         {
             return Err(Error::Forbidden);
         }
         if route_path == "/api/v1/me/api-key" {
-            return api_key(service, actor, method, body, now, output);
+            return api_key(service, actor, actor, method, query, body, now, output);
+        }
+        if let Some(user) = bot_key {
+            let member = crate::client::member_id(user, "user-")?;
+            return api_key(service, actor, member, method, query, body, now, output);
         }
         if path == "/api/v1/admin/light" {
             service.state.admin(actor)?;
@@ -392,22 +410,32 @@ pub fn handle_keyed<J: Journal>(
                     req.display_name
                 };
                 let nonce = service.state.member(actor)?.last_request + 1;
-                service.execute(
-                    actor,
-                    nonce,
-                    Command::CreateMember {
+                let password = PasswordVerifier::hash(&req.password)?;
+                let grant = if req.grant {
+                    service.state.initial_grant
+                } else {
+                    0
+                };
+                let command = match req.kind {
+                    MemberKind::Human => Command::CreateMember {
                         username: req.username,
                         display_name,
-                        password: PasswordVerifier::hash(&req.password)?,
+                        password,
                         role: req.role,
-                        grant: if req.grant {
-                            service.state.initial_grant
-                        } else {
-                            0
-                        },
+                        grant,
                         mastodon_id: req.mastodon_id,
                     },
-                )?;
+                    // A bot is never Nana.
+                    MemberKind::Bot if req.role == Role::Nana => return Err(Error::InvalidInput),
+                    MemberKind::Bot => Command::CreateBot {
+                        username: req.username,
+                        display_name,
+                        password,
+                        grant,
+                        mastodon_id: req.mastodon_id,
+                    },
+                };
+                service.execute(actor, nonce, command)?;
                 serialize(
                     &crate::client::user(service.state.members.last().unwrap()),
                     output,
@@ -452,6 +480,8 @@ pub fn handle_keyed<J: Journal>(
                         | Command::UpdateMember { .. }
                         | Command::MigrateMember { .. }
                         | Command::SetApiKey { .. }
+                        | Command::CreateBot { .. }
+                        | Command::SetReadKey { .. }
                 ) {
                     return Err(Error::Forbidden);
                 }
@@ -501,71 +531,119 @@ fn changes_password(method: &str, path: &str, body: &[u8]) -> bool {
     update && parse::<Probe>(body).map_or(true, |p| p.password.is_some())
 }
 
-/// `/api/v1/me/api-key`: GET reports whether the member has a key, POST with
-/// `{"password"}` makes or replaces it (shown once), DELETE revokes it.
+/// `/api/v1/me/api-key` (`member` is the caller) and, for Nana,
+/// `/api/v1/users/user-N/api-key` (a bot member's full key).
+///
+/// GET reports both of the member's keys. POST makes or replaces one, shown
+/// once: on `/me` with `{"password", "scope"?}` (`full` or `read`); for a
+/// bot with `{}`. DELETE revokes one (`?scope=read`; default full).
+#[allow(clippy::too_many_arguments)]
 fn api_key<J: Journal>(
     service: &mut Service<J>,
     actor: MemberId,
+    member: MemberId,
     method: &str,
+    query: &str,
     body: &[u8],
     now: u64,
     output: &mut [u8],
 ) -> Result<usize, Error> {
     #[derive(Serialize)]
-    struct Status {
+    struct Key {
         active: bool,
         created_at: Option<u64>,
+    }
+    #[derive(Serialize)]
+    struct Status {
+        /// The full key, as before read keys existed.
+        active: bool,
+        created_at: Option<u64>,
+        full: Key,
+        read: Key,
     }
     #[derive(Serialize)]
     struct Created {
         api_key: String<46>,
         created_at: Option<u64>,
+        scope: KeyScope,
     }
+    let for_bot = actor != member;
+    if for_bot {
+        service.state.admin(actor)?;
+        if service.state.member(member)?.kind != MemberKind::Bot {
+            return Err(Error::Forbidden);
+        }
+    }
+    let mut scope = match query.split('&').find_map(|p| p.strip_prefix("scope=")) {
+        None | Some("full") => KeyScope::Full,
+        Some("read") => KeyScope::Read,
+        Some(_) => return Err(Error::InvalidInput),
+    };
     let key = match method {
         "GET" => None,
+        "POST" if for_bot => Some(crate::auth::Auth::new_api_key()?),
         "POST" => {
             #[derive(Deserialize)]
             #[serde(deny_unknown_fields)]
             struct Confirm {
                 password: String<128>,
+                #[serde(default)]
+                scope: KeyScope,
             }
             let req: Confirm = parse(body)?;
             service
                 .auth
                 .confirm_password(&service.state, actor, &req.password, now)?;
+            scope = req.scope;
             Some(crate::auth::Auth::new_api_key()?)
         }
         "DELETE" => None,
         _ => return Err(Error::NotFound),
     };
+    if for_bot && scope == KeyScope::Read && method != "GET" {
+        return Err(Error::Forbidden);
+    }
     if method != "GET" {
         let key_hash = key.as_ref().map_or([0; 32], |k| crate::auth::digest(k));
         let nonce = service.state.member(actor)?.last_request + 1;
         service.execute(
             actor,
             nonce,
-            Command::SetApiKey {
-                member: actor,
-                key_hash,
+            match scope {
+                KeyScope::Full => Command::SetApiKey { member, key_hash },
+                KeyScope::Read => Command::SetReadKey { member, key_hash },
             },
         )?;
     }
-    let created_at = service.state.api_key_created(actor)?;
+    let state = &service.state;
     match key {
         Some(api_key) => serialize(
             &Created {
                 api_key,
-                created_at,
+                created_at: state.api_key_created(member, scope)?,
+                scope,
             },
             output,
         ),
-        None => serialize(
-            &Status {
-                active: created_at.is_some(),
-                created_at,
-            },
-            output,
-        ),
+        None => {
+            let key = |scope| -> Result<Key, Error> {
+                let created_at = state.api_key_created(member, scope)?;
+                Ok(Key {
+                    active: created_at.is_some(),
+                    created_at,
+                })
+            };
+            let full = key(KeyScope::Full)?;
+            serialize(
+                &Status {
+                    active: full.active,
+                    created_at: full.created_at,
+                    full,
+                    read: key(KeyScope::Read)?,
+                },
+                output,
+            )
+        }
     }
 }
 
@@ -579,7 +657,7 @@ pub(crate) fn serialize<T: Serialize>(value: &T, output: &mut [u8]) -> Result<us
 pub fn error_response(error: Error, output: &mut [u8]) -> (u16, usize) {
     let status = match error {
         Error::Unauthorized | Error::InvalidCredentials => 401,
-        Error::Forbidden | Error::Disabled => 403,
+        Error::Forbidden | Error::Disabled | Error::ReadOnlyKey | Error::BotGoodDeed => 403,
         Error::NotFound => 404,
         Error::Conflict
         | Error::StaleRequest
@@ -587,7 +665,7 @@ pub fn error_response(error: Error, output: &mut [u8]) -> (u16, usize) {
         | Error::OfferClosed
         | Error::OfferSettled
         | Error::ListingClosed => 409,
-        Error::Capacity => 507,
+        Error::Capacity | Error::MemberQuoteLimit | Error::MemberLoanLimit => 507,
         Error::Storage | Error::CorruptJournal | Error::Unavailable => 503,
         Error::InvalidInput | Error::Overflow | Error::SelfDeal => 400,
         Error::RateLimited => 429,
@@ -630,6 +708,10 @@ fn error_message(error: Error) -> &'static str {
         Error::OfferSettled => "This offer has settled and can no longer be undone",
         Error::ListingClosed => "This listing is no longer active",
         Error::SelfDeal => "You cannot offer on your own listing",
+        Error::ReadOnlyKey => "This API key can only read",
+        Error::BotGoodDeed => "Good deeds are for people; a bot can't claim one",
+        Error::MemberQuoteLimit => "You already have as many open quotes as allowed",
+        Error::MemberLoanLimit => "You already have as many open loan offers as allowed",
         _ => "The service is unavailable; check the server log",
     }
 }

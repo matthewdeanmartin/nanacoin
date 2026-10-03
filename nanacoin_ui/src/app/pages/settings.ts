@@ -6,6 +6,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 
+import { KeyScope, KeyState, NewApiKey } from '../api/models';
 import { ApiBase } from '../api/api-base';
 import { Mastodon, SUGGESTED_SERVERS } from '../api/mastodon';
 import { NanacoinService } from '../api/nanacoin.service';
@@ -47,18 +48,18 @@ const MASTODON = { id: 'settings-mastodon', label: 'Mastodon' };
 
     @if (session.signedIn()) {
     <section id="settings-api-keys" role="tabpanel" aria-labelledby="settings-tab-settings-api-keys" [hidden]="tab() !== 'settings-api-keys'">
-      <p>An API key lets a script or another program use NanaCoin as you, with everything you are allowed to do. It cannot change your password or make new keys.</p>
-      <p class="muted small">You have at most one key. Making a new one cancels the old one, and so does changing your password.</p>
+      <p>An API key lets a script or another program use NanaCoin as you. It cannot change your password or make new keys.</p>
+      <p class="muted small">You may have one key of each kind. Making a new one cancels the old one of that kind; changing your password cancels both.</p>
 
       @if (newKey(); as key) {
         <div class="secret-reveal" role="status">
-          <p><strong>Copy your new key now.</strong> NanaCoin keeps only a fingerprint of it and cannot show it again.</p>
+          <p><strong>Copy your new {{ key.scope === 'read' ? 'read-only ' : '' }}key now.</strong> NanaCoin keeps only a fingerprint of it and cannot show it again.</p>
           <div class="secret-reveal__value">
-            <input readonly [value]="key" aria-label="Your new API key" (focus)="selectAll($event)" />
-            <button class="btn" type="button" (click)="copy(key)">Copy</button>
+            <input readonly [value]="key.api_key" aria-label="Your new API key" (focus)="selectAll($event)" />
+            <button class="btn" type="button" (click)="copy(key.api_key)">Copy</button>
           </div>
           <p class="muted small">Send it as a bearer token, for example:</p>
-          <pre><code>curl -H "Authorization: Bearer {{ key }}" {{ apiUrl() }}/me</code></pre>
+          <pre><code>curl -H "Authorization: Bearer {{ key.api_key }}" {{ apiUrl() }}/me</code></pre>
           <button class="btn btn--quiet" type="button" (click)="newKey.set(null)">I have saved it</button>
         </div>
       }
@@ -67,15 +68,24 @@ const MASTODON = { id: 'settings-mastodon', label: 'Mastodon' };
         <p class="muted">Loading…</p>
       } @else if (keyStatus.error()) {
         <p class="muted">API keys are not supported by this server.</p>
-      } @else if (keyStatus.value()?.active) {
-        <p>You have an API key{{ keyStatus.value()?.created_at ? ', made ' + when(keyStatus.value()!.created_at!) : '' }}.</p>
-        <div class="voucher-actions">
-          <button class="btn" type="button" [disabled]="busy()" (click)="makeKey(true)">Replace with a new key…</button>
-          <button class="btn btn--danger" type="button" [disabled]="busy()" (click)="revokeKey()">Revoke key</button>
-        </div>
       } @else {
-        <p class="empty">You have no API key.</p>
-        <button class="btn" type="button" [disabled]="busy()" (click)="makeKey(false)">Make an API key…</button>
+        @for (k of kinds; track k.scope) {
+          @let state = keyState(k.scope);
+          @if (state) {
+            <h3>{{ k.label }}</h3>
+            <p class="muted small">{{ k.what }}</p>
+            @if (state.active) {
+              <p>You have one{{ state.created_at ? ', made ' + when(state.created_at) : '' }}.</p>
+              <div class="voucher-actions">
+                <button class="btn" type="button" [disabled]="busy()" (click)="makeKey(true, k.scope)">Replace with a new key…</button>
+                <button class="btn btn--danger" type="button" [disabled]="busy()" (click)="revokeKey(k.scope)">Revoke key</button>
+              </div>
+            } @else {
+              <p class="empty">You have none.</p>
+              <button class="btn" type="button" [disabled]="busy()" (click)="makeKey(false, k.scope)">Make a {{ k.noun }}…</button>
+            }
+          }
+        }
       }
       @if (isDemo) {
         <p class="muted small">In this demo a key is only pretend: nothing outside this tab accepts it.</p>
@@ -138,7 +148,21 @@ export class SettingsPage {
     loader: () => this.api.apiKeyStatus(),
   });
   /** The key just made. Held only until the member dismisses it or leaves. */
-  protected readonly newKey = signal<string | null>(null);
+  protected readonly newKey = signal<NewApiKey | null>(null);
+  protected readonly kinds: { scope: KeyScope; label: string; noun: string; what: string }[] = [
+    { scope: 'full', label: 'Full key', noun: 'full key',
+      what: 'Does everything you are allowed to do: pay, list, trade.' },
+    { scope: 'read', label: 'Read-only key', noun: 'read-only key',
+      what: 'Only reads: for a news bot or a dashboard. It can never move money.' },
+  ];
+
+  /** One scope's key, or null when the server has no keys of that scope. */
+  protected keyState(scope: KeyScope): KeyState | null {
+    const status = this.keyStatus.value();
+    if (!status) return null;
+    if (scope === 'full') return status.full ?? { active: status.active, created_at: status.created_at };
+    return status.read ?? null;
+  }
   protected readonly busy = signal(false);
 
   protected server: string;
@@ -171,10 +195,11 @@ export class SettingsPage {
     return new URL(this.apiBase.current(), location.href).href.replace(/\/$/, '');
   }
 
-  protected async makeKey(replacing: boolean): Promise<void> {
+  protected async makeKey(replacing: boolean, scope: KeyScope = 'full'): Promise<void> {
     if (this.busy()) return;
+    const noun = scope === 'read' ? 'read-only key' : 'API key';
     const password = await this.dialogs.password({
-      title: replacing ? 'Replace your API key' : 'Make an API key',
+      title: replacing ? `Replace your ${noun}` : `Make a ${noun}`,
       message: 'Enter your password to confirm it is you.',
       detail: replacing ? ['Your current key stops working immediately.'] : undefined,
       placeholder: 'Your PIN or password',
@@ -184,9 +209,9 @@ export class SettingsPage {
     if (password === null) return;
     this.busy.set(true);
     try {
-      const made = await this.api.createApiKey(password);
-      this.newKey.set(made.api_key);
-      this.keyStatus.set({ active: true, created_at: made.created_at });
+      const made = await this.api.createApiKey(password, scope);
+      this.newKey.set({ ...made, scope });
+      this.keyStatus.set(await this.api.apiKeyStatus());
     } catch (e) {
       this.toasts.fromError(e);
     } finally {
@@ -194,10 +219,10 @@ export class SettingsPage {
     }
   }
 
-  protected async revokeKey(): Promise<void> {
+  protected async revokeKey(scope: KeyScope = 'full'): Promise<void> {
     if (this.busy()) return;
     const ok = await this.dialogs.confirm({
-      title: 'Revoke your API key?',
+      title: scope === 'read' ? 'Revoke your read-only key?' : 'Revoke your API key?',
       message: 'Anything using it stops working immediately.',
       confirmLabel: 'Revoke key',
       danger: true,
@@ -205,7 +230,7 @@ export class SettingsPage {
     if (ok === null) return;
     this.busy.set(true);
     try {
-      this.keyStatus.set(await this.api.revokeApiKey());
+      this.keyStatus.set(await this.api.revokeApiKey(scope));
       this.newKey.set(null);
       this.toasts.ok('API key revoked.');
     } catch (e) {

@@ -510,6 +510,27 @@ fn respond(ctx: &Context, request: &Request, secure: bool, output: &mut [u8]) ->
             request.close,
         );
     }
+    // Scraped by housemetrics: the sampler's snapshot as one Influx line.
+    // Like /api/v1/diag, it never takes the ledger lock.
+    if method == "GET" && uri.split('?').next() == Some("/metrics") {
+        ctx.diagnostics.requests.fetch_add(1, Ordering::Relaxed);
+        let (status, len) = nanacoin::diagnostics::influx(
+            &ctx.diagnostics.snapshot(),
+            nanacoin::board::ID,
+            nanacoin::board::FQDN,
+            output,
+        );
+        return Response::new(
+            status,
+            &[
+                ("Content-Type", "text/plain; charset=utf-8"),
+                ("Cache-Control", "no-store"),
+            ],
+            Body::Owned(output[..len].to_vec()),
+            false,
+            request.close,
+        );
+    }
     let origin = request.header("Origin");
     let allowed = origin.len() <= 256
         && (origin == nanacoin::board::HTTPS_ORIGIN

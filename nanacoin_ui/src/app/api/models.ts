@@ -69,7 +69,15 @@ export interface User {
    * trade to rounding has no way to find out where it went.
    */
   usd_cents?: number;
+
+  /**
+   * `bot`: a program (a trading or news bot) with its own account. Nana makes
+   * its API key; it can't claim good deeds. Older servers omit it: a person.
+   */
+  kind?: MemberKind;
 }
+
+export type MemberKind = 'human' | 'bot';
 
 export interface Posting {
   account: AccountId;
@@ -377,14 +385,30 @@ export type CommerceAction =
   | {gift_art: {art:number;to:number}}
   | {equip_art: {art:number;equipped:boolean}};
 
-/** GET/DELETE /me/api-key. created_at is in the same seconds as other server times. */
-export interface ApiKeyStatus {
+/**
+ * `full`: acts as its member (everything but credentials). `read`: GET only,
+ * for a news bot or a dashboard.
+ */
+export type KeyScope = 'full' | 'read';
+
+export interface KeyState {
   active: boolean;
   created_at: number | null;
+}
+
+/**
+ * GET/DELETE /me/api-key. created_at is in the same seconds as other server
+ * times. `active`/`created_at` describe the full key; servers with read keys
+ * also report each scope (older ones omit `full` and `read`).
+ */
+export interface ApiKeyStatus extends KeyState {
+  full?: KeyState;
+  read?: KeyState;
 }
 
 /** POST /me/api-key: the only time the key itself is ever sent. */
 export interface NewApiKey {
   api_key: string;
   created_at: number | null;
+  scope?: KeyScope;
 }

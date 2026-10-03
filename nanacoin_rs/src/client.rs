@@ -1,5 +1,6 @@
 //! Wire adapter for the existing nanacoin_web/Angular client. Domain IDs and
 //! commands stay strongly typed; the adapter owns HTTP strings and views.
+mod activity;
 mod commerce;
 mod history;
 use crate::{
@@ -35,7 +36,7 @@ fn account(member: MemberId) -> Id {
         id("account-", member.0 as u64)
     }
 }
-fn member_id(value: &str, prefix: &str) -> Result<MemberId, Error> {
+pub(crate) fn member_id(value: &str, prefix: &str) -> Result<MemberId, Error> {
     value
         .strip_prefix(prefix)
         .and_then(|v| v.parse::<u8>().ok())
@@ -97,6 +98,7 @@ pub(crate) struct User<'a> {
     balance: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     usd_cents: Option<i64>,
+    kind: MemberKind,
 }
 pub(crate) fn user(member: &Member) -> User<'_> {
     User {
@@ -115,6 +117,7 @@ pub(crate) fn user(member: &Member) -> User<'_> {
         bio: &member.bio,
         balance: Some(member.balance),
         usd_cents: Some(member.usd_cents),
+        kind: member.kind,
     }
 }
 
@@ -441,6 +444,9 @@ pub(crate) fn route<J: Journal>(
     }
     let (path, query) = uri.split_once('?').unwrap_or((uri, ""));
     if let Some(result) = fulfillment::route(s, actor, method, path, key, body, output) {
+        return result;
+    }
+    if let Some(result) = activity::route(s, actor, method, path, query, output) {
         return result;
     }
     if let Some(result) = lotto::route(s, actor, method, path, query, key, body, output) {

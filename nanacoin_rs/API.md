@@ -45,11 +45,13 @@ IDs use user-1, account-1, listing-5 and tx-6 forms. Roles are nana/user and mem
 | Endpoint | Purpose |
 |---|---|
 | GET `/me`, `/users` | Current user and members |
-| POST `/users` | Nana creates member with username, display_name, password, optional role/grant/mastodon_id |
+| POST `/users` | Nana creates member with username, display_name, password, optional role/grant/mastodon_id, and `kind` (`human`, the default, or `bot`; a bot is never Nana) |
 | PATCH `/users/user-N` | Name/password/Mastodon ID/`bio` (public profile line, 96 UTF-8 bytes, no control characters; only the member themselves); Nana can also change role/status or other members |
-| GET `/me/api-key` | `{active, created_at}` for the caller's API key; never the key |
-| POST `/me/api-key` | `{password}` makes or replaces the caller's key; the response's `api_key` (`nc_…`) is the only copy. Send it as `Authorization: Bearer nc_…` |
-| DELETE `/me/api-key` | Revokes the caller's key. Requests authenticated by a key get 403 here and on any password change |
+| GET `/me/api-key` | `{active, created_at, full: {active, created_at}, read: {active, created_at}}` for the caller's keys (`active`/`created_at` describe the full key); never a key |
+| POST `/me/api-key` | `{password, scope?}` makes or replaces the caller's key of that scope (`full`, the default, or `read`); the response's `api_key` (`nc_…`) is the only copy, with its `scope`. Send it as `Authorization: Bearer nc_…` |
+| DELETE `/me/api-key` | Revokes the caller's full key (`?scope=read`: the read key). Requests authenticated by a key get 403 here and on any password change; a password change revokes both keys |
+| GET/POST/DELETE `/users/user-N/api-key` | Nana only, `kind: bot` members only: the bot's key status, a new full key (`{}`; shown once), or revocation. Bots never sign in |
+| GET `/activity?after=N&limit=M` | The economy's public activity feed; see below |
 | GET `/transactions`, `/transactions/tx-N` | Recent ledger and individual transaction |
 | GET `/accounts/account-N`, `/accounts/account-N/transactions` | Any active member may read any account's balance and money movements (profiles); zero-value messages appear only to their sender and recipient; `account-N-usd` selects dollars |
 | POST `/transfers` | Transfer with to, amount, memo |
@@ -81,6 +83,66 @@ Only the owner may accept, including when Nana is another member. SELL debits th
 
 Money requests supply an `Idempotency-Key` of 1–80 bytes. Retry with the same key and command after a timeout. Per-member receipts persist through restart and intervening commands; different commands with the same key conflict. A retry requiring a transaction outside the recent window may report stale_request; it never repeats the movement.
 
+## Bots: member kind, keys and the activity feed
+
+A member is a person (`kind: human`) or a bot (`kind: bot`): a program such as
+a trading or news bot with its own account. Nana adds bots with `POST /users`
+and makes their keys at `/users/user-N/api-key`. Bots get the starting grant
+like anyone, may trade, lend, borrow and buy lotto tickets, and can't claim
+good deeds (`403 bot_good_deed`).
+
+**Read keys.** A member may hold one full key and one read key. A read key
+makes every GET its member may, and nothing else (`403 read_only_key`), so a
+news bot's leaked key can't move money.
+
+**Limits.** One member keeps at most 2 live forex quotes on the 16-slot book
+(`507 member_quote_limit`) and at most 4 unanswered loan offers
+(`507 member_loan_limit`), so a few bots can't crowd people out.
+
+**`GET /api/v1/activity?after=<seq>&limit=<n>`** — any active member or key.
+`limit` 1–50 (default 50). Events with `seq > after`, oldest first:
+
+```json
+{"incarnation": 3, "generation": 7, "sequence": 912, "decimals": 4, "truncated": false,
+ "events": [{"seq": 905, "at": 1790500000, "kind": "listing_opened",
+             "actor": "account-3", "actor_name": "Robin", "actor_bot": false,
+             "subject": "listing-905", "title": "Bike tune-up", "side": "SELL",
+             "amount": 50000}]}
+```
+
+`sequence` is the newest event (a new reader's cursor). `truncated` says events
+after `after` were already evicted (the feed reads the in-memory audit cache:
+1,024 events on the S3, 128 on the S2). A changed `incarnation` means the
+economy was reset. `amount` and `coins` are NC minor units, `rate` is ¢ per
+whole NC, `apr_bps` a yearly rate, times are unix seconds. Kinds:
+
+| kind | Fields beyond seq/at/actor |
+|---|---|
+| `member_joined` | — |
+| `listing_opened` | subject, title, side (`SELL`/`BUY`), amount (price) |
+| `listing_sold` | subject, title, amount; actor is the owner, other the buyer |
+| `good_deed_posted` / `good_deed_claimed` | subject, title, amount (reward); other is the claimant |
+| `lotto_opened` | subject, title, amount (ticket price), closes_at, lotto_kind |
+| `lotto_drawn` | subject, title, amount (pool); actor is the house, other the winner |
+| `loan_requested` | subject, amount, apr_bps |
+| `loan_funded` | subject, amount, apr_bps; actor is the lender, other the borrower |
+| `loan_paid` | subject, amount; actor is the borrower, other the lender |
+| `quote_posted` | subject, side (`BID`/`ASK`), rate, coins |
+| `quote_taken` | subject, side of the quote, rate, coins; actor is the taker, other the maker |
+| `gift_request_opened` | subject, title, amount (target, if any) |
+| `art_minted` | subject, title |
+
+Never in the feed: descriptions, memos, offer messages, zero-value messages,
+loan notes, dispute and reversal reasons, credentials or identity changes.
+Events whose object has since been recycled (an old sold listing, a drawn
+lotto that has been replaced) are left out rather than shown half-empty.
+
+Loan views also carry `apr_bps` (`rate_bps × 365 / rate_days`, rounded down).
+
+Automated clients may use replay-stable idempotency keys rather than random
+ones, as long as each distinct action gets its own: the bots use
+`g<generation>:m<money epoch>:mmb:<bot>:<slot>:<action>`.
+
 ## Typed command API
 
 Nana-only `GET /api/v1/state` returns member, state and storage_failed fields, excluding credential verifiers and internal retry fingerprints. `POST /api/v1/commands` accepts an externally tagged Rust command:
@@ -89,7 +151,7 @@ Nana-only `GET /api/v1/state` returns member, state and storage_failed fields, e
 {"request_id":2,"command":{"issue":{"to":1,"amount":25,"memo":"Chores"}}}
 ```
 
-Variants include issue, retire, transfer, list, update_listing, cancel, buy, reverse, make_offer, accept_offer, unaccept_offer, decline_offer, withdraw_offer issue_usd, post_quote, take_quote, cancel_quote, and Nana-only configure. Offer commands use a typed OfferId represented as an integer. Timestamps are server-owned event metadata, not command fields. Credential creation/update/migration variants are rejected here; use dedicated endpoints. Obsolete add_member exists for legacy journal replay only and cannot be submitted over HTTP.
+Variants include issue, retire, transfer, list, update_listing, cancel, buy, reverse, make_offer, accept_offer, unaccept_offer, decline_offer, withdraw_offer issue_usd, post_quote, take_quote, cancel_quote, and Nana-only configure. Offer commands use a typed OfferId represented as an integer. Timestamps are server-owned event metadata, not command fields. Credential creation/update/migration variants (including `create_bot`, `set_api_key` and `set_read_key`) are rejected here; use dedicated endpoints. Obsolete add_member exists for legacy journal replay only and cannot be submitted over HTTP.
 
 The typed endpoint uses per-member monotonic request_id values: start at last_request + 1. The same most-recent ID and command returns the original sequence receipt with replayed=true. A changed command conflicts; an older ID is stale. Failed commands do not advance the watermark. Do not assign a fresh ID to an uncertain operation. The adapter's durable Idempotency-Key index provides stronger retry history than this last-request contract.
 
@@ -199,7 +261,7 @@ trace. Die temperature is not ambient temperature.
 
 Errors contain error and message fields. Statuses include 400 invalid input/overflow, 401 authentication failure, 403 forbidden/disabled, 404 not found, 409 conflict/stale request/insufficient funds, 413 oversized body, 429 login rate limit, 503 storage/availability failure and 507 capacity exhaustion.
 
-Offer-specific errors include self_deal (400), offer_closed, listing_closed and offer_settled (409). An invalid or unsynchronized settlement clock returns unavailable (503). Timed mutations never reset a persisted deadline on restart.
+Offer-specific errors include self_deal (400), offer_closed, listing_closed and offer_settled (409). Bot and key errors: read_only_key and bot_good_deed (403), member_quote_limit and member_loan_limit (507). An invalid or unsynchronized settlement clock returns unavailable (503). Timed mutations never reset a persisted deadline on restart.
 
 Every movement balances debit and credit, including issuance account zero. Ordinary spending cannot overdraw. Corrections can make balances negative, matching TinyGo; they append opposite postings and never rewrite history. Journal and recent-history limits are explicit in README.md; retention is bounded.
 

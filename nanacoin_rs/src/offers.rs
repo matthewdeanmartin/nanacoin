@@ -120,6 +120,9 @@ impl State {
                 if actor == l.owner {
                     return Err(Error::SelfDeal);
                 }
+                if l.is_good_deed() && self.member(actor)?.kind == MemberKind::Bot {
+                    return Err(Error::BotGoodDeed);
+                }
                 if self.offers.is_full() && !self.offers.iter().any(|o| o.recyclable(now)) {
                     return Err(Error::Capacity);
                 }

@@ -458,7 +458,9 @@ fn api_keys_act_as_their_member_survive_restart_and_rotate() {
     let alice = common::login_as(&mut s, "alice", "5678");
     assert_eq!(
         get(&mut s, &alice, KEY).1,
-        json!({"active": false, "created_at": null})
+        json!({"active": false, "created_at": null,
+               "full": {"active": false, "created_at": null},
+               "read": {"active": false, "created_at": null}})
     );
     assert_eq!(
         send(&mut s, "POST", &alice, KEY, json!({"password": "0000"})).0,

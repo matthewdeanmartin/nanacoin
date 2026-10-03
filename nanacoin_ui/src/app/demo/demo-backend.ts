@@ -210,26 +210,32 @@ function handle(req: HttpRequest<unknown>): unknown {
   if (path === '/nickles' && method === 'POST') return demoLedger.createNickle(me, Number(body['amount']), (req.body as { fresh_money?: boolean }).fresh_money === true);
   if (path === '/nickles/redeem' && method === 'POST') return demoLedger.redeemNickle(me, String(body['token'] ?? ''));
 
-  if (path === '/me') return demoLedger.view(me, me);
+  if (path === '/me') return withKind(demoLedger.view(me, me));
 
   // The demo has no real credentials, so any password mints a key that only
   // this tab knows. It demonstrates the flow; it authenticates nothing.
   if (path === '/me/api-key') {
+    const scope = method === 'POST' ? (body['scope'] === 'read' ? 'read' : 'full') : (query.get('scope') ?? 'full');
     if (method === 'POST') {
       if (!String(body['password'] ?? '')) throw new DemoError(400, 'invalid_input', 'Enter your password.');
-      const created_at = Math.floor(Date.now() / 1000);
-      demoApiKeys.set(me.id, created_at);
-      const random = crypto.getRandomValues(new Uint8Array(32));
-      const api_key = 'nc_' + btoa(String.fromCharCode(...random)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-      return { api_key, created_at };
+      return mintDemoKey(me.id, scope);
     }
-    if (method === 'DELETE') demoApiKeys.delete(me.id);
-    const created_at = demoApiKeys.get(me.id) ?? null;
-    return { active: created_at !== null, created_at };
+    if (method === 'DELETE') demoApiKeys.delete(`${me.id}:${scope}`);
+    return demoKeyStatus(me.id);
+  }
+
+  // Nana makes and revokes a bot member's key.
+  if (path.startsWith('/users/') && path.endsWith('/api-key')) {
+    if (me.role !== 'nana') throw new DemoError(403, 'forbidden', "Only Nana can make a bot's key.");
+    const id = path.split('/')[2];
+    if (!demoBots.has(id)) throw new DemoError(403, 'forbidden', "Only a bot member's key is made for it.");
+    if (method === 'POST') return mintDemoKey(id, 'full');
+    if (method === 'DELETE') demoApiKeys.delete(`${id}:full`);
+    return demoKeyStatus(id);
   }
 
   if (path === '/users' && method === 'GET') {
-    return { users: demoLedger.allUsers(me) };
+    return { users: demoLedger.allUsers(me).map(withKind) };
   }
 
   if (path === '/users' && method === 'POST') {
@@ -240,10 +246,11 @@ function handle(req: HttpRequest<unknown>): unknown {
       body['password'] || 'demo',
       'user',
     );
+    if (body['kind'] === 'bot') demoBots.add(created.id);
     if (body['grant']) {
       demoLedger.issue(me, created.account, 20 * 10 ** demoLedger.decimals, 'Starting allocation');
     }
-    return demoLedger.view(created, me);
+    return withKind(demoLedger.view(created, me));
   }
 
   if (path.startsWith('/users/') && method === 'PATCH') {
@@ -414,7 +421,30 @@ function subject(id: string) {
 }
 
 /** Demo API keys by user id: just the creation time, since nothing checks them. */
+/** `<user id>:<full|read>` -> when the pretend key was made. */
 const demoApiKeys = new Map<string, number>();
+/** Demo members added as bots. */
+const demoBots = new Set<string>();
+
+function withKind<T extends { id: string }>(user: T): T & { kind: 'human' | 'bot' } {
+  return { ...user, kind: demoBots.has(user.id) ? 'bot' : 'human' };
+}
+
+function mintDemoKey(id: string, scope: string) {
+  const created_at = Math.floor(Date.now() / 1000);
+  demoApiKeys.set(`${id}:${scope}`, created_at);
+  const random = crypto.getRandomValues(new Uint8Array(32));
+  const api_key = 'nc_' + btoa(String.fromCharCode(...random)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return { api_key, created_at, scope };
+}
+
+function demoKeyStatus(id: string) {
+  const state = (scope: string) => {
+    const created_at = demoApiKeys.get(`${id}:${scope}`) ?? null;
+    return { active: created_at !== null, created_at };
+  };
+  return { ...state('full'), full: state('full'), read: state('read') };
+}
 
 function lastSegment(path: string): string {
   return path.slice(path.lastIndexOf('/') + 1);

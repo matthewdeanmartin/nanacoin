@@ -3,6 +3,9 @@ use crate::{domain::*, journal::MAX_RECORDS, offers::MIN_CLOCK};
 use serde::{Deserialize, Serialize};
 
 pub const QUOTES: usize = 16;
+/// Live quotes one member may keep on the 16-slot book, so a few busy
+/// members (or trading bots) can't fill it and lock everyone else out.
+pub const QUOTES_PER_MEMBER: usize = 2;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum QuoteSide {
     BID,
@@ -118,6 +121,14 @@ impl State {
                     || *expires_at > MAX_SEQUENCE
                 {
                     return Err(Error::InvalidInput);
+                }
+                let mine = self
+                    .quotes
+                    .iter()
+                    .filter(|q| q.maker == actor && q.live(now))
+                    .count();
+                if mine >= QUOTES_PER_MEMBER {
+                    return Err(Error::MemberQuoteLimit);
                 }
                 if self.quotes.is_full() && self.quotes.iter().all(|q| q.live(now)) {
                     return Err(Error::Capacity);

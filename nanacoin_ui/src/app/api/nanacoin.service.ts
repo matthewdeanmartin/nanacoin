@@ -1,4 +1,4 @@
-import { ApiKeyStatus, Fulfillment, FulfillmentAction, NewApiKey } from './models';
+import { ApiKeyStatus, Fulfillment, FulfillmentAction, KeyScope, MemberKind, NewApiKey } from './models';
 // The NanaCoin API client.
 //
 // One service, HttpClient, no state beyond the bearer token. Everything the
@@ -360,6 +360,7 @@ export class NanacoinService {
     password: string,
     grant: boolean,
     mastodonId = '',
+    kind: MemberKind = 'human',
   ): Promise<User> {
     const body: Record<string, unknown> = {
       username,
@@ -368,8 +369,9 @@ export class NanacoinService {
       grant,
     };
     // Keep the ordinary request compatible with older/frozen servers. The
-    // Rust-only extension is sent only when Nana actually supplied it.
+    // Rust-only extensions are sent only when Nana actually supplied them.
     if (mastodonId) body['mastodon_id'] = mastodonId;
+    if (kind === 'bot') body['kind'] = kind;
     return this.post<User>('/users', body);
   }
 
@@ -400,15 +402,36 @@ export class NanacoinService {
     return this.get<ApiKeyStatus>('/me/api-key');
   }
 
-  /** Makes a key, replacing any existing one. Needs the current password. */
-  createApiKey(password: string): Promise<NewApiKey> {
-    return this.post<NewApiKey>('/me/api-key', { password });
+  /** Makes a key of `scope`, replacing that scope's key. Needs the current password. */
+  createApiKey(password: string, scope: KeyScope = 'full'): Promise<NewApiKey> {
+    // `scope` only when it isn't the default, for servers without read keys.
+    return this.post<NewApiKey>('/me/api-key', scope === 'read' ? { password, scope } : { password });
   }
 
-  revokeApiKey(): Promise<ApiKeyStatus> {
-    return this.traced('DELETE', '/me/api-key', () =>
+  revokeApiKey(scope: KeyScope = 'full'): Promise<ApiKeyStatus> {
+    const path = scope === 'read' ? '/me/api-key?scope=read' : '/me/api-key';
+    return this.traced('DELETE', path, () =>
       firstValueFrom(
-        this.http.delete<ApiKeyStatus>(this.base + '/me/api-key', { headers: this.headers() }).pipe(this.mapError()),
+        this.http.delete<ApiKeyStatus>(this.base + path, { headers: this.headers() }).pipe(this.mapError()),
+      ),
+    );
+  }
+
+  /** Nana: whether a bot member has its key. */
+  botKeyStatus(id: UserId): Promise<ApiKeyStatus> {
+    return this.get<ApiKeyStatus>(`/users/${encodeURIComponent(id)}/api-key`);
+  }
+
+  /** Nana: makes (or replaces) a bot member's key. Bots never sign in. */
+  createBotKey(id: UserId): Promise<NewApiKey> {
+    return this.post<NewApiKey>(`/users/${encodeURIComponent(id)}/api-key`, {});
+  }
+
+  revokeBotKey(id: UserId): Promise<ApiKeyStatus> {
+    const path = `/users/${encodeURIComponent(id)}/api-key`;
+    return this.traced('DELETE', path, () =>
+      firstValueFrom(
+        this.http.delete<ApiKeyStatus>(this.base + path, { headers: this.headers() }).pipe(this.mapError()),
       ),
     );
   }

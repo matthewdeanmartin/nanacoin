@@ -8,6 +8,11 @@ pub const ROW_BYTES: usize = 4096;
 pub const MAX_ROWS: usize = 1
     + crate::fulfillment::CAPACITY
     + MEMBERS
+    // Trailing rows: the extension header, read keys, bot members and the
+    // tickets of members 17-32, then full API keys.
+    + 1
+    + 3 * MEMBERS
+    + crate::lotto::LOTTOS
     + LISTINGS
     + HISTORY
     + crate::offers::OFFERS
@@ -80,6 +85,7 @@ struct Header {
     fulfillments: usize,
     decimals: u8,
     money_epoch: u64,
+    /// Members 1-16; members 17-32 are in [`Extension`].
     credit_blocked: u16,
     loans: usize,
     lottos: usize,
@@ -129,6 +135,66 @@ struct ApiKeyRow {
     created: u64,
 }
 const API_KEY_ROW: u8 = 16;
+
+/// Everything stored after the release with API keys, without touching any
+/// older row (spec/FORWARD_COMPATIBLE_DATA_CHANGES.md, pattern 2): one
+/// extension header right after the counted sections, then the rows it
+/// counts, then the API key rows. Older checkpoints have no extension.
+///
+/// `values` grows by appending slots; a shorter list (from older firmware)
+/// reads missing slots as zero. Never reorder or reuse a slot.
+#[derive(Serialize, Deserialize, Default)]
+struct Extension {
+    values: heapless::Vec<u64, 16>,
+}
+const EXTENSION_ROW: u8 = 17;
+/// Slots of [`Extension::values`].
+const EXT_READ_KEYS: usize = 0;
+const EXT_BOTS: usize = 1;
+const EXT_LOTTO_TICKETS: usize = 2;
+/// `credit_blocked` bits for members 17-32 (a value, not a count).
+const EXT_CREDIT_HIGH: usize = 3;
+
+impl Extension {
+    fn get(&self, slot: usize) -> u64 {
+        self.values.get(slot).copied().unwrap_or(0)
+    }
+}
+
+/// A member's read-only API key digest.
+#[derive(Serialize, Deserialize)]
+struct ReadKeyRow {
+    member: MemberId,
+    key: TokenHash,
+    created: u64,
+}
+const READ_KEY_ROW: u8 = 18;
+
+/// A bot member (`MemberKind::Bot`); members without a row are people.
+#[derive(Serialize, Deserialize)]
+struct BotRow {
+    member: MemberId,
+}
+const BOT_ROW: u8 = 19;
+
+/// Lotto tickets of members 17-32: the lotto row keeps the first 16, as
+/// before members 17-32 existed.
+#[derive(Serialize, Deserialize)]
+struct LottoTicketsRow {
+    lotto: u64,
+    tickets: [u32; 16],
+}
+const LOTTO_TICKETS_ROW: u8 = 20;
+
+/// The kind byte of row `index`, without consuming it.
+fn peek_kind<J: Journal>(j: &mut J, index: usize) -> Result<u8, Error> {
+    let mut row = [0; ROW_BYTES];
+    let used = j.read_checkpoint(index, &mut row)?;
+    if used < 16 || &row[..4] != b"NCS2" {
+        return Err(Error::CorruptJournal);
+    }
+    Ok(row[4])
+}
 
 fn write<J: Journal>(
     j: &mut J,
@@ -205,7 +271,7 @@ pub(super) fn save<J: Journal>(
         artworks: s.commerce.artworks.len(),
         decimals: s.decimals,
         money_epoch: s.money_epoch,
-        credit_blocked: s.credit_blocked,
+        credit_blocked: s.credit_blocked as u16,
         fulfillments: s.fulfillments.len(),
         loans: s.loans.len(),
         lottos: s.lottos.len(),
@@ -294,6 +360,40 @@ pub(super) fn save<J: Journal>(
     for x in &s.commerce.artworks {
         write(j, &mut index, 15, x)?;
     }
+    let read_keys = s.members.iter().filter(|m| m.read_key != [0; 32]);
+    let bots = s.members.iter().filter(|m| m.kind == MemberKind::Bot);
+    let high_tickets = s
+        .lottos
+        .iter()
+        .filter(|l| l.tickets[16..].iter().any(|n| *n != 0));
+    let mut ext = Extension::default();
+    for value in [
+        read_keys.clone().count() as u64,
+        bots.clone().count() as u64,
+        high_tickets.clone().count() as u64,
+        u64::from(s.credit_blocked >> 16),
+    ] {
+        ext.values.push(value).map_err(|_| Error::Capacity)?;
+    }
+    write(j, &mut index, EXTENSION_ROW, &ext)?;
+    for m in read_keys {
+        let row = ReadKeyRow {
+            member: m.id,
+            key: m.read_key,
+            created: m.read_key_created,
+        };
+        write(j, &mut index, READ_KEY_ROW, &row)?;
+    }
+    for m in bots {
+        write(j, &mut index, BOT_ROW, &BotRow { member: m.id })?;
+    }
+    for l in high_tickets {
+        let row = LottoTicketsRow {
+            lotto: l.id,
+            tickets: l.tickets[16..].try_into().unwrap(),
+        };
+        write(j, &mut index, LOTTO_TICKETS_ROW, &row)?;
+    }
     for m in s.members.iter().filter(|m| m.api_key != [0; 32]) {
         let row = ApiKeyRow {
             member: m.id,
@@ -332,7 +432,7 @@ pub(super) fn restore<J: Journal>(
         + h.loans
         + h.lottos
         + h.keys;
-    // Anything after the counted sections is API key rows, at most one per member.
+    // After the counted sections: an extension (newer firmware), then API key rows.
     let api_keys = j.checkpoint_rows().checked_sub(counted);
     if h.corrections > crate::ledger::CORRECTIONS
         || h.epochs > crate::ledger::EPOCHS
@@ -351,7 +451,7 @@ pub(super) fn restore<J: Journal>(
         || h.quotes > crate::forex::QUOTES
         || h.things > THINGS
         || h.keys > MAX_RECORDS
-        || api_keys.is_none_or(|n| n > h.members)
+        || api_keys.is_none()
         || h.sequence > MAX_SEQUENCE
     {
         return Err(Error::CorruptJournal);
@@ -360,7 +460,7 @@ pub(super) fn restore<J: Journal>(
     s.household_name = h.household_name;
     s.decimals = h.decimals;
     s.money_epoch = h.money_epoch;
-    s.credit_blocked = h.credit_blocked;
+    s.credit_blocked = u32::from(h.credit_blocked);
     s.lotto_escrow = h.lotto_escrow;
     s.currency = h.currency;
     s.initial_grant = h.initial_grant;
@@ -448,7 +548,64 @@ pub(super) fn restore<J: Journal>(
     for _ in 0..h.artworks {
         s.commerce.artworks.push(read(j, &mut index, 15)?);
     }
-    for _ in 0..api_keys.unwrap_or(0) {
+    if index < j.checkpoint_rows() && peek_kind(j, index)? == EXTENSION_ROW {
+        let ext: Extension = read(j, &mut index, EXTENSION_ROW)?;
+        let count = |slot: usize, most: usize| -> Result<usize, Error> {
+            let n = ext.get(slot);
+            if n > most as u64 {
+                return Err(Error::CorruptJournal);
+            }
+            Ok(n as usize)
+        };
+        let high = ext.get(EXT_CREDIT_HIGH);
+        if high > u64::from(u16::MAX) {
+            return Err(Error::CorruptJournal);
+        }
+        s.credit_blocked |= (high as u32) << 16;
+        for _ in 0..count(EXT_READ_KEYS, s.members.len())? {
+            let row: ReadKeyRow = read(j, &mut index, READ_KEY_ROW)?;
+            let m = s
+                .members
+                .iter_mut()
+                .find(|m| m.id == row.member)
+                .ok_or(Error::CorruptJournal)?;
+            if row.key == [0; 32] || m.read_key != [0; 32] || row.created > s.last_timestamp {
+                return Err(Error::CorruptJournal);
+            }
+            m.read_key = row.key;
+            m.read_key_created = row.created;
+        }
+        for _ in 0..count(EXT_BOTS, s.members.len())? {
+            let row: BotRow = read(j, &mut index, BOT_ROW)?;
+            let m = s
+                .members
+                .iter_mut()
+                .find(|m| m.id == row.member)
+                .ok_or(Error::CorruptJournal)?;
+            if m.kind == MemberKind::Bot || m.role == Role::Nana {
+                return Err(Error::CorruptJournal);
+            }
+            m.kind = MemberKind::Bot;
+        }
+        for _ in 0..count(EXT_LOTTO_TICKETS, s.lottos.len())? {
+            let row: LottoTicketsRow = read(j, &mut index, LOTTO_TICKETS_ROW)?;
+            let l = s
+                .lottos
+                .iter_mut()
+                .find(|l| l.id == row.lotto)
+                .ok_or(Error::CorruptJournal)?;
+            if l.tickets[16..].iter().any(|n| *n != 0) {
+                return Err(Error::CorruptJournal);
+            }
+            l.tickets[16..].copy_from_slice(&row.tickets);
+        }
+    }
+    // The rest are API key rows, at most one per member.
+    let api_keys = j.checkpoint_rows() - index;
+    if api_keys > s.members.len() {
+        return Err(Error::CorruptJournal);
+    }
+    for _ in 0..api_keys {
         let row: ApiKeyRow = read(j, &mut index, API_KEY_ROW)?;
         let m = s
             .members

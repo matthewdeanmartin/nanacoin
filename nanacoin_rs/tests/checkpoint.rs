@@ -196,8 +196,14 @@ fn checkpoint_preserves_passwords_balances_open_deals_deadlines_and_retries() {
     drop(s);
     let mut s = Service::open_with_clock(disk, now).unwrap();
     assert_eq!(serde_json::to_value(s.state()).unwrap(), before);
-    assert_eq!(s.state().api_key_member(key), Ok(MemberId(2)));
-    assert_eq!(s.state().api_key_created(MemberId(2)), Ok(Some(now())));
+    assert_eq!(
+        s.state().api_key_member(key),
+        Ok((MemberId(2), KeyScope::Full))
+    );
+    assert_eq!(
+        s.state().api_key_created(MemberId(2), KeyScope::Full),
+        Ok(Some(now()))
+    );
     assert_eq!(
         s.state()
             .offer(offer)
@@ -437,7 +443,10 @@ fn pre_api_key_checkpoint_still_opens_and_then_keeps_keys() {
     drop(s);
     let s = Service::open(FileJournal::open(&path).unwrap()).unwrap();
     assert_eq!(s.generation(), 2);
-    assert_eq!(s.state().api_key_member(key), Ok(MemberId(2)));
+    assert_eq!(
+        s.state().api_key_member(key),
+        Ok((MemberId(2), KeyScope::Full))
+    );
     assert_eq!(s.state().member(MemberId(2)).unwrap().balance, 50);
     s.state().check_invariants().unwrap();
     drop(s);

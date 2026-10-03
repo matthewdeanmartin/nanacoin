@@ -379,13 +379,55 @@ fn quote_permissions_limits_funds_deadlines_and_recycling() {
         ),
         Err(Error::InsufficientFunds)
     );
-    for _ in 2..QUOTES {
-        quote(&mut s, QuoteSide::ASK, 0);
-    }
+    // Alice has two live quotes: her limit, though the book has room.
     assert_eq!(
         exec(
             &mut s,
             2,
+            Command::PostQuote {
+                side: QuoteSide::ASK,
+                cents_per_coin: 10000,
+                coins: 1,
+                expires_at: 0
+            }
+        ),
+        Err(Error::MemberQuoteLimit)
+    );
+    // Seven more makers, two quotes each, fill the 16-slot book.
+    for n in 0..(QUOTES - 2) / 2 {
+        let name = Name::try_from(format!("maker{n}").as_str()).unwrap();
+        exec(
+            &mut s,
+            1,
+            Command::CreateMember {
+                username: name.clone(),
+                display_name: name,
+                password: PasswordVerifier::hash("1234").unwrap(),
+                role: Role::User,
+                grant: 0,
+                mastodon_id: MastodonId::new(),
+            },
+        )
+        .unwrap();
+        let maker = s.state().members.last().unwrap().id.0;
+        for _ in 0..2 {
+            exec(
+                &mut s,
+                maker,
+                Command::PostQuote {
+                    side: QuoteSide::ASK,
+                    cents_per_coin: 250000,
+                    coins: 10,
+                    expires_at: 0,
+                },
+            )
+            .unwrap();
+        }
+    }
+    assert_eq!(
+        exec(
+            &mut s,
+            3,
             Command::PostQuote {
                 side: QuoteSide::ASK,
                 cents_per_coin: 10000,

@@ -14,7 +14,7 @@ import { CurrencyReform } from './currency-reform';
 import { Notebook } from '../ui/notebook';
 import { IS_DEMO } from '../demo/demo';
 
-import { Transaction } from '../api/models';
+import { Transaction, UserId } from '../api/models';
 import { NanacoinService, newIdempotencyKey, StorageStatus } from '../api/nanacoin.service';
 import { Session } from '../api/session';
 import { Dialogs } from '../ui/dialog';
@@ -74,7 +74,10 @@ export class NanaPage {
   protected newPassword = '';
   protected newMastodonId = '';
   protected grant = true;
+  protected newIsBot = false;
   protected readonly adding = signal(false);
+  /** A bot's key just made: shown once, until Nana dismisses it. */
+  protected readonly botKey = signal<{ name: string; api_key: string } | null>(null);
 
   // Issue coins.
   protected issueTo = '';
@@ -161,20 +164,67 @@ export class NanaPage {
       await this.api.createUser(
         this.newUsername.trim(),
         this.newDisplayName.trim(),
-        this.newPassword,
+        // A bot never signs in: it gets a long random password nobody knows.
+        this.newIsBot ? randomPassword() : this.newPassword,
         this.grant,
         this.newMastodonId.trim(),
+        this.newIsBot ? 'bot' : 'human',
       );
       this.newUsername = '';
       this.newDisplayName = '';
       this.newPassword = '';
       this.newMastodonId = '';
-      this.toasts.ok('Member added.');
+      this.toasts.ok(this.newIsBot ? 'Bot added. Make its API key from its row above.' : 'Member added.');
+      this.newIsBot = false;
       await Promise.all([this.session.refresh(), this.loadLedger()]);
     } catch (e) {
       this.toasts.fromError(e);
     } finally {
       this.adding.set(false);
+    }
+  }
+
+  protected async makeBotKey(id: UserId, name: string): Promise<void> {
+    const ok = await this.dialogs.confirm({
+      title: `Make ${name}'s API key?`,
+      message: 'The key is shown once. Any key the bot had before stops working.',
+      confirmLabel: 'Make key',
+    });
+    if (ok === null) return;
+    try {
+      const made = await this.api.createBotKey(id);
+      this.botKey.set({ name, api_key: made.api_key });
+    } catch (e) {
+      this.toasts.fromError(e);
+    }
+  }
+
+  protected async revokeBotKey(id: UserId, name: string): Promise<void> {
+    const ok = await this.dialogs.confirm({
+      title: `Revoke ${name}'s API key?`,
+      message: 'The bot stops working until it gets a new key.',
+      confirmLabel: 'Revoke key',
+      danger: true,
+    });
+    if (ok === null) return;
+    try {
+      await this.api.revokeBotKey(id);
+      this.toasts.ok('Key revoked.');
+    } catch (e) {
+      this.toasts.fromError(e);
+    }
+  }
+
+  protected selectAll(event: Event): void {
+    (event.target as HTMLInputElement).select();
+  }
+
+  protected async copy(text: string): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(text);
+      this.toasts.ok('Copied.');
+    } catch {
+      this.toasts.error('Could not copy. Select the key and copy it yourself.');
     }
   }
 
@@ -391,4 +441,10 @@ export class NanaPage {
     const used = this.session.status()?.journal_used ?? 0;
     return `${(used / 1024).toFixed(1)} KB`;
   }
+}
+
+/** 32 random characters: a bot's password, never shown or used. */
+function randomPassword(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
+  return btoa(String.fromCharCode(...bytes)).replace(/[+/=]/g, 'x');
 }

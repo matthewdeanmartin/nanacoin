@@ -7,7 +7,7 @@ use sha2::{Digest, Sha256};
 use std::collections::VecDeque;
 use subtle::ConstantTimeEq;
 
-pub const MEMBERS: usize = 16;
+pub const MEMBERS: usize = 32;
 pub const LISTINGS: usize = 48;
 pub const HISTORY: usize = crate::board::HISTORY;
 pub const THINGS: usize = 64;
@@ -53,6 +53,14 @@ pub enum Error {
     OfferSettled,
     ListingClosed,
     SelfDeal,
+    /// A read-only API key tried to change something.
+    ReadOnlyKey,
+    /// Good deeds reward people; a bot member can't claim one.
+    BotGoodDeed,
+    /// The member already has as many open forex quotes as allowed.
+    MemberQuoteLimit,
+    /// The member already has as many open loan offers as allowed.
+    MemberLoanLimit,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -258,6 +266,23 @@ pub enum Command {
         loan: u64,
         terms: crate::loans::LoanTerms,
     },
+    // Journal frames store the variant index: new variants go at the end,
+    // never between existing ones (spec/FORWARD_COMPATIBLE_DATA_CHANGES.md).
+    /// `CreateMember` for a bot member (`MemberKind::Bot`, never Nana).
+    /// Credential-bearing, like `CreateMember`.
+    CreateBot {
+        username: Name,
+        display_name: Name,
+        password: PasswordVerifier,
+        grant: i64,
+        mastodon_id: MastodonId,
+    },
+    /// A member's read-only API key: only its SHA-256. All zero revokes.
+    /// Credential-bearing, like `SetApiKey`.
+    SetReadKey {
+        member: MemberId,
+        key_hash: TokenHash,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -265,6 +290,27 @@ pub enum Command {
 pub enum Role {
     Nana,
     User,
+}
+
+/// A person, or a program (a trading or news bot) that owns its own money.
+/// Bots can't be Nana and can't claim good deeds; otherwise they are members
+/// like anyone, starting grant included.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MemberKind {
+    #[default]
+    Human,
+    Bot,
+}
+
+/// What an API key may do: everything its member may (but credentials), or
+/// only read. A member may hold one key of each scope.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum KeyScope {
+    #[default]
+    Full,
+    Read,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -360,6 +406,14 @@ pub struct Member {
     pub(crate) api_key: TokenHash,
     #[serde(skip)]
     pub(crate) api_key_created: u64,
+    /// SHA-256 of the member's read-only API key; all zero when none.
+    #[serde(skip)]
+    pub(crate) read_key: TokenHash,
+    #[serde(skip)]
+    pub(crate) read_key_created: u64,
+    /// Kept beside the member row in checkpoints, not in it.
+    #[serde(skip)]
+    pub kind: MemberKind,
     #[serde(skip)]
     pub(crate) last_command: TokenHash,
     #[serde(skip)]
@@ -441,7 +495,7 @@ pub struct State {
     pub decimals: u8,
     pub money_epoch: u64,
     /// Debt payments cannot immediately cause more automatic borrowing.
-    pub(crate) credit_blocked: u16,
+    pub(crate) credit_blocked: u32,
     #[serde(skip)]
     pub loans: Vec<crate::loans::Loan, { crate::loans::LOANS }>,
     #[serde(skip)]
@@ -570,24 +624,32 @@ impl State {
 
     /// The active member an API key belongs to. Every stored hash is compared,
     /// in constant time, so timing reveals neither which member nor whether any.
-    pub fn api_key_member(&self, key: &str) -> Result<MemberId, Error> {
+    /// The member an API key belongs to, and what it may do.
+    pub fn api_key_member(&self, key: &str) -> Result<(MemberId, KeyScope), Error> {
         let hash: TokenHash = Sha256::digest(key.as_bytes()).into();
         let mut found = None;
+        // Compare every key in constant time; never stop at the first match.
         for member in &self.members {
             if bool::from(member.api_key.ct_eq(&hash)) && member.api_key != [0; 32] {
-                found = Some(member);
+                found = Some((member, KeyScope::Full));
+            }
+            if bool::from(member.read_key.ct_eq(&hash)) && member.read_key != [0; 32] {
+                found = Some((member, KeyScope::Read));
             }
         }
         match found {
-            Some(m) if !m.disabled && m.password.is_some() => Ok(m.id),
+            Some((m, scope)) if !m.disabled && m.password.is_some() => Ok((m.id, scope)),
             _ => Err(Error::Unauthorized),
         }
     }
 
-    /// When the member's API key was made, if they have one.
-    pub fn api_key_created(&self, id: MemberId) -> Result<Option<u64>, Error> {
+    /// When the member's API key of `scope` was made, if they have one.
+    pub fn api_key_created(&self, id: MemberId, scope: KeyScope) -> Result<Option<u64>, Error> {
         let m = self.member(id)?;
-        Ok((m.api_key != [0; 32]).then_some(m.api_key_created))
+        Ok(match scope {
+            KeyScope::Full => (m.api_key != [0; 32]).then_some(m.api_key_created),
+            KeyScope::Read => (m.read_key != [0; 32]).then_some(m.read_key_created),
+        })
     }
 
     pub fn member(&self, id: MemberId) -> Result<&Member, Error> {
@@ -749,6 +811,13 @@ impl State {
                 grant,
                 mastodon_id,
                 ..
+            }
+            | Command::CreateBot {
+                username,
+                display_name,
+                password,
+                grant,
+                mastodon_id,
             } => {
                 self.admin(actor)?;
                 self.validate_new_member(username, display_name, password)?;
@@ -824,10 +893,15 @@ impl State {
                     return Err(Error::Forbidden);
                 }
             }
-            Command::SetApiKey { member, key_hash } => {
+            Command::SetApiKey { member, key_hash } | Command::SetReadKey { member, key_hash } => {
                 let target = self.member(*member)?;
-                // Only the member mints their own key. Nana may revoke anyone's.
-                if actor != *member && (*key_hash != [0; 32] || self.admin(actor).is_err()) {
+                // Members mint their own keys. Nana may revoke anyone's, and
+                // mints a bot member's full key (bots never sign in).
+                let nana_for_bot =
+                    target.kind == MemberKind::Bot && matches!(command, Command::SetApiKey { .. });
+                if actor != *member
+                    && (self.admin(actor).is_err() || (*key_hash != [0; 32] && !nana_for_bot))
+                {
                     return Err(Error::Forbidden);
                 }
                 if *key_hash != [0; 32] && (target.password.is_none() || target.disabled) {
@@ -1245,6 +1319,35 @@ impl State {
                     ));
                 }
             }
+            Command::CreateBot {
+                username,
+                display_name,
+                password,
+                grant,
+                mastodon_id,
+            } => {
+                self.add_password_member(
+                    username,
+                    display_name,
+                    password,
+                    Role::User,
+                    event.timestamp,
+                );
+                let m = self.members.last_mut().unwrap();
+                m.mastodon_id = mastodon_id.clone();
+                m.kind = MemberKind::Bot;
+                // A bot gets the starting grant like anyone, when Nana gives one.
+                if *grant > 0 {
+                    posting = Some((
+                        MemberId(0),
+                        MemberId(self.members.len() as u8),
+                        *grant,
+                        Memo::try_from("Initial household allocation").unwrap(),
+                        None,
+                        None,
+                    ));
+                }
+            }
             Command::Configure {
                 household_name,
                 initial_grant,
@@ -1285,6 +1388,8 @@ impl State {
                     // compromised"; a standing key must not outlive it.
                     m.api_key = [0; 32];
                     m.api_key_created = 0;
+                    m.read_key = [0; 32];
+                    m.read_key_created = 0;
                 }
                 if let Some(role) = role {
                     m.role = *role;
@@ -1296,14 +1401,18 @@ impl State {
                     m.mastodon_id = value.clone();
                 }
             }
-            Command::SetApiKey { member, key_hash } => {
+            Command::SetApiKey { member, key_hash } | Command::SetReadKey { member, key_hash } => {
                 let m = self.members.iter_mut().find(|m| m.id == *member).unwrap();
-                m.api_key = *key_hash;
-                m.api_key_created = if *key_hash == [0; 32] {
+                let created = if *key_hash == [0; 32] {
                     0
                 } else {
                     event.timestamp
                 };
+                if matches!(event.command, Command::SetApiKey { .. }) {
+                    (m.api_key, m.api_key_created) = (*key_hash, created);
+                } else {
+                    (m.read_key, m.read_key_created) = (*key_hash, created);
+                }
             }
             Command::MigrateMember {
                 member,
@@ -1341,6 +1450,9 @@ impl State {
                         token_hash: *token_hash,
                         api_key: [0; 32],
                         api_key_created: 0,
+                        read_key: [0; 32],
+                        read_key_created: 0,
+                        kind: MemberKind::Human,
                         last_command: [0; 32],
                         last_sequence: 0,
                     })
@@ -1617,7 +1729,7 @@ impl State {
         if !tx.usd && tx.amount != 0 {
             for id in [tx.from, tx.to] {
                 if id != MemberId(0) && id != crate::lotto::ESCROW {
-                    let bit = 1u16 << (id.0 - 1);
+                    let bit = 1u32 << (id.0 - 1);
                     if tx.loan.is_some() {
                         self.credit_blocked |= bit;
                     } else {
@@ -1763,6 +1875,9 @@ impl State {
                 token_hash: [0; 32],
                 api_key: [0; 32],
                 api_key_created: 0,
+                read_key: [0; 32],
+                read_key_created: 0,
+                kind: MemberKind::Human,
                 balance: 0,
                 usd_cents: 0,
                 created_at,

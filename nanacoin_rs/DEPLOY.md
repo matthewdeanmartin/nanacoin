@@ -23,6 +23,18 @@ Both leaves are signed by the one household CA (`certs/home-ca.crt`), so a
 device that trusts one bank trusts the other. `scripts/boards.py` is the single
 source for the table above; the scripts read their board from it.
 
+Which CA that is, is a choice. By default NanaCoin makes and uses its own
+(`.local/ca`). A household that already runs a CA can sign with it instead, so
+its devices trust one CA for everything: `make adopt-ca CA_DIR=<dir>`, where
+the folder holds `rootCA.pem` and `rootCA-key.pem`. The key stays in that
+folder; the choice is remembered in `.local/ca-dir`; the previous CA and leaves
+are archived under `.local/cert-backups/`. `make adopt-ca CA_DIR=.local/ca`
+goes back to NanaCoin's own. This household adopted mastomini's CA
+(`../../mastomini/mastomini_rs/.local/ca`, SHA-256 `C2:8F:EE:1E:…:54:FD`) on
+October 1, 2026; the S3 was redeployed with it, and the S2 leaf was re-signed
+too and switches at its next deployment. A board serves a new certificate only
+after it is deployed.
+
 ## How the two banks are kept apart
 
 A deployment must pass **all** of these checks before it writes anything, and

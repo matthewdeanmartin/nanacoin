@@ -4,6 +4,8 @@ use crate::offers::MIN_CLOCK;
 use serde::{Deserialize, Serialize};
 
 pub const LOANS: usize = 32;
+/// Open loan offers (not yet accepted or withdrawn) one lender may have.
+pub const OFFERS_PER_LENDER: usize = 4;
 pub const DAY: u64 = 86_400;
 pub const RATE_SCALE: u64 = 10_000;
 
@@ -51,6 +53,15 @@ pub struct Loan {
     pub updated_at: u64,
     /// Prevent repeated collection attempts without any new borrower funds.
     pub attempted_balance: i64,
+}
+
+impl LoanTerms {
+    /// The yearly rate in hundredths of a percent, rounded down: what
+    /// clients compare (`rate_bps` is per `rate_days`).
+    pub fn apr_bps(&self) -> u32 {
+        (u64::from(self.rate_bps) * 365 / u64::from(self.rate_days.max(1))).min(u64::from(u32::MAX))
+            as u32
+    }
 }
 
 impl Loan {
@@ -132,7 +143,7 @@ impl State {
             return Err(Error::Disabled);
         }
         if loan.status == LoanStatus::Armed && amount.is_none() {
-            if borrower.balance != 0 || self.credit_blocked & (1u16 << (borrower.id.0 - 1)) != 0 {
+            if borrower.balance != 0 || self.credit_blocked & (1u32 << (borrower.id.0 - 1)) != 0 {
                 return Err(Error::Conflict);
             }
             self.validate_posting(lender.id, borrower.id, loan.terms.amount, false)?;
@@ -240,6 +251,16 @@ impl State {
                         return Err(Error::InvalidInput);
                     }
                 }
+                if !matches!(command, Command::RequestLoan { .. })
+                    && self
+                        .loans
+                        .iter()
+                        .filter(|l| l.lender == actor && l.status == LoanStatus::Offered)
+                        .count()
+                        >= OFFERS_PER_LENDER
+                {
+                    return Err(Error::MemberLoanLimit);
+                }
                 if !matches!(command, Command::RespondLoan { .. })
                     && self.loans.is_full()
                     && !self.loans.iter().any(Loan::terminal)
@@ -318,7 +339,7 @@ impl State {
             LoanStatus::Armed => {
                 b.balance == 0
                     && a.balance >= l.terms.amount
-                    && self.credit_blocked & (1u16 << (b.id.0 - 1)) == 0
+                    && self.credit_blocked & (1u32 << (b.id.0 - 1)) == 0
             }
             LoanStatus::Active => {
                 now >= l.next_due_at

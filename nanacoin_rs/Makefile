@@ -5,7 +5,7 @@ CARGO ?= cargo
 PYTHON ?= python
 export CARGO
 
-.PHONY: smoke-screen help run migrate-login build test test-s2 check fmt smoke certs certs-check rotate-certs firmware web bundle deploy provision probe-board web-check run-bundle require-board
+.PHONY: smoke-screen help run migrate-login build test test-s2 check fmt smoke certs certs-check rotate-certs adopt-ca firmware web bundle deploy provision probe-board web-check run-bundle require-board
 
 help:
 	@printf '%s\n' \
@@ -18,7 +18,7 @@ help:
 	  'make smoke     Build and test the real desktop HTTP server' \
 	  'make certs     Generate local development TLS certificate files' \
 	  'make certs-check  Validate certificate/key compatibility without a board' \
-	  'make rotate-certs  Archive the current CA and generate a compatible replacement' \
+	  'make rotate-certs  Archive the current CA and generate a compatible replacement' 	  'make adopt-ca CA_DIR=dir  Sign with an existing household CA (e.g. mastomini); optional' \
 	  'make firmware BOARD=s3|s2  Build one bank firmware including Angular (no flashing)' \
 	  'make bundle    Build desktop server including Angular' \
 	  'make run-bundle  Serve UI + API locally on port 8080' \
@@ -72,6 +72,10 @@ certs-check:
 
 rotate-certs:
 	bash scripts/rotate-certs.sh --yes
+
+adopt-ca:
+	@[ -n "$(CA_DIR)" ] || { echo 'Set CA_DIR to a folder with rootCA.pem and rootCA-key.pem, e.g. CA_DIR=../../mastomini/mastomini_rs/.local/ca' >&2; exit 2; }
+	bash scripts/adopt-ca.sh "$(CA_DIR)" --yes
 
 require-board:
 	@case "$(BOARD)" in s3|s2) ;; *) echo 'Set BOARD=s3 (nanacoin.local) or BOARD=s2 (nanacoin-s2.local).' >&2; exit 2;; esac
