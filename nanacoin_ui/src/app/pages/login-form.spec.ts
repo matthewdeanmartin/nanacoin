@@ -14,7 +14,7 @@ describe.skipIf(!IS_DEMO)('demo welcome page', () => {
     const fixture=TestBed.createComponent(LoginForm);fixture.detectChanges();
     const root=fixture.nativeElement as HTMLElement;
     const content=[...root.querySelectorAll('.panel > *')].map(e=>e.textContent?.trim() ?? '');
-    expect(root.querySelector('img')?.getAttribute('src')).toBe('nanacoin.png');
+    expect(root.querySelector('img')?.getAttribute('src')).toBe('nanacoin.webp');
     const essay=content.findIndex(t=>t.startsWith('This is a full implementation'));
     expect(content[essay-1]).toBe('Log in as Nana');
     expect(content[essay+1]).toBe('Take a tour as Nana');

@@ -12,7 +12,7 @@ import { Toasts } from '../ui/toasts';
   template: `
     <div class="panel">
       @if (isDemo && !adding()) {
-        <div class="demo-hero"><img src="nanacoin.png" alt="A smiling NanaCoin in front of a bag of household money, drawn by the artist" width="1440" height="1723" /><h1>NanaCoin</h1><p class="muted">The household bank</p></div>
+        <div class="demo-hero"><img src="nanacoin.webp" alt="A smiling NanaCoin in front of a bag of household money, drawn by the artist" width="560" height="677" /><h1>NanaCoin</h1><p class="muted">The household bank</p></div>
         <button class="btn demo-login" type="button" [disabled]="busy()" (click)="loginAs('nana')">Log in as Nana</button>
         <section class="demo-essay" aria-label="About this demo">
           <p>This is a full implementation of the Nanacoin 2026 specification. It runs on a $5 computer you plug in at your house. You use the money to buy things from people in your own household. The GIBWG (Grandma Interbank Work Group) is still working out interbank exchanges and awaits the publication of the Nanacoin 2027.</p>

@@ -40,6 +40,18 @@ introduction, and one-click household logins. Its tour signs in as Nana;
 signed-in members can start their own role-aware tour from **Help → Take a tour**.
 The live tour uses the current account and includes available board diagnostics.
 
+Hero assets are selected at build time: the public demo includes a 560×677
+lossless WebP (47.1 kB); production and development include a 250×302 WebP
+(11.5 kB). Both are served as `nanacoin.webp`, so each bundle carries only its
+own version. The live login does not currently display the hero. The original
+2019×2442 PNG stays in `nanacoin.png` as the artwork source, outside shipped
+assets. To regenerate the variants from this directory with ImageMagick:
+
+```powershell
+magick nanacoin.png -resize 560x -strip -define webp:lossless=true -define webp:method=6 assets/hero-web/nanacoin.webp
+magick nanacoin.png -resize 250x -strip -quality 85 -define webp:method=6 assets/hero-board/nanacoin.webp
+```
+
 **My Account → My wealth** reports cash, loan assets and liabilities, savings-pool
 principal, and personal cash income and expenses. A per-account USD/NC valuation
 override is saved locally. Charts use retained history and distinguish principal

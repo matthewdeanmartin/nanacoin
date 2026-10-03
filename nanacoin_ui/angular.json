@@ -58,6 +58,11 @@
               {
                 "glob": "**/*",
                 "input": "public"
+              },
+              {
+                "glob": "nanacoin.webp",
+                "input": "assets/hero-board",
+                "output": "/"
               }
             ],
             "styles": [
@@ -103,6 +108,17 @@
                 {
                   "replace": "src/app/demo/demo.ts",
                   "with": "src/app/demo/demo.public.ts"
+                }
+              ],
+              "assets": [
+                {
+                  "glob": "**/*",
+                  "input": "public"
+                },
+                {
+                  "glob": "nanacoin.webp",
+                  "input": "assets/hero-web",
+                  "output": "/"
                 }
               ]
             }
