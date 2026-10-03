@@ -91,6 +91,10 @@
               "sourceMap": true
             },
             "demo": {
+              "index": {
+                "input": "src/index.demo.html",
+                "output": "index.html"
+              },
               "budgets": [
                 {
                   "type": "initial",
@@ -111,6 +115,11 @@
                 }
               ],
               "assets": [
+                {
+                  "glob": "nanacoin-card.png",
+                  "input": "assets/hero-web",
+                  "output": "/"
+                },
                 {
                   "glob": "**/*",
                   "input": "public"

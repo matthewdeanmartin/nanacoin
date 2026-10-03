@@ -1,4 +1,5 @@
 import { TourPanel } from './ui/tour';
+import { UpdateOverlay, UpdateRecovery } from './ui/update-recovery';
 import { ProblemLog } from './ui/problem-log';
 import { Activity } from './api/activity';
 import { Money, MoneyPipe } from './api/money';
@@ -7,7 +8,7 @@ import { inject as moneyInject } from '@angular/core';
 // logged out, or running - and renders the frame around the routed page.
 
 import { Component, computed, inject, signal } from '@angular/core';
-import { NavigationEnd, Router, RouterOutlet, RouterLink } from '@angular/router';
+import { NavigationEnd, NavigationError, Router, RouterOutlet, RouterLink } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 import { ApiBase } from './api/api-base';
@@ -34,7 +35,7 @@ type Phase = 'loading' | 'connect' | 'setup' | 'login' | 'app' | 'logs';
   selector: 'app-root',
   imports: [MoneyPipe,
     RouterOutlet, RouterLink,
-    SiteMenu, TourPanel,
+    SiteMenu, TourPanel, UpdateOverlay,
     KeyboardHelp,
     ConnectForm,
     LoginForm,
@@ -99,6 +100,7 @@ export class App {
   );
 
   constructor() {
+    const recovery = inject(UpdateRecovery);
     inject(ProblemLog);
     // Mastodon redirects cannot target a hash route. Move its root-level query
     // into My Settings before the callback component is created.
@@ -108,6 +110,7 @@ export class App {
       history.replaceState(null, '', location.pathname + location.hash);
     }
     this.router.events.pipe(takeUntilDestroyed()).subscribe(event => {
+      if (event instanceof NavigationError) recovery.recover(event.error, event.url);
       if (event instanceof NavigationEnd) {
         // Opening a page should show today's numbers, not the ones from
         // whenever this browser last did something.

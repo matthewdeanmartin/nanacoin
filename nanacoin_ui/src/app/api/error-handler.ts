@@ -12,12 +12,15 @@
 import { ErrorHandler, Injectable, inject } from '@angular/core';
 
 import { Log } from './log';
+import { UpdateRecovery } from '../ui/update-recovery';
 
 @Injectable()
 export class LoggingErrorHandler implements ErrorHandler {
   private readonly log = inject(Log);
+  private readonly recovery = inject(UpdateRecovery);
 
   handleError(error: unknown): void {
+    if (this.recovery.recover(error)) return;
     const err = error as { message?: string; name?: string; stack?: string } | null;
 
     this.log.error('uncaught', err?.message ?? String(error), {

@@ -4,6 +4,10 @@ import { User } from './models';
 import { NanacoinService } from './nanacoin.service';
 import { Session } from './session';
 import { digestSha256 } from './sha256';
+import { IS_DEMO } from '../demo/demo';
+import { Toasts } from '../ui/toasts';
+
+const DEMO_DISABLED = 'mastodon connection disabled in demo mode';
 
 const PENDING_KEY = 'nanacoin:mastodon:oauth';
 const CREDENTIAL_KEY = 'nanacoin:mastodon:credentials:';
@@ -85,9 +89,11 @@ async function responseJson<T>(response: Response): Promise<T> {
 export class Mastodon {
   private readonly api = inject(NanacoinService);
   private readonly session = inject(Session);
+  private readonly toasts = inject(Toasts);
   private readonly changed = signal(0);
 
   readonly connected = computed(() => {
+    if (IS_DEMO) return false;
     this.changed();
     const id = this.session.me()?.id;
     return !!id && this.credentials(id) !== null;
@@ -112,7 +118,11 @@ export class Mastodon {
   }
 
   /** Register a browser app and leave for the selected instance's PKCE login. */
-  async connect(serverEntry: string): Promise<never> {
+  async connect(serverEntry: string): Promise<void> {
+    if (IS_DEMO) {
+      this.toasts.ok(DEMO_DISABLED);
+      return;
+    }
     const userId = this.session.me()?.id;
     if (!userId) throw new Error('Sign in to NanaCoin first.');
     const server = normalizeServer(serverEntry);
@@ -156,6 +166,10 @@ export class Mastodon {
   hasPendingCallback(): boolean { return sessionStorage.getItem(PENDING_KEY) !== null; }
 
   async finish(code: string, returnedState: string): Promise<string> {
+    if (IS_DEMO) {
+      sessionStorage.removeItem(PENDING_KEY);
+      throw new Error(DEMO_DISABLED);
+    }
     const raw = sessionStorage.getItem(PENDING_KEY);
     sessionStorage.removeItem(PENDING_KEY);
     if (!raw) throw new Error('That Mastodon sign-in has expired. Start again.');

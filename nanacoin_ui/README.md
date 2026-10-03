@@ -50,7 +50,25 @@ assets. To regenerate the variants from this directory with ImageMagick:
 ```powershell
 magick nanacoin.png -resize 560x -strip -define webp:lossless=true -define webp:method=6 assets/hero-web/nanacoin.webp
 magick nanacoin.png -resize 250x -strip -quality 85 -define webp:method=6 assets/hero-board/nanacoin.webp
+magick assets/hero-web/nanacoin.webp -resize '1120x590>' -background '#fbf7f0' -gravity center -extent 1200x630 -strip assets/hero-web/nanacoin-card.png
 ```
+
+The public demo uses `src/index.demo.html` for static Open Graph and Twitter
+card metadata, with absolute GitHub Pages URLs. Its 1200×630 preview PNG is
+84.4 kB and keeps the whole artwork inside a wide card. Only the demo ships
+this image; the board continues to use its smaller hero asset.
+
+Mastodon Connect in the demo displays “mastodon connection disabled in demo
+mode” without registering an application, saving PKCE state, or leaving the
+page. Live household clients retain the normal Mastodon authorization flow.
+
+If a deployment replaces a lazy page chunk while the app is open, the client
+shows an updating screen and reloads once, retaining the requested route,
+API address, and session storage. A repeat failure within 60 seconds offers
+manual retry. Offline tabs and browsers unable to save the reload guard also
+use manual retry. Recovery errors are carried into Browser Log after reload;
+a healthy app clears the guard after 30 seconds. Ordinary application errors
+remain ordinary logged errors.
 
 **My Account → My wealth** reports cash, loan assets and liabilities, savings-pool
 principal, and personal cash income and expenses. A per-account USD/NC valuation

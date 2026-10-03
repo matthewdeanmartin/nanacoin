@@ -98,6 +98,8 @@ const MASTODON = { id: 'settings-mastodon', label: 'Mastodon' };
         <p>Connected as <strong>{{ mastodon.account() }}</strong> on {{ host(mastodon.server()) }}.</p>
         <p class="muted small">The access token stays in this browser. Connect again on each device you use.</p>
         <button class="btn btn--quiet" type="button" (click)="disconnect()">Disconnect</button>
+      } @else if (isDemo) {
+        <button class="btn" type="button" (click)="connect()">Connect</button>
       } @else {
         <form (ngSubmit)="connect()">
           <label>
@@ -267,8 +269,9 @@ export class SettingsPage {
     try {
       await this.mastodon.connect(this.server);
     } catch (e) {
-      this.connecting.set(false);
       this.toasts.error(e instanceof Error ? e.message : 'Could not connect Mastodon.');
+    } finally {
+      this.connecting.set(false);
     }
   }
 

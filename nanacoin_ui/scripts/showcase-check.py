@@ -10,6 +10,8 @@ from pathlib import Path
 import os
 import re
 import threading
+import struct
+from html.parser import HTMLParser
 from urllib.parse import urlsplit
 from playwright.sync_api import sync_playwright, expect
 
@@ -116,6 +118,25 @@ def main():
                 expect(page.locator('app-offer-selection')).not_to_contain_text('Shared offer')
                 return href
 
+            # Social crawlers see the response HTML without executing Angular.
+            class PreviewMetadata(HTMLParser):
+                def __init__(self):
+                    super().__init__()
+                    self.tags = {}
+                def handle_starttag(self, tag, attrs):
+                    values = dict(attrs)
+                    if tag == 'meta':
+                        self.tags[values.get('property', values.get('name', ''))] = values.get('content')
+            document = page.request.get(base)
+            assert document.ok
+            metadata = PreviewMetadata()
+            metadata.feed(document.text())
+            assert metadata.tags['og:url'] == 'https://matthewdeanmartin.github.io/nanacoin/'
+            assert metadata.tags['og:title'] and metadata.tags['og:description']
+            assert metadata.tags['og:image'] == 'https://matthewdeanmartin.github.io/nanacoin/nanacoin-card.png'
+            preview = page.request.get(base + 'nanacoin-card.png')
+            assert preview.ok and preview.headers['content-type'].startswith('image/png')
+            assert struct.unpack('>II', preview.body()[16:24]) == (1200, 630)
             screenshots = ROOT / '__screenshots__'
             screenshots.mkdir(exist_ok=True)
             # Starting from the welcome page must start a tour, not just log in.
@@ -235,6 +256,14 @@ def main():
             assert member_total < total
             tour.get_by_role('button', name='Exit tour', exact=True).click()
             expect(tour).not_to_be_visible()
+            page.goto(base + '#/settings?tab=settings-mastodon')
+            settings_url = page.url
+            for attempt in range(2):
+                page.get_by_role('button', name='Connect', exact=True).click()
+                expect(page.get_by_role('status').filter(has_text='mastodon connection disabled in demo mode').last).to_be_visible()
+                assert page.url == settings_url
+                assert page.evaluate("sessionStorage.getItem('nanacoin:mastodon:oauth')") is None
+            navigate('Market')
             account_left = page.locator('#site-navigation summary').filter(has_text=re.compile('^My Account$')).bounding_box()['x']
             content_left = page.locator('#main-content').bounding_box()['x']
             # Grid tracks and font metrics can yield fractional CSS positions.
@@ -617,13 +646,48 @@ def main():
             application.get_by_role('button',name='Review & accept',exact=True).click()
             page.locator('app-dialog-host dialog[open]').get_by_role('button',name='Accept & authorize payments',exact=True).click()
             expect(application).to_contain_text('active')
+            # Simulate a Pages swap: a running app requests a vanished lazy
+            # chunk. A fresh document can load it; a repeated failure must stop.
+            specification_chunks = [file for file in (ROOT / 'dist/nanacoin-web/browser').glob('chunk-*.js')
+                                    if 'NanaCoin Specification (NCS 2026)' in file.read_text(encoding='utf8')]
+            assert len(specification_chunks) == 1
+            chunk_path = specification_chunks[0].name
+            for repeat_failure in [False, True]:
+                recovery_page = browser.new_page()
+                recovery_page.route('**/*', network)
+                requests = []
+                recovery_page.on('request', lambda request: requests.append(request.url) if request.is_navigation_request() else None)
+                blocked = {'count': 0, 'enabled': True}
+                def old_chunk(route):
+                    if blocked['enabled'] and (repeat_failure or blocked['count'] == 0):
+                        blocked['count'] += 1
+                        route.fulfill(status=404, body='This chunk was replaced', content_type='text/plain')
+                    else:
+                        route.continue_()
+                recovery_page.route('**/' + chunk_path, old_chunk)
+                recovery_page.goto(base + '#/specification')
+                expect(recovery_page.get_by_role('heading', name='Updating NanaCoin…', exact=True)).to_be_visible()
+                if repeat_failure:
+                    expect(recovery_page.get_by_role('heading', name='Could not load this page', exact=True)).to_be_visible()
+                    assert len(requests) == 2, requests
+                    assert blocked['count'] == 2
+                    blocked['enabled'] = False
+                    recovery_page.get_by_role('button', name='Try again', exact=True).click()
+                expect(recovery_page.get_by_role('heading', name='NanaCoin Specification (NCS 2026)', exact=True)).to_be_visible()
+                assert urlsplit(recovery_page.url).fragment == '/specification'
+                assert len(requests) == (3 if repeat_failure else 2), requests
+                expect(recovery_page.locator('app-update-overlay')).not_to_contain_text('Could not load this page')
+                # The failed import is still present in the browser log after reload.
+                recovery_page.goto(base + '#/clientlog')
+                expect(recovery_page.locator('#main-content')).to_contain_text('A previous page load required recovery')
+                recovery_page.close()
             assert not forbidden, f'Network escaped static demo: {forbidden}'
             assert not errors, errors
             browser.close()
     finally:
         server.shutdown()
         server.server_close()
-    print('Static showcase passed: welcome/Help tour startup, all Nana steps, Previous/Next/Finish/Exit and mobile tour, offer QR images/deep links and detail selection, loan applications/proposals/borrower consent, notebook commerce/refunds, Loans at 320/390/768/1024px, Nana reserves and book, public routes, browser health, notebook/font/mobile, economic indicators/help, lotto purchases/draws/payouts, voucher issue/print/redeem/replay, gift requests give/post/close, demographics/profiles, digital art buy/equip/mint/digest, good deeds claim/grant/add-25, bios, history paging; no API or external requests.')
+    print('Static showcase passed: missing-chunk auto-reload/repeat guard/manual retry/log retention, static Open Graph/preview image, demo Mastodon no-redirect/no-OAuth popup, welcome/Help tour startup, all Nana steps, Previous/Next/Finish/Exit and mobile tour, offer QR images/deep links and detail selection, loan applications/proposals/borrower consent, notebook commerce/refunds, Loans at 320/390/768/1024px, Nana reserves and book, public routes, browser health, notebook/font/mobile, economic indicators/help, lotto purchases/draws/payouts, voucher issue/print/redeem/replay, gift requests give/post/close, demographics/profiles, digital art buy/equip/mint/digest, good deeds claim/grant/add-25, bios, history paging; no API or external requests.')
 
 if __name__ == '__main__':
     main()
