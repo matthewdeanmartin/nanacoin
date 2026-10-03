@@ -97,6 +97,25 @@ def main():
                 link.click()
                 expect(page.locator('#site-navigation a').filter(has_text=re.compile('^' + re.escape(label) + '$'))).to_have_attribute('aria-current', 'page')
                 navigation_closed()
+            def check_offer_qr(card):
+                # Each QR has a usable ordinary link, the Pages prefix, and an
+                # exact offer identity. Opening it shows only that detail card.
+                qr = card.locator('app-offer-qr')
+                expect(qr.locator('img')).to_be_visible()
+                expect(qr.locator('img')).to_have_js_property('naturalWidth', 160)
+                href = qr.get_by_role('link', name='Open this offer on another device').get_attribute('href')
+                assert href.startswith(base + '#/'), href
+                assert 'offer=' in urlsplit(href).fragment, href
+                before = card.locator('h2, h3').first.inner_text()
+                page.goto(href)
+                expect(page.locator('app-offer-selection')).to_contain_text('Shared offer')
+                expect(page.locator('#main-content article:visible')).to_have_count(1)
+                expect(page.locator('#main-content article:visible').locator('h2, h3').first).to_have_text(before)
+                page.screenshot(path=str(screenshots / 'offer-detail.png'), full_page=True)
+                page.get_by_role('link', name='Show all offers', exact=True).click()
+                expect(page.locator('app-offer-selection')).not_to_contain_text('Shared offer')
+                return href
+
             page.goto(base + '#/about')
             expect(page.get_by_role('heading', name='A small bank. A very large notebook.')).to_be_visible()
             page.keyboard.press('?')
@@ -108,7 +127,7 @@ def main():
             assert 840 <= about_width <= 850, about_width
             assert page.locator('.energy-chart').first.evaluate('e => e.scrollWidth <= e.clientWidth')
             expect(page.locator('.demobar')).to_contain_text('Demo of Nanacoin! A non-crypto household currency!')
-            expect(page.locator('.demobar').get_by_role('link',name='SMBC Specification (2021 ed)')).to_have_attribute('href','https://www.smbc-comics.com/comic/nanacoin')
+            expect(page.locator('.demobar').get_by_role('link',name='Nanacoin Specification (2026)')).to_have_attribute('href','#/specification')
             expect(page.locator('.demobar').get_by_role('link',name='Inspired by SMBC')).to_have_count(0)
             expect(page.locator('footer.keyboard-footer').get_by_role('link',name='Inspired by SMBC',exact=True)).to_have_attribute('href','https://www.smbc-comics.com/comic/nanacoin')
             navigate('Lemon Bars')
@@ -174,14 +193,27 @@ def main():
             page.get_by_role('button', name='Refresh readings').click()
             viewport(1024, 768)
             page.get_by_role('link', name='NanaCoin app', exact=True).click()
-            page.get_by_role('button', name='Dad an ordinary member').click()
+            page.get_by_role('button', name=re.compile(r'^Log in as Dad\b')).click()
             expect(page.locator('app-market')).to_be_visible()
-            account_left = page.locator('#site-navigation summary').filter(has_text=re.compile('^Accounts$')).bounding_box()['x']
+            account_left = page.locator('#site-navigation summary').filter(has_text=re.compile('^My Account$')).bounding_box()['x']
             content_left = page.locator('#main-content').bounding_box()['x']
             # Grid tracks and font metrics can yield fractional CSS positions.
             # Two CSS pixels still catches a visibly separate left edge.
             alignment_delta = abs(account_left - content_left)
             assert alignment_delta <= 2, (account_left, content_left, alignment_delta)
+            for label, selector in [('Market', '#market-sell article'), ('Forex', 'app-forex article'), ('Gift Requests', 'app-gift-requests article'), ('Digital Art', 'app-art article'), ('Lotto', 'app-lotto article')]:
+                navigate(label)
+                card = page.locator(selector).filter(has=page.locator('app-offer-qr')).first
+                check_offer_qr(card)
+            for tab, selector in [('Offers to Buy', '#market-buy article'), ('Good Deeds', '#market-deeds article')]:
+                navigate('Market')
+                page.get_by_role('tab', name=re.compile('^' + tab)).click()
+                check_offer_qr(page.locator(selector).first)
+            # A stale QR must not display a different offer or an action button.
+            page.goto(base + '#/market?offer=not-an-offer&tab=market-sell')
+            expect(page.locator('app-offer-selection')).to_contain_text('This offer is no longer available')
+            expect(page.locator('#main-content article:visible')).to_have_count(0)
+            navigate('Market')
             page.keyboard.press('n')
             expect(page.locator('app-market input[name="title"]')).to_be_focused()
             page.keyboard.type('gh?')
@@ -231,7 +263,7 @@ def main():
             expect(page.locator('#panel-lotto')).to_contain_text('NC net')
             page.locator('details.account-menu > summary').filter(has_text='Account').click()
             page.get_by_role('button', name='Sign in another account').click()
-            page.get_by_role('button', name=re.compile(r'^Nana\b')).click()
+            page.get_by_role('button', name=re.compile(r'^Log in as Nana\b')).click()
             expect(page.locator('.topbar__who').get_by_text('Nana', exact=True)).to_be_visible()
             expect(page.locator('app-login-form')).not_to_be_visible()
             expect(page.locator('app-history')).to_be_visible()
@@ -259,6 +291,8 @@ def main():
             for label in ['TODO','Loans & debts','Lotto','My offers','My forex bids','Transactions']:
                 page.get_by_role('tab',name=re.compile('^'+re.escape(label))).click()
                 expect(page.get_by_role('tabpanel')).to_have_count(1)
+            navigate('Offers')
+            check_offer_qr(page.locator('app-offers article').filter(has=page.locator('app-offer-qr')).first)
             navigate('Nana as Central Bank')
             bank = page.locator('app-central-bank')
             expect(bank.locator('#cb-reserve')).to_contain_text('$100.00')
@@ -288,7 +322,7 @@ def main():
             viewport(1024, 768)
             page.locator('details.account-menu > summary').filter(has_text='Account').click()
             page.get_by_role('button', name='Sign in another account').click()
-            page.get_by_role('button', name=re.compile(r'^Dad\b')).click()
+            page.get_by_role('button', name=re.compile(r'^Log in as Dad\b')).click()
             expect(page.locator('.topbar__who').get_by_text('Dad', exact=True)).to_be_visible()
             navigate('Lotto')
             for title in draw_titles:
@@ -349,7 +383,7 @@ def main():
             expect(page.get_by_role('status').filter(has_text='Sent 1 due allowance payment.')).to_be_visible()
             page.locator('details.account-menu > summary').filter(has_text='Account').click()
             page.get_by_role('button', name='Sign in another account').click()
-            page.get_by_role('button', name=re.compile(r'^Sam\b')).click()
+            page.get_by_role('button', name=re.compile(r'^Log in as Sam\b')).click()
             expect(page.locator('.topbar__who').get_by_text('Sam', exact=True)).to_be_visible()
             navigate('The Notebook')
             allowance = page.locator('.ledger-row').filter(has_text=re.compile(r'Allowance \(\d{4}-\d{2}-\d{2}\)')).first
@@ -370,7 +404,7 @@ def main():
             page.emulate_media(media='screen')
             page.locator('details.account-menu > summary').filter(has_text='Account').click()
             page.get_by_role('button', name='Sign in another account').click()
-            page.get_by_role('button', name=re.compile(r'^Mom\b')).click()
+            page.get_by_role('button', name=re.compile(r'^Log in as Mom\b')).click()
             expect(page.locator('.topbar__who').get_by_text('Mom', exact=True)).to_be_visible()
             page.evaluate("token => location.hash = '#/redeem?token=' + encodeURIComponent(token)", token)
             expect(page).to_have_url(re.compile(r'#\/redeem$'))
@@ -445,7 +479,7 @@ def main():
             expect(page.get_by_role('status').filter(has_text='Now on your profile.')).to_be_visible()
             expect(comet).to_contain_text('on your profile')
             page.get_by_role('tab', name='Make art').click()
-            page.locator('app-art input[type=file]').set_input_files(str(ROOT / 'public/art/sunshine-badge.svg'))
+            page.get_by_label('Compute from a file on this device', exact=True).set_input_files(str(ROOT / 'public/art/sunshine-badge.svg'))
             expect(page.get_by_label('SHA-256 digest')).to_have_value('d4667bd7997ecf8e212e14b8085c1e5d02508e0cd143315ede10b241a80cfab0')
             page.get_by_label('Title').fill('Second sunshine')
             page.get_by_label('Picture address').fill('https://matthewdeanmartin.github.io/nanacoin/art/sunshine-badge.svg')
@@ -493,7 +527,7 @@ def main():
             expect(profile.locator('.stat').filter(has_text='payments').locator('span').first).not_to_have_text(payments)
             page.locator('details.account-menu > summary').filter(has_text='Account').click()
             page.get_by_role('button', name='Sign in another account').click()
-            page.get_by_role('button', name=re.compile(r'^Nana\b')).click()
+            page.get_by_role('button', name=re.compile(r'^Log in as Nana\b')).click()
             expect(page.locator('.topbar__who').get_by_text('Nana', exact=True)).to_be_visible()
             navigate('Good Deeds')
             expect(page.get_by_role('heading', name='Good Deeds', exact=True)).to_be_visible()
@@ -523,21 +557,23 @@ def main():
             loans.get_by_role('button',name='Post loan application',exact=True).click()
             application=loans.locator('article').filter(has_text='Kitchen loan browser review')
             expect(application).to_contain_text('requested')
+            loan_url = check_offer_qr(application)
             page.locator('details.account-menu > summary').filter(has_text='Account').click()
             page.get_by_role('button',name='Sign in another account').click()
-            page.get_by_role('button',name=re.compile(r'^Dad\b')).click()
+            page.get_by_role('button',name=re.compile(r'^Log in as Dad\b')).click()
             expect(page.locator('.topbar__who').get_by_text('Dad',exact=True)).to_be_visible()
-            navigate('Loans')
-            loans.get_by_role('tab',name='Loans Wanted',exact=True).click()
+            page.goto(loan_url)
+            expect(loans.locator('article')).to_have_count(1)
             application.get_by_role('button',name='Propose a loan',exact=True).click()
             expect(loans.get_by_role('tab',name='Offer Loan',exact=True)).to_have_attribute('aria-selected','true')
             loans.get_by_role('button',name='Offer loan',exact=True).click()
             expect(application).to_contain_text('offered')
             page.locator('details.account-menu > summary').filter(has_text='Account').click()
             page.get_by_role('button',name='Sign in another account').click()
-            page.get_by_role('button',name=re.compile(r'^Nana\b')).click()
+            page.get_by_role('button',name=re.compile(r'^Log in as Nana\b')).click()
             expect(page.locator('.topbar__who').get_by_text('Nana',exact=True)).to_be_visible()
-            navigate('Loans')
+            page.goto(loan_url)
+            expect(loans.locator('article')).to_have_count(1)
             application.get_by_role('button',name='Review & accept',exact=True).click()
             page.locator('app-dialog-host dialog[open]').get_by_role('button',name='Accept & authorize payments',exact=True).click()
             expect(application).to_contain_text('active')
@@ -547,7 +583,7 @@ def main():
     finally:
         server.shutdown()
         server.server_close()
-    print('Static showcase passed: loan applications/proposals/borrower consent, notebook commerce/refunds, Loans at 320/390/768/1024px, Nana reserves and book, public routes, browser health, notebook/font/mobile, economic indicators/help, lotto purchases/draws/payouts, voucher issue/print/redeem/replay, gift requests give/post/close, demographics/profiles, digital art buy/equip/mint/digest, good deeds claim/grant/add-25, bios, history paging; no API or external requests.')
+    print('Static showcase passed: offer QR images/deep links and detail selection, loan applications/proposals/borrower consent, notebook commerce/refunds, Loans at 320/390/768/1024px, Nana reserves and book, public routes, browser health, notebook/font/mobile, economic indicators/help, lotto purchases/draws/payouts, voucher issue/print/redeem/replay, gift requests give/post/close, demographics/profiles, digital art buy/equip/mint/digest, good deeds claim/grant/add-25, bios, history paging; no API or external requests.')
 
 if __name__ == '__main__':
     main()

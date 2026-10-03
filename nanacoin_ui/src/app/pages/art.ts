@@ -1,3 +1,4 @@
+import { OfferQr, OfferSelection, offerTarget } from '../ui/offer-qr';
 import { Component, computed, inject, resource, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -31,9 +32,10 @@ export function mintProblem(title: string, license: string, locator: string, sha
  * the one record of who owns which edition.
  */
 @Component({
-  selector: 'app-art', imports: [FormsModule, MoneyPipe, RouterLink, ArtPicture],
+  selector: 'app-art', imports: [OfferQr, OfferSelection, FormsModule, MoneyPipe, RouterLink, ArtPicture],
   template: `
     <h1>Digital Art</h1>
+    <app-offer-selection [available]="filtered(view()).length > 0" [loading]="book.isLoading()" />
     <p class="muted">Make an edition of your art, sell it, give it away, or show it on your profile. The household notebook records who owns each edition; the picture can live in minicloud or at an external address. No crypto, no NFT, no blockchain. Owning an edition does not transfer copyright; the license says what the owner may do.</p>
     @if (!session.signedIn()) { <p>Sign in to see the household's art.</p> }
     @else {
@@ -106,6 +108,7 @@ export function mintProblem(title: string, license: string, locator: string, sha
               } @else if (a.price !== null) {
                 <button type="button" class="btn" [disabled]="busy()" (click)="buy(a)">Buy for {{ a.price | nc }} NC</button>
               }
+              @if (a.price !== null) { <app-offer-qr path="/art" [offer]="a.id" [label]="a.title" /> }
             </article>
           } @empty {
             @if (book.hasValue()) { <p class="muted">{{ view() === 'mine' ? 'You do not own any art yet.' : view() === 'sale' ? 'Nothing is for sale right now.' : 'Nobody has made any art yet.' }}</p> }
@@ -125,6 +128,7 @@ export function mintProblem(title: string, license: string, locator: string, sha
   styles: `.art-actions,.art-inline{display:flex;flex-direction:column;gap:.4rem;margin-top:auto}.art-inline label{font-size:.875rem}.art-digest{display:flex;flex-wrap:wrap;gap:.5rem}.art-file{position:relative;overflow:hidden}.art-file input{position:absolute;inset:0;opacity:0;cursor:pointer}.art-preview{max-width:10rem;border:1px solid var(--line);border-radius:var(--radius)}`,
 })
 export class ArtPage {
+  protected readonly selectedOffer = offerTarget();
   protected readonly session = inject(Session);
   private readonly api = inject(NanacoinService);
   private readonly cloud = inject(MinicloudArt);
@@ -159,7 +163,7 @@ export class ArtPage {
   private readonly artworks = computed(() => [...(this.book.value()?.artworks ?? [])].sort((a, b) => b.id - a.id));
 
   protected filtered(view: string): Artwork[] {
-    return this.artworks().filter((a) => view === 'mine' ? this.isMine(a) : view === 'sale' ? a.price !== null : view === 'all');
+    return this.artworks().filter(a => !this.selectedOffer() || String(a.id) === this.selectedOffer()).filter((a) => view === 'mine' ? this.isMine(a) : view === 'sale' ? a.price !== null : view === 'all');
   }
   protected isMine(a: Artwork): boolean { return a.owner === this.me(); }
   protected name(member: number): string { return nameOf(this.session.household(), member); }

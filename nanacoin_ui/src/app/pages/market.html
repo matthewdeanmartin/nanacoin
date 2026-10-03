@@ -1,6 +1,7 @@
 <h1>{{ listingPage ? 'Buy, sell, hire' : 'Market' }}</h1>
 
 @if (!listingPage) {
+<app-offer-selection [available]="sharedAvailable()" [loading]="session.forSale().length === 0 && !session.me()" />
 <p><a class="btn" routerLink="/list">Buy, sell, hire</a></p>
 
 <app-section-tabs [tabs]="tabs()" [selected]="tab()" (selectedChange)="select($event)" label="Market sections" prefix="market" />
@@ -73,6 +74,7 @@
         {{ offering() === l.id ? 'Offering…' : 'Offer a different price' }}
       </button>
     }
+    <app-offer-qr path="/market" [offer]="l.id" [label]="l.title" [tab]="wanted(l) ? 'market-buy' : 'market-sell'" />
   </article>
 </ng-template>
 
@@ -82,7 +84,7 @@
     <p class="empty">Nobody is asking for anything right now.</p>
   } @else {
     <div class="cards">
-      @for (l of wantAds(); track l.id) { <ng-container *ngTemplateOutlet="listingCard; context: { $implicit: l }" /> }
+      @for (l of shownListings(wantAds()); track l.id) { <ng-container *ngTemplateOutlet="listingCard; context: { $implicit: l }" /> }
     </div>
   }
 </section>
@@ -93,7 +95,7 @@
     <p class="empty">Nothing for sale right now.</p>
   } @else {
     <div class="cards">
-      @for (l of forSale(); track l.id) { <ng-container *ngTemplateOutlet="listingCard; context: { $implicit: l }" /> }
+      @for (l of shownListings(forSale()); track l.id) { <ng-container *ngTemplateOutlet="listingCard; context: { $implicit: l }" /> }
     </div>
   }
 </section>
@@ -109,7 +111,8 @@
           <app-art-picture [art]="a" [controls]="false" />
           <h3>{{ a.title }}</h3>
           <p class="card__meta"><strong>{{ a.price | nc }} NC</strong> · {{ artist(a.owner) }}</p>
-          <a class="btn btn--quiet" routerLink="/art">See it in the gallery</a>
+          <a class="btn btn--quiet" routerLink="/art" [queryParams]="{offer: a.id}">See it in the gallery</a>
+          <app-offer-qr path="/art" [offer]="a.id" [label]="a.title" />
         </article>
       }
     </div>
@@ -122,7 +125,7 @@
     <p class="empty">Nana has not posted any good deeds.</p>
   } @else {
     <div class="cards">
-      @for (l of goodDeeds(); track l.id) {
+      @for (l of shownListings(goodDeeds()); track l.id) {
         <article class="card" [attr.aria-label]="l.title">
           <h3>{{ l.title }}</h3>
           @if (l.description) { <p class="card__desc">{{ l.description }}</p> }
@@ -132,6 +135,7 @@
           } @else {
             <button class="btn" (click)="claim(l)" [disabled]="offering() !== null">{{ offering() === l.id ? 'Sending…' : 'I did this' }}</button>
           }
+          <app-offer-qr path="/market" [offer]="l.id" [label]="l.title" tab="market-deeds" />
         </article>
       }
     </div>

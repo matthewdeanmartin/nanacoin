@@ -151,6 +151,16 @@ Around 123 kB transferred for the initial load.
 host — including a plain file server with no rewrite rules — without `/market`
 404ing on refresh.
 
+**Offer QR codes.** Open offers have a locally generated QR code and an ordinary
+link at the bottom of their details. The hash route selects the specific offer;
+market links also select the appropriate buy, sell, or good deeds section.
+Loans, forex quotes, counteroffers, art sales, gift requests, and open lottos use
+the same component. Links retain the hosting subdirectory and the selected bank
+address for a separately hosted live client, without sharing login credentials.
+The recipient signs in and reviews the normal action before any money moves.
+Demo changes remain in the originating browser tab; other devices see their own
+seeded demo household.
+
 **The server is authoritative.** Nothing here decides whether a transaction is
 valid, what a balance is, or who may do what. `Session.refresh()` re-reads
 everything after each mutation instead of patching state locally, which is

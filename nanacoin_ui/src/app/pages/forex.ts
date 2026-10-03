@@ -1,3 +1,4 @@
+import { OfferQr, OfferSelection, offerTarget } from '../ui/offer-qr';
 import { Money, MoneyPipe } from '../api/money';
 import { inject as moneyInject } from '@angular/core';
 // Foreign exchange: trading NanaCoin for dollars at a stated rate.
@@ -39,8 +40,9 @@ import { Mastodon } from '../api/mastodon';
 
 @Component({
   selector: 'app-forex',
-  imports: [MoneyPipe, FormsModule, ForexChart],
+  imports: [OfferQr, OfferSelection, MoneyPipe, FormsModule, ForexChart],
   template: `
+    <app-offer-selection [available]="asks().length + bids().length > 0" [loading]="loading()" />
     <h1>Forex</h1>
 
     @if (mastodon.connected()) {
@@ -169,6 +171,7 @@ import { Mastodon } from '../api/mastodon';
                   </button>
                 }
               </div>
+              <app-offer-qr path="/forex" [offer]="q.id" [label]="q.maker_name + ' currency exchange'" />
             </article>
           }
         </div>
@@ -204,6 +207,7 @@ import { Mastodon } from '../api/mastodon';
                   </button>
                 }
               </div>
+              <app-offer-qr path="/forex" [offer]="q.id" [label]="q.maker_name + ' currency exchange'" />
             </article>
           }
         </div>
@@ -234,6 +238,7 @@ import { Mastodon } from '../api/mastodon';
   styles: [`.forex-posting { display:grid; grid-template-columns:minmax(0,1.6fr) minmax(0,1fr); gap:1.25rem; align-items:start; margin-block:1.5rem; } @media(max-width:760px) { .forex-posting {grid-template-columns:minmax(0,1fr);} }`],
 })
 export class ForexPage {
+  protected readonly selectedOffer = offerTarget();
   protected readonly money = moneyInject(Money);
   private readonly api = inject(NanacoinService);
   private readonly toasts = inject(Toasts);
@@ -274,14 +279,14 @@ export class ForexPage {
    *  so a cached or reordered response still reads correctly. */
   protected readonly asks = computed(() =>
     this.live()
-      .filter((q) => q.side === 'ASK')
+      .filter((q) => q.side === 'ASK' && (!this.selectedOffer() || q.id === this.selectedOffer()))
       .sort((a, b) => a.cents_per_coin - b.cents_per_coin),
   );
 
   /** Buyers, best price first. */
   protected readonly bids = computed(() =>
     this.live()
-      .filter((q) => q.side === 'BID')
+      .filter((q) => q.side === 'BID' && (!this.selectedOffer() || q.id === this.selectedOffer()))
       .sort((a, b) => b.cents_per_coin - a.cents_per_coin),
   );
 

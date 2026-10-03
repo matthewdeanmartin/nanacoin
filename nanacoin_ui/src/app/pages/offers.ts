@@ -1,3 +1,4 @@
+import { OfferQr, OfferSelection, offerTarget } from '../ui/offer-qr';
 import { RouterLink } from '@angular/router';
 import { Money, MoneyPipe } from '../api/money';
 import { inject as moneyInject } from '@angular/core';
@@ -14,9 +15,10 @@ import { Mastodon } from '../api/mastodon';
 
 @Component({
   selector: 'app-offers',
-  imports: [MoneyPipe, FormsModule, RouterLink],
+  imports: [OfferQr, OfferSelection, MoneyPipe, FormsModule, RouterLink],
   template: `
     <h1>Offers</h1>
+    <app-offer-selection [available]="groups().some(hasOffers)" [loading]="loading()" />
     <p class="muted">Offers move money only when the listing owner accepts.</p>
     @if (mastodon.connected()) {
       <label class="checkbox"><input type="checkbox" [(ngModel)]="notifyAccepted" /> Also send a Mastodon copy when accepting</label>
@@ -49,6 +51,7 @@ import { Mastodon } from '../api/mastodon';
                   }
                   @if (o.reversible) { <button class="btn btn--quiet" (click)="undo(o)" [disabled]="busy() !== null">Undo acceptance</button> }
                 </div>
+                @if (o.status === 'OPEN') { <app-offer-qr path="/offers" [offer]="o.id" [label]="o.listing_title || 'Counteroffer'" /> }
               </article>
             } @empty { <p class="muted small">No offers in this section.</p> }
           </div>
@@ -59,6 +62,8 @@ import { Mastodon } from '../api/mastodon';
   styles: [`.offer-section { margin-block: 1.5rem; } .offer-actions { display:flex; flex-wrap:wrap; gap:.75rem; margin-top:1rem; } .offer-actions .btn { padding:.65rem 1rem; min-height:44px; }`],
 })
 export class OffersPage {
+  protected readonly selectedOffer = offerTarget();
+  protected readonly hasOffers = (group: {offers: Offer[]}) => group.offers.length > 0;
   protected readonly money = moneyInject(Money);
   private readonly api = inject(NanacoinService);
   private readonly toasts = inject(Toasts);
@@ -87,7 +92,7 @@ export class OffersPage {
       { id: 'received-sell', title: 'Received · offers to sell', description: `Other people have offered to sell to ${name}.` },
       { id: 'sent-buy', title: 'Sent · offers to buy', description: `${name} has offered to buy from other people.` },
       { id: 'sent-sell', title: 'Sent · offers to sell', description: `${name} has offered to sell to other people.` },
-    ].map(g => ({ ...g, offers: this.offers().filter(o => offerGroup(o,account) === g.id)
+    ].map(g => ({ ...g, offers: this.offers().filter(o => offerGroup(o,account) === g.id && (!this.selectedOffer() || o.id === this.selectedOffer()))
       .sort((a,b) => Number(b.status === 'OPEN') - Number(a.status === 'OPEN') || b.updated_at-a.updated_at) }));
   });
   protected readonly toDecide = computed(() => this.offers().filter(o => o.status === 'OPEN' && o.listing_owner === this.session.me()?.account));

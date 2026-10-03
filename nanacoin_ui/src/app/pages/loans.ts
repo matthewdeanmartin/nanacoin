@@ -1,3 +1,4 @@
+import { OfferQr, OfferSelection, offerTarget } from '../ui/offer-qr';
 import { SectionTabs } from '../ui/section-tabs';
 import { EconomyStat } from '../ui/economy-stat';
 import { Component, DestroyRef, computed, inject, resource, signal } from '@angular/core';
@@ -17,9 +18,10 @@ export function averageOfferRate(loans: Loan[], account: string, direction: 'len
 }
 
 @Component({
-  selector: 'app-loans', imports: [FormsModule, MoneyPipe, DatePipe, EconomyStat, SectionTabs],
+  selector: 'app-loans', imports: [OfferQr, OfferSelection, FormsModule, MoneyPipe, DatePipe, EconomyStat, SectionTabs],
   template: `
     <h1>Loans & credit</h1>
+    <app-offer-selection [available]="visibleLoans().length > 0" [loading]="book.isLoading()" />
     <p>Lend coins you own. The borrower accepts the terms before money moves. Nana follows the same funding rule.</p>
     @if (!session.signedIn()) { <p>Sign in to view or offer loans.</p> }
     @else if (book.error()) { <p role="alert">Could not load loans. <button class="btn btn--quiet" (click)="book.reload()">Retry</button></p> }
@@ -32,7 +34,7 @@ export function averageOfferRate(loans: Loan[], account: string, direction: 'len
       <p class="muted small">Offered = your outgoing offers. Desired = your open loan applications.</p>
       <app-section-tabs [tabs]="tabs" [selected]="tab()" (selectedChange)="select($event)" label="Loan sections" prefix="loans" />
       <section [id]="tab()" role="tabpanel" [attr.aria-labelledby]="'loans-tab-'+tab()">
-      <section class="panel" [hidden]="tab() === 'wanted'">
+      <section class="panel" [hidden]="tab() === 'wanted' || (!!selectedOffer() && responding() === null)">
         <h2>{{tab() === 'apply' ? 'Apply for a loan' : 'Offer a loan'}}</h2>
         <form (ngSubmit)="offer()">
           @if (tab() === 'apply') { <p>Post your desired terms for household lenders. No money moves or payments are authorized by an application.</p> }
@@ -74,6 +76,7 @@ export function averageOfferRate(loans: Loan[], account: string, direction: 'len
           @if (loan.status === 'ACTIVE' && loan.borrower === session.me()?.account) {
             <button class="btn" [disabled]="!!busy()" (click)="repay(loan)">Make a payment</button>
           }
+          @if (loan.status === 'REQUESTED' || loan.status === 'OFFERED') { <app-offer-qr path="/loans" [offer]="loan.id" [label]="loan.memo || 'Loan #' + loan.id" /> }
         </article>
       } @empty { @if (!book.isLoading()) { <p>No loans in this section.</p> } }
       </section>
@@ -81,10 +84,19 @@ export function averageOfferRate(loans: Loan[], account: string, direction: 'len
   `,
 })
 export class LoansPage {
+  protected readonly selectedOffer = offerTarget();
   protected readonly tab = signal('apply');
   protected readonly tabs = [{id:'apply',label:'Apply For Loan'},{id:'offer',label:'Offer Loan'},{id:'wanted',label:'Loans Wanted'}];
   protected readonly responding = signal<number | null>(null);
-  protected readonly visibleLoans = computed(() => (this.book.value()?.loans ?? []).filter(l => this.tab() === 'wanted' ? l.status === 'REQUESTED' : l.borrower === this.session.me()?.account || l.lender === this.session.me()?.account));
+  protected readonly visibleLoans = computed(() => {
+    const selected = this.selectedOffer();
+    const account = this.session.me()?.account;
+    return (this.book.value()?.loans ?? []).filter(loan => {
+      const party = loan.borrower === account || loan.lender === account;
+      if (selected) return String(loan.id) === selected && (loan.status === 'REQUESTED' || party);
+      return this.tab() === 'wanted' ? loan.status === 'REQUESTED' : party;
+    });
+  });
   protected select(tab: string): void { if(this.busy()) return; if(tab !== 'offer') this.responding.set(null); this.tab.set(tab); }
   protected respond(loan: Loan): void {
     this.responding.set(loan.id); this.borrower = loan.borrower;

@@ -1,3 +1,4 @@
+import { OfferQr, OfferSelection, offerTarget } from '../ui/offer-qr';
 import { Component, computed, inject, resource, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -30,9 +31,10 @@ const bytes = (text: string) => new TextEncoder().encode(text).length;
  * features (recurring supporters, updates, stretch goals).
  */
 @Component({
-  selector: 'app-gift-requests', imports: [DatePipe, FormsModule, MoneyPipe],
+  selector: 'app-gift-requests', imports: [OfferQr, OfferSelection, DatePipe, FormsModule, MoneyPipe],
   template: `
     <h1>Gift Requests</h1>
+    <app-offer-selection [available]="visible().length > 0" [loading]="book.isLoading()" />
     <p class="muted">Ask the household to chip in for something, or give toward someone else's request. Gifts arrive immediately; there is no escrow and no refund when a target is missed. A request can pass its target.</p>
     @if (!session.signedIn()) { <p>Sign in to see gift requests.</p> }
     @else {
@@ -85,6 +87,7 @@ const bytes = (text: string) => new TextEncoder().encode(text).length;
                   </form>
                 }
               }
+              @if (state(r) === 'open') { <app-offer-qr path="/gifts" [offer]="r.id" [label]="r.title" /> }
             </article>
           } @empty {
             @if (book.hasValue()) { <p class="muted">{{ view() === 'mine' ? 'You have not asked for anything yet.' : view() === 'open' ? 'Nobody is asking for anything right now.' : 'No closed requests.' }}</p> }
@@ -96,6 +99,7 @@ const bytes = (text: string) => new TextEncoder().encode(text).length;
   styles: `progress{width:100%;accent-color:var(--accent)}.gift-form{display:flex;flex-direction:column;gap:.4rem;margin-top:auto}.gift-form label{font-size:.875rem}`,
 })
 export class GiftRequestsPage {
+  protected readonly selectedOffer = offerTarget();
   protected readonly session = inject(Session);
   private readonly api = inject(NanacoinService);
   private readonly money = inject(Money);
@@ -128,7 +132,7 @@ export class GiftRequestsPage {
   }
   protected progress(r: GiftRequest): number { return r.target ? Math.min(100, Math.floor(r.received * 100 / r.target)) : 0; }
   private filtered(view: string): GiftRequest[] {
-    return this.requests().filter(r => view === 'mine' ? this.isMine(r) : view === 'open' ? this.state(r) === 'open' : view === 'closed' ? this.state(r) !== 'open' : false);
+    return this.requests().filter(r => (!this.selectedOffer() || String(r.id) === this.selectedOffer())).filter(r => view === 'mine' ? this.isMine(r) : view === 'open' ? this.state(r) === 'open' : view === 'closed' ? this.state(r) !== 'open' : false);
   }
   protected count(view: string): number { return view === 'new' ? this.requests().length : this.filtered(view).length; }
   protected readonly visible = computed(() => this.filtered(this.view()));

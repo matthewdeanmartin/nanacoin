@@ -1,3 +1,4 @@
+import { provideRouter } from '@angular/router';
 // The exchange page, rendered against a fake book.
 //
 // What is worth pinning here is direction. A quote has two sides and a trade
@@ -36,7 +37,7 @@ function quote(over: Partial<Quote> & { side: QuoteSide; cents_per_coin: number 
 /** Renders the page with a fixed book and returns its text. */
 async function render(quotes: Quote[], me: Partial<{ account: string; balance: number; usd_cents: number }> = {}) {
   TestBed.configureTestingModule({
-    providers: [provideHttpClient(), provideHttpClientTesting(), ApiBase],
+    providers: [provideRouter([]), provideHttpClient(), provideHttpClientTesting(), ApiBase],
   });
   const api = TestBed.inject(NanacoinService);
   api.quotes = () => Promise.resolve({ quotes });
@@ -177,7 +178,7 @@ describe('the exchange book', () => {
 
   it('reports an old board as unsupported rather than as an error', async () => {
     TestBed.configureTestingModule({
-      providers: [provideHttpClient(), provideHttpClientTesting(), ApiBase],
+      providers: [provideRouter([]), provideHttpClient(), provideHttpClientTesting(), ApiBase],
     });
     const api = TestBed.inject(NanacoinService);
     const { ApiError } = await import('../api/nanacoin.service');

@@ -1,3 +1,4 @@
+import { OfferQr, OfferSelection, offerTarget } from '../ui/offer-qr';
 import { Money, MoneyPipe } from '../api/money';
 import { inject as moneyInject } from '@angular/core';
 // The marketplace: what is for sale, and the form for offering something.
@@ -30,10 +31,11 @@ const MARKET_TABS = [
 
 @Component({
   selector: 'app-market',
-  imports: [MoneyPipe, FormsModule, RouterLink, ArtPicture, SectionTabs, NgTemplateOutlet],
+  imports: [OfferQr, OfferSelection, MoneyPipe, FormsModule, RouterLink, ArtPicture, SectionTabs, NgTemplateOutlet],
   templateUrl: './market.html',
 })
 export class MarketPage {
+  protected readonly selectedOffer = offerTarget();
   protected readonly money = moneyInject(Money);
   private readonly api = inject(NanacoinService);
   private readonly toasts = inject(Toasts);
@@ -43,6 +45,8 @@ export class MarketPage {
   protected readonly responses = resource({params:()=>this.session.me()?.account, loader:()=>this.api.offers()});
   private readonly followOffers = reloadOnLedgerChange(this.responses);
   protected pendingResponses(id: string) { return (this.responses.value()?.offers ?? []).filter(o=>o.listing === id && o.status === 'OPEN'); }
+  protected shownListings(listings: Listing[]): Listing[] { return listings.filter(l => !this.selectedOffer() || l.id === this.selectedOffer()); }
+  protected readonly sharedAvailable = computed(() => this.session.forSale().some(l => l.id === this.selectedOffer()));
   protected readonly listingPage = this.router.url.split('?')[0] === '/list';
 
   protected title = '';

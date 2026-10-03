@@ -1,3 +1,4 @@
+import { OfferQr, OfferSelection, offerTarget } from '../ui/offer-qr';
 import { Component, DestroyRef, computed, inject, input, resource, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
@@ -12,9 +13,10 @@ import { Toasts } from '../ui/toasts';
 import { lottoOutcome } from './account-commitments';
 
 @Component({
-  selector: 'app-lotto', imports: [FormsModule, MoneyPipe, DatePipe, RouterLink],
+  selector: 'app-lotto', imports: [OfferQr, OfferSelection, FormsModule, MoneyPipe, DatePipe, RouterLink],
   template: `
     @if (administration()) { <h2>Household lottos</h2> } @else { <h1>Lotto</h1> }
+    <app-offer-selection [available]="visible().length > 0" [loading]="book.isLoading()" />
     <p>Every ticket has an equal chance. Ticket money is held safely in the pool. Nana is the house and cannot buy tickets in her own draw.</p>
     <p>Simple lotto pays the whole pool when sales close. Delayed lotto draws and pays the pool plus interest 30 days after sales close. Savings lotto returns everyone's ticket money then, and one winner gets all the pool's interest.</p>
     <p>Interest is a fixed simple rate for those 30 days, rounded down to the smallest currency unit. Nana pays interest from her balance; any shortfall is newly issued coins.</p>
@@ -45,7 +47,7 @@ import { lottoOutcome } from './account-commitments';
       }
       @if (book.isLoading()) { <p role="status">Loading lotto…</p> }
       @if (book.error()) { <p role="alert">Could not load lotto. <button class="btn btn--quiet" (click)="book.reload()">Retry</button></p> }
-      @for (lotto of book.value()?.lottos ?? []; track lotto.id) {
+      @for (lotto of visible(); track lotto.id) {
         <article data-keyboard-row tabindex="-1" class="card"><h2>{{lotto.terms.title}}</h2>
           <p>{{label(lotto.terms.kind)}} · {{lotto.status.toLowerCase()}}</p>
           <p>Ticket: {{lotto.terms.ticket_price | nc}} NC · Pool: {{lotto.pool | nc}} NC · {{lotto.tickets}} tickets</p>
@@ -74,6 +76,7 @@ import { lottoOutcome } from './account-commitments';
           } @else if (lotto.status === 'OPEN') {
             <p>Ticket sales are open to household members. The house cannot buy tickets.</p>
           }
+          @if (lotto.status === 'OPEN') { <app-offer-qr path="/lotto" [offer]="lotto.id" [label]="lotto.terms.title" /> }
         </article>
       } @empty { @if (!book.isLoading() && !book.error()) { <p>No lottos yet.</p> } }
     }
@@ -81,6 +84,7 @@ import { lottoOutcome } from './account-commitments';
   styles: [`.card {margin-block:1rem;} .your-result {border-left:3px solid currentColor;padding-left:1rem;margin-block:1rem;} form {display:grid;gap:.75rem;max-width:32rem;} input,select {max-width:100%;box-sizing:border-box;} [aria-invalid=true] {border-color:var(--warn-ink);outline:2px solid var(--warn-ink);} .field-hint,.field-problem {margin:-.5rem 0 0;font-size:.9rem;} .field-problem,.form-problems {color:var(--warn-ink);font-weight:600;} .form-problems {background:var(--warn-bg);padding:.5rem .75rem;border-radius:8px;margin:0;} .btn {min-height:44px;padding:.6rem 1rem;}`],
 })
 export class LottoPage {
+  protected readonly selectedOffer = offerTarget();
   readonly administration=input(false);
   protected readonly session = inject(Session);
   private readonly api = inject(NanacoinService);
@@ -91,6 +95,7 @@ export class LottoPage {
   protected readonly problems = signal<LottoProblems>({});
   protected readonly problemCount = computed(() => Object.keys(this.problems()).length);
   protected readonly busy = signal(false);
+  protected readonly visible = computed(() => (this.book.value()?.lottos ?? []).filter(l => !this.selectedOffer() || String(l.id) === this.selectedOffer()));
   protected readonly book = resource({ params: () => this.session.me()?.account, loader: () => this.api.lottos() });
   /** Catch up when someone else changes the ledger while this page is open. */
   private readonly followLedger = reloadOnLedgerChange(this.book);
