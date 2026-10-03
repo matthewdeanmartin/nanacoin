@@ -1,3 +1,4 @@
+import { Session } from '../api/session';
 import { Component, ElementRef, signal, viewChild } from '@angular/core';
 import { inject } from '@angular/core';
 import { Router } from '@angular/router';
@@ -28,18 +29,26 @@ export function isEditing(target: EventTarget | null): boolean {
      <dt><kbd>?</kbd></dt><dd>Open this help</dd>
      <dt><kbd>g</kbd> then <kbd>h</kbd></dt><dd>Home: Market (or sign-in screen)</dd>
      <dt><kbd>g</kbd> then <kbd>e</kbd></dt><dd>Explore: Market</dd>
-     <dt><kbd>g</kbd> then <kbd>l</kbd></dt><dd>The notebook: the household ledger is public; private descriptions are on the roadmap</dd>
+     <dt><kbd>g</kbd> then <kbd>l</kbd></dt><dd>Public timeline: the household notebook</dd>
+     <dt><kbd>g</kbd> then <kbd>d</kbd></dt><dd>Direct messages: message folder</dd>
+     <dt><kbd>g</kbd> then <kbd>n</kbd></dt><dd>Notifications: mail needing attention</dd>
+     <dt><kbd>g</kbd> then <kbd>u</kbd></dt><dd>Your profile</dd>
+     <dt><kbd>g</kbd> then <kbd>a</kbd> / <kbd>w</kbd> / <kbd>c</kbd></dt><dd>NanaCoin additions: My Account / My wealth / Economy</dd>
    </dl>
    <h3>Lists and composing</h3><dl>
-     <dt><kbd>j</kbd> / <kbd>k</kbd></dt><dd>Focus next / previous listing or transaction</dd>
-     <dt><kbd>0</kbd></dt><dd>Focus the first listing or transaction</dd>
+     <dt><kbd>j</kbd> / <kbd>k</kbd></dt><dd>Focus next / previous record in a visible list</dd>
+     <dt><kbd>0</kbd></dt><dd>Focus the first visible record</dd>
      <dt><kbd>Alt</kbd> + <kbd>PageDown</kbd> / <kbd>PageUp</kbd></dt><dd>Next / previous record</dd>
-     <dt><kbd>n</kbd></dt><dd>Open Buy, sell, hire and focus the listing title</dd>
+     <dt><kbd>n</kbd></dt><dd>Compose a message from mail; elsewhere create a listing</dd>
+     <dt><kbd>Alt</kbd> + <kbd>n</kbd></dt><dd>Compose a message from any page (outside forms)</dd>
+     <dt><kbd>s</kbd> / <kbd>/</kbd></dt><dd>Focus this page’s search, when available</dd>
+     <dt><kbd>r</kbd></dt><dd>Reply to the selected message</dd>
+     <dt><kbd>o</kbd></dt><dd>Open the focused mail row</dd>
    </dl>
    <h3>Standard controls</h3><p><kbd>Tab</kbd> / <kbd>Shift</kbd> + <kbd>Tab</kbd> move between links and buttons.
    <kbd>Enter</kbd> activates the focused link or button; <kbd>Space</kbd> activates a focused button or checkbox.
    <kbd>Escape</kbd> closes the help or mobile menu and returns focus.</p>
-   <p>Shortcuts do not run while you type, use an input method, or have a confirmation dialog open. No shortcut directly pays, purchases, mints, redeems or resets anything. Mastodon search, reply, favourite and boost keys have no mapping here.</p>
+   <p>Shortcuts do not run while you type, use an input method, or have a confirmation dialog open. No shortcut directly pays, purchases, mints, redeems or resets anything. Mastodon favourite and boost keys have no mapping here. List navigation covers mail, offers, loans, lotto, gifts, art, and account activity as well as the market. Use the main menu for other pages.</p>
    <label class="enable"><input type="checkbox" [checked]="enabled()" (change)="toggle()"> Enable letter-key shortcuts (turn off if they conflict with assistive technology)</label>
  </dialog>`,
  styles: `
@@ -55,6 +64,7 @@ export function isEditing(target: EventTarget | null): boolean {
 })
 export class KeyboardHelp {
  private readonly router = inject(Router);
+ private readonly session = inject(Session);
  private readonly help = viewChild<ElementRef<HTMLDialogElement>>('help');
  private previousFocus: HTMLElement | null = null;
  private gUntil = 0;
@@ -83,26 +93,34 @@ export class KeyboardHelp {
    let handled = false;
    if (event.altKey) {
      this.gUntil = 0;
-     if (event.code === 'PageDown' || event.code === 'PageUp') handled = this.move(event.code === 'PageDown' ? 1 : -1);
+     if (key === 'n') handled = this.compose(true);
+     else if (event.code === 'PageDown' || event.code === 'PageUp') handled = this.move(event.code === 'PageDown' ? 1 : -1);
    } else if (key === '?') { this.show(); handled = true; }
    else if (!event.shiftKey) {
      const sequence = this.gUntil > performance.now(); this.gUntil = 0;
-     if (sequence && ['h', 'e', 'l'].includes(key)) {
-       void this.router.navigateByUrl(key === 'l' ? '/ledger' : '/market'); handled = true;
+     const routes: Record<string,string> = {h:'/market',e:'/market',l:'/ledger',d:'/messages?folder=messages',n:'/messages?folder=attention',a:'/history',w:'/wealth',c:'/economy'};
+     if (sequence && (routes[key] || key === 'u')) {
+       const path = key === 'u' ? this.session.me()?.id ? '/people/' + encodeURIComponent(this.session.me()!.id) : null : routes[key];
+       if (path) { void this.router.navigateByUrl(path); handled = true; }
      } else if (key === 'g') { this.gUntil = performance.now() + 1000; handled = true; }
      else if (key === 'j' || key === 'k') handled = this.move(key === 'j' ? 1 : -1);
      else if (key === '0') handled = this.focus(this.rows()[0]);
-     else if (key === 'n') {
-       const title = document.querySelector<HTMLElement>('app-market input[name="title"]');
-       if (title) handled = this.focus(title);
-       else {
-         void this.router.navigateByUrl('/list').then(() => requestAnimationFrame(() =>
-           requestAnimationFrame(() => document.querySelector<HTMLElement>('app-market input[name="title"]')?.focus())));
-         handled = true;
-       }
-     }
+     else if (key === 'n') handled = this.compose(false);
+     else if (key === 's' || key === '/') handled = this.focus(document.querySelector<HTMLElement>('main input[type="search"]') ?? undefined);
+     else if (key === 'r') { const reply = document.querySelector<HTMLAnchorElement>('main [data-keyboard-reply]'); if(reply) {reply.click();handled=true;} }
+     else if (key === 'o') { const row = document.activeElement?.closest<HTMLButtonElement>('button[data-keyboard-row]'); if(row) {row.click();handled=true;} }
    }
    if (handled) { event.preventDefault(); event.stopPropagation(); }
+ }
+ private compose(message: boolean): boolean {
+   if(!this.session.signedIn()) return false;
+   const mail = message || ['/messages','/send'].includes(this.router.url?.split('?')[0]);
+   const selector = mail ? 'app-send input[name="memo"]' : 'app-market input[name="title"]';
+   const existing = document.querySelector<HTMLElement>(selector);
+   if(existing) return this.focus(existing);
+   void this.router.navigateByUrl(mail ? '/send?amount=0' : '/list').then(() => requestAnimationFrame(() =>
+     requestAnimationFrame(() => {const field = document.querySelector<HTMLElement>(selector); if(field) this.focus(field);} )));
+   return true;
  }
  private rows(): HTMLElement[] {
    return Array.from(document.querySelectorAll<HTMLElement>('main [data-keyboard-row]')).filter(e => e.getClientRects().length > 0);

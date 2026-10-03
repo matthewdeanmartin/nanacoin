@@ -1,6 +1,8 @@
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { Log } from '../api/log';
 import { Component, DestroyRef, computed, inject, resource, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { NanacoinService } from '../api/nanacoin.service';
 import { ApiBase } from '../api/api-base';
 import { Session, reloadOnLedgerChange } from '../api/session';
@@ -27,7 +29,7 @@ import { mailRows, MailRow } from './mail-model';
    <div class="mailbox" [class.mailbox--selected]="!!current()">
      <div class="mail-list" aria-label="Messages">
        @for (row of visible(); track row.id) {
-         <button class="mail-row" [class.mail-row--unread]="unread(row)" [class.mail-row--active]="selected() === row.id" (click)="open(row)" [attr.aria-pressed]="selected() === row.id">
+         <button class="mail-row" data-keyboard-row [class.mail-row--unread]="unread(row)" [class.mail-row--active]="selected() === row.id" (click)="open(row)" [attr.aria-pressed]="selected() === row.id">
            <span class="mail-row__sender">{{row.sender}}</span><time>{{row.at * 1000 | date:'MMM d'}}</time>
            <span class="mail-row__subject">{{row.subject}}</span><span class="mail-row__kind">{{row.attention ? 'Action needed' : row.kind}}{{unread(row) ? ' · New' : ''}}</span>
          </button>
@@ -42,7 +44,7 @@ import { mailRows, MailRow } from './mail-model';
          <p class="mail-body">{{row.body}}</p>
          <div class="mail-actions">
            @if (row.route) { <a class="btn" [routerLink]="row.route" [queryParams]="row.route==='/history' ? {tab:row.kind==='Transaction' ? 'transactions' : 'todos'} : {}">{{row.kind === 'Offer' ? 'Review offer' : row.kind === 'Loan' ? 'Review loan' : 'View account'}}</a> }
-           @if (row.replyTo) { <a class="btn btn--quiet" routerLink="/send" [queryParams]="{to:row.replyTo, amount:'0'}">{{row.sent ? 'Write again' : 'Reply'}}</a> }
+           @if (row.replyTo) { <a class="btn btn--quiet" data-keyboard-reply routerLink="/send" [queryParams]="{to:row.replyTo, amount:'0'}">{{row.sent ? 'Write again' : 'Reply'}}</a> }
          </div>
        } @else { <p class="muted">Select a row to read it.</p> }
      </section>
@@ -54,6 +56,7 @@ import { mailRows, MailRow } from './mail-model';
 })
 export class MessagesPage {
  protected readonly session = inject(Session);
+ private readonly log = inject(Log);
  private readonly api = inject(NanacoinService);
  private readonly base = inject(ApiBase);
  protected readonly search = signal(''); protected readonly selected = signal<string | null>(null);
@@ -75,6 +78,10 @@ export class MessagesPage {
  }));
  protected readonly current = computed(() => this.book.value()?.rows.find(r => r.id === this.selected()));
  constructor() {
+   inject(ActivatedRoute).queryParamMap.pipe(takeUntilDestroyed()).subscribe(params => {
+     const folder = params.get('folder');
+     this.filter.set(this.folders.some(f=>f.id === folder) ? folder! : 'all');
+   });
    try { const saved = JSON.parse(localStorage.getItem('nanacoin-mail-seen') ?? '{}'); if (saved && typeof saved === 'object' && !Array.isArray(saved)) this.seen.set(saved); } catch { /* local-only read markers */ }
    const timer = setInterval(() => { if (!document.hidden && !this.book.isLoading()) this.book.reload(); }, 30_000); inject(DestroyRef).onDestroy(() => clearInterval(timer));
  }
@@ -82,7 +89,7 @@ export class MessagesPage {
  protected open(row: MailRow): void {
    this.selected.set(row.id);
    if (row.kind === 'Message' && !row.sent) {
-     void this.api.screenRead(row.id).catch(error => console.warn('Kitchen screen read update was not queued', error));
+     void this.api.screenRead(row.id).catch(error => this.log.warn('messages', 'Kitchen screen read update was not queued', { error: String(error) }));
    }
    const old = this.seen()[this.scope()];
    const updated = {...this.seen(),[this.scope()]: [...(Array.isArray(old) ? old : []).filter(id => id !== row.revision),row.revision].slice(-512)};

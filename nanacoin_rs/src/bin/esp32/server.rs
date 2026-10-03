@@ -490,6 +490,27 @@ fn respond(ctx: &Context, request: &Request, secure: bool, output: &mut [u8]) ->
     let began = Instant::now();
     let method = request.method.as_str();
     let uri = request.uri.as_str();
+    // Public machine health must precede the website's missing-asset reply
+    // and the HTTP onboarding restriction. It never takes the ledger lock.
+    if method == "GET" && uri.split('?').next() == Some("/metrics") {
+        ctx.diagnostics.requests.fetch_add(1, Ordering::Relaxed);
+        let (status, len) = nanacoin::diagnostics::influx(
+            &ctx.diagnostics.snapshot(),
+            nanacoin::board::ID,
+            nanacoin::board::FQDN,
+            output,
+        );
+        return Response::new(
+            status,
+            &[
+                ("Content-Type", "text/plain; charset=utf-8"),
+                ("Cache-Control", "no-store"),
+            ],
+            Body::Owned(output[..len].to_vec()),
+            false,
+            request.close,
+        );
+    }
     let locked_http = !secure && ctx.shared.lock().unwrap().https_only();
     let static_reply = if locked_http {
         nanacoin::web::onboarding(method, uri, true)
@@ -507,27 +528,6 @@ fn respond(ctx: &Context, request: &Request, secure: bool, output: &mut [u8]) ->
             &reply.headers,
             Body::Flash(reply.bytes),
             method == "HEAD",
-            request.close,
-        );
-    }
-    // Scraped by housemetrics: the sampler's snapshot as one Influx line.
-    // Like /api/v1/diag, it never takes the ledger lock.
-    if method == "GET" && uri.split('?').next() == Some("/metrics") {
-        ctx.diagnostics.requests.fetch_add(1, Ordering::Relaxed);
-        let (status, len) = nanacoin::diagnostics::influx(
-            &ctx.diagnostics.snapshot(),
-            nanacoin::board::ID,
-            nanacoin::board::FQDN,
-            output,
-        );
-        return Response::new(
-            status,
-            &[
-                ("Content-Type", "text/plain; charset=utf-8"),
-                ("Cache-Control", "no-store"),
-            ],
-            Body::Owned(output[..len].to_vec()),
-            false,
             request.close,
         );
     }

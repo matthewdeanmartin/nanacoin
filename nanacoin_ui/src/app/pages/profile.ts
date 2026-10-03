@@ -106,7 +106,7 @@ const PAGE = 50;
         @if (owned().length) {
           <div class="cards profile-art">
             @for (a of owned(); track a.id) {
-              <article class="card"><app-art-picture [art]="a" [controls]="false" /><h3>{{ a.title }}</h3><p class="card__meta">Edition #{{ a.id }}@if (a.equipped) { · on profile }@if (a.price !== null) { · for sale at {{ a.price | nc }} NC }</p></article>
+              <article data-keyboard-row tabindex="-1" class="card"><app-art-picture [art]="a" [controls]="false" /><h3>{{ a.title }}</h3><p class="card__meta">Edition #{{ a.id }}@if (a.equipped) { · on profile }@if (a.price !== null) { · for sale at {{ a.price | nc }} NC }</p></article>
             }
           </div>
         } @else { <p class="muted">No art yet.</p> }

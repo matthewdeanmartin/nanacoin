@@ -10,6 +10,7 @@ import { Dialogs } from '../ui/dialog';
 import { ArtPicture } from '../art/art-picture';
 import { TrustedArtHosts } from '../art/trusted-hosts';
 import { digestOf, sha256Hex } from '../art/art-media';
+import { MinicloudArt, StoredCopyright } from '../art/minicloud-art';
 import { memberNumber, nameOf, userIdOf } from '../people/people';
 
 const bytes = (text: string) => new TextEncoder().encode(text).length;
@@ -33,7 +34,7 @@ export function mintProblem(title: string, license: string, locator: string, sha
   selector: 'app-art', imports: [FormsModule, MoneyPipe, RouterLink, ArtPicture],
   template: `
     <h1>Digital Art</h1>
-    <p class="muted">Make an edition of your art, sell it, give it away, or show it on your profile. The household notebook records who owns each edition; the picture itself stays wherever the artist put it. No crypto, no NFT, no blockchain. Owning an edition does not transfer copyright; the license says what the owner may do.</p>
+    <p class="muted">Make an edition of your art, sell it, give it away, or show it on your profile. The household notebook records who owns each edition; the picture can live in minicloud or at an external address. No crypto, no NFT, no blockchain. Owning an edition does not transfer copyright; the license says what the owner may do.</p>
     @if (!session.signedIn()) { <p>Sign in to see the household's art.</p> }
     @else {
       <div class="tabs" role="tablist" aria-label="Art views">
@@ -47,9 +48,20 @@ export function mintProblem(title: string, license: string, locator: string, sha
       @if (view() === 'make') {
         <form class="panel art-make" (ngSubmit)="mint()">
           <h2>Make an edition</h2>
-          <p class="muted small">Put the picture somewhere on the web first (your own site, a photo host), then register it here. Each edition is one of a kind on this board, even if you register the same picture twice.</p>
+          <p class="muted small">Upload a picture to minicloud and register its copyright, choose an existing registered file, or use an external picture address. Each edition is one of a kind on this board, even if you register the same picture twice.</p>
           <label>Title <input name="title" [(ngModel)]="title" required maxlength="80" placeholder="Moonlit garden" /></label>
           <label>What may the owner do with it? <input name="license" [(ngModel)]="license" required maxlength="96" /></label>
+          <section class="panel">
+            <h3>Minicloud files and copyrights</h3>
+            <label>Image file <input name="cloudFile" type="file" accept="image/*" (change)="chooseCloudFile($event)" /></label>
+            <button type="button" class="btn btn--quiet btn--small" [disabled]="busy() || !cloudFile" (click)="uploadToCloud()">Store file and register copyright</button>
+            <label>Search registered files <input name="cloudSearch" [(ngModel)]="cloudSearch" /></label>
+            <button type="button" class="btn btn--quiet btn--small" [disabled]="busy()" (click)="loadCloudFiles()">Browse my registered images</button>
+            @for (c of cloudFiles(); track c.bucket + '/' + c.key) {
+              <button type="button" class="btn btn--quiet btn--small" (click)="useCloudFile(c)">{{ c.title }} · {{ c.key }}</button>
+            }
+            <p class="muted small">Uses your bank login. Copyright stays with the registered owner when an edition is sold or given away.</p>
+          </section>
           <label>Picture address <input name="locator" type="url" [(ngModel)]="locator" required maxlength="192" placeholder="https://example.org/my-art.png" /></label>
           <label>SHA-256 digest <input name="sha256" [(ngModel)]="sha256" required pattern="[0-9a-fA-F]{64}" spellcheck="false" autocomplete="off" placeholder="Computed from the picture" /></label>
           <div class="art-digest">
@@ -57,13 +69,13 @@ export function mintProblem(title: string, license: string, locator: string, sha
             <label class="btn btn--quiet btn--small art-file">Compute from a file on this device<input type="file" accept="image/*" (change)="digestFromFile($event)" /></label>
           </div>
           @if (preview(); as p) { <img class="art-preview" [src]="p" alt="Preview of the chosen file" /> }
-          <p class="muted small">The digest is a fingerprint of the exact file. Anyone can later check that the picture at the address is the one you registered. The board never downloads it.</p>
+          <p class="muted small">The digest is a fingerprint of the exact file. Anyone can later check that the picture at the address is the one you registered. Minicloud stores uploaded files; external addresses remain references.</p>
           <button class="btn" type="submit" [disabled]="busy()">{{ busy() ? 'Registering…' : 'Register edition' }}</button>
         </form>
       } @else {
         <div class="cards art-gallery">
           @for (a of filtered(view()); track a.id) {
-            <article class="card" [attr.aria-label]="a.title">
+            <article data-keyboard-row tabindex="-1" class="card" [attr.aria-label]="a.title">
               <app-art-picture [art]="a" />
               <h3>{{ a.title }}</h3>
               <p class="card__meta">Edition #{{ a.id }} · by <a [routerLink]="['/people', userIdOf(a.creator)]">{{ name(a.creator) }}</a></p>
@@ -115,6 +127,12 @@ export function mintProblem(title: string, license: string, locator: string, sha
 export class ArtPage {
   protected readonly session = inject(Session);
   private readonly api = inject(NanacoinService);
+  private readonly cloud = inject(MinicloudArt);
+  protected cloudFile: File | null = null;
+  protected cloudSearch = '';
+  protected readonly cloudFiles = signal<StoredCopyright[]>([]);
+  private cloudURL = '';
+
   private readonly money = inject(Money);
   private readonly toasts = inject(Toasts);
   private readonly dialogs = inject(Dialogs);
@@ -145,6 +163,30 @@ export class ArtPage {
   }
   protected isMine(a: Artwork): boolean { return a.owner === this.me(); }
   protected name(member: number): string { return nameOf(this.session.household(), member); }
+
+  protected chooseCloudFile(event: Event): void {
+    this.cloudFile = (event.target as HTMLInputElement).files?.[0] ?? null;
+    if (this.cloudFile && !this.title) this.title = this.cloudFile.name.replace(/\.[^.]+$/, '').slice(0, 80);
+  }
+  protected async uploadToCloud(): Promise<void> {
+    if (!this.cloudFile || this.busy()) return;
+    if (!this.title.trim() || !this.license.trim()) { this.toasts.error('Enter a title and license first.'); return; }
+    this.busy.set(true);
+    try {
+      const stored = await this.cloud.upload(this.cloudFile, this.title.trim(), this.license.trim());
+      this.cloudURL = stored.url; this.useCloudFile(stored.record);
+      this.toasts.ok('File stored and copyright registered. You can now register the edition.');
+    } catch (e) { this.toasts.fromError(e); } finally { this.busy.set(false); }
+  }
+  protected async loadCloudFiles(): Promise<void> {
+    if (this.busy()) return; this.busy.set(true);
+    try { const found = await this.cloud.list(this.cloudSearch); this.cloudURL = found.url; this.cloudFiles.set(found.records); }
+    catch (e) { this.toasts.fromError(e); } finally { this.busy.set(false); }
+  }
+  protected useCloudFile(c: StoredCopyright): void {
+    this.title = c.title; this.license = c.license; this.sha256 = c.hash;
+    this.locator = this.cloud.fileURL(this.cloudURL, c);
+  }
 
   protected async digestFromUrl(): Promise<void> {
     if (!this.locator.startsWith('https://')) { this.toasts.error('Enter the picture’s https:// address first.'); return; }

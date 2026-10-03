@@ -38,6 +38,7 @@ pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
 base64 = { version = "0.22", default-features = false }
 getrandom = "0.2"
 crc32fast = "1.4"
+hmac = "0.12"
 httparse = "1.10.1"
 tiny_http = { version = "0.12", optional = true }
 fs2 = { version = "0.4", optional = true }

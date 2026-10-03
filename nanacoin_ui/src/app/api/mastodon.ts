@@ -220,7 +220,7 @@ export class Mastodon {
       headers: {
         Authorization: `Bearer ${credentials.accessToken}`,
         'Content-Type': 'application/json',
-        'Idempotency-Key': crypto.randomUUID(),
+        'Idempotency-Key': randomValue(32),
       },
       body: JSON.stringify({ status: `${recipient.mastodon_id} ${text}`, visibility: 'direct' }),
     }));

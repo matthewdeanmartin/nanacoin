@@ -1,5 +1,52 @@
 # Deploy Rust NanaCoin and the Angular app to a bank
 
+## October 3 observability fix (deployed to S3)
+
+The live S3 bank returned 404 at `http://nanacoin.local/metrics`. The source
+had an Influx health handler, but the bundled website handler answered a
+missing-asset 404 before it could run. The metrics handler now runs first,
+before website routing and HTTP onboarding restrictions, without taking the
+ledger lock. Static routing also reserves `/metrics` for the health handler.
+The endpoint reports machine facts, not financial records or credentials.
+
+Deploy this fix using the existing **S3 app-only upgrade** after identifying
+MAC `ac:a7:04:2c:2c:04`; preserve the ledger, credentials and certificates.
+Do not infer that a desktop gate proves the firmware is live. After deployment,
+require HTTP 200 and a `board,app=nanacoin,bank=s3,host=nanacoin.local` Influx
+line from `/metrics`, in addition to the normal strict board probe.
+
+The initial desktop check encountered a running server holding
+`target/debug/nanacoin.exe`; checks were rerun with
+`CARGO_TARGET_DIR=target-observability`, leaving that server running.
+Those full checks passed, including both bank capacity profiles and the HTTP
+restart smoke. The S3 app is 3,558,896 / 4,194,304 bytes.
+Logs: `.embuild/observability-check.log` and
+`.embuild/observability-firmware-s3.log`.
+
+### October 3, 2026: S3 deployment verified
+
+- Owner attached NanaCoin and authorized deployment. Windows native USB
+  COM9 identified `ac:a7:04:2c:2c:04`; the writer independently verified
+  ESP32-S3, that MAC and the exact S3 partition layout before writing.
+- Reused the prepared image through `deploy.py` dry-run and write, without
+  recompiling. App SHA-256:
+  `340f97e66fb4d72e6fcef52684fd75f38665f86c3d9561d65534e096e82fcba0`.
+  Application hash verified; automatic reset completed.
+- Only `0x10000–0x374fff` was erased/written. NVS, ledger at `0x410000`,
+  bootloader, partition table and existing certificates were preserved.
+  Private pre/post public-ledger snapshots matched exactly and the ledger
+  remained balanced. No payment, reset, seeding or credential change.
+- Strict S3 live probe passed at `192.168.1.158`: hostname-verified TLS,
+  correct bank, exact bundled assets, public notebook, Board Health and CA.
+  Product navigation was not manually clicked during this deployment.
+- `http://nanacoin.local/metrics` returned 200 with
+  `board,app=nanacoin,bank=s3,host=nanacoin.local`. Housemetrics confirmed
+  a successful configured scrape: 32 samples, empty `last_error`.
+- Logs: `.embuild/observability-deploy-s3.log` and
+  `.embuild/observability-probe-s3.log`. Private ledger evidence stays in
+  the ignored `.embuild` directory; never print its contents.
+- S2 bank was not attached or flashed in this deployment.
+
 This household runs **two independent NanaCoin banks** (see
 `spec/SECOND_BANK.md`). Each has its own board, hostname, certificate,
 firmware build, ledger and currency. **Every command below names the board.**
@@ -219,7 +266,7 @@ PORT=COM9                         # the port found above for THAT board
 bash scripts/deploy.sh "$BOARD" "$PORT" --dry-run
 ```
 
-The dry run does all builds but never opens the port. It must:
+The shell wrapper dry run does all builds but never opens the port. It must:
 
 1. build the Angular production app;
 2. package that board's assets (`.embuild/web` or `.embuild/web-s2`);
@@ -232,6 +279,28 @@ The dry run does all builds but never opens the port. It must:
 
 Warnings are not automatically failures, but any nonzero exit is. Fix the
 specific failure; do not skip its check.
+
+### Reuse a prepared build
+
+Build once, then run the underlying Python checker and writer against that
+same image. The `deploy.sh` wrapper rebuilds on each invocation, including
+`--dry-run`; do not repeat it when the checked images already exist and no
+source, config, certificate or web input has changed.
+
+```bash
+bash scripts/build-esp32.sh "$BOARD"       # once; omit for a current prepared build
+ESP_PY=C:/Espressif/python_env/idf5.5_py3.11_env/Scripts/python.exe
+IMAGE=C:/ncr/xtensa-esp32s3-espidf/release/nanacoin-esp32.bin  # S3 only
+# S2 instead: C:/ncr-s2/xtensa-esp32s2-espidf/release/nanacoin-esp32.bin
+uv run --no-project --python "$ESP_PY" python scripts/deploy.py \
+  --board "$BOARD" --port "$PORT" --image "$IMAGE" --dry-run
+uv run --no-project --python "$ESP_PY" python scripts/deploy.py \
+  --board "$BOARD" --port "$PORT" --image "$IMAGE"
+```
+
+The direct writer enforces the same chip, image marker, MAC and partition
+checks. Continue with the strict live probe in step 5. Neither dry-run
+success nor serial hash verification replaces that probe.
 
 ## 3. Deploy the same source tree
 

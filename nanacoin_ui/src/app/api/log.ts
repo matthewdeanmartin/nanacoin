@@ -154,7 +154,7 @@ export class Log {
     if (this.entries.length > CAPACITY) this.entries.shift();
     this.revision.update((n) => n + 1);
 
-    if (this.toConsole()) {
+    if (this.toConsole() || level === 'warn' || level === 'error') {
       const label = `%c${scope}%c ${message}`;
       const tag = 'color:#b8562f;font-weight:600';
       const rest = 'color:inherit;font-weight:normal';

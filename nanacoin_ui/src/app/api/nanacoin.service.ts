@@ -693,6 +693,10 @@ export class NanacoinService {
   // --- commerce (gift requests and digital art) ---
 
   /** Every gift request and art edition on the board; any member may read them. */
+  minicloudSession(): Promise<{url: string; token: string; owner: string; namespace: string; expires_at: number}> {
+    return this.get('/minicloud/session');
+  }
+
   commerceBook(): Promise<CommerceBook> {
     return this.get<CommerceBook>('/commerce');
   }

@@ -139,7 +139,7 @@ fn route(
     accept: &str,
     etag: &str,
 ) -> Option<Reply> {
-    if is_api(uri) || assets.is_empty() {
+    if is_api(uri) || uri.split('?').next() == Some("/metrics") || assets.is_empty() {
         return None;
     }
     let mut reply = Reply {
@@ -299,6 +299,9 @@ mod tests {
     ];
     #[test]
     fn paths_and_methods() {
+        for method in ["GET", "HEAD", "POST"] {
+            assert!(route(FIXTURE, method, "/metrics?x=1", "", "").is_none());
+        }
         for path in ["/", "/nana", "/market?x=1", "/diagnostics/", "/lotto"] {
             assert_eq!(route(FIXTURE, "GET", path, "", "").unwrap().bytes, b"html");
         }

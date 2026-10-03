@@ -22,6 +22,8 @@ nav a:hover, nav a.current { color:var(--accent); border-bottom-color:var(--acce
 .menu-group__items a { min-height:44px; display:flex; align-items:center; border-bottom:1px solid var(--line); }
 a:focus-visible, button:focus-visible { outline:3px solid #467791; outline-offset:4px; }
 .menu-toggle { display:none; }
+.menu-group__items button { display:block;width:100%;text-align:left;border:0;background:transparent;color:var(--ink);font:inherit;padding:.65rem .8rem;cursor:pointer;min-height:44px; }
+.menu-group__items button:hover { background:var(--accent-soft); }
 @media (max-width: 980px) {
   .menu-bar { justify-content:space-between; min-height:68px; gap:1rem; padding:.7rem 1rem; }
   .menu-bar { display:flex; }

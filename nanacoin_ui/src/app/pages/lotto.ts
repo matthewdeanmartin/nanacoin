@@ -46,7 +46,7 @@ import { lottoOutcome } from './account-commitments';
       @if (book.isLoading()) { <p role="status">Loading lotto…</p> }
       @if (book.error()) { <p role="alert">Could not load lotto. <button class="btn btn--quiet" (click)="book.reload()">Retry</button></p> }
       @for (lotto of book.value()?.lottos ?? []; track lotto.id) {
-        <article class="card"><h2>{{lotto.terms.title}}</h2>
+        <article data-keyboard-row tabindex="-1" class="card"><h2>{{lotto.terms.title}}</h2>
           <p>{{label(lotto.terms.kind)}} · {{lotto.status.toLowerCase()}}</p>
           <p>Ticket: {{lotto.terms.ticket_price | nc}} NC · Pool: {{lotto.pool | nc}} NC · {{lotto.tickets}} tickets</p>
           <p>Your tickets: {{lotto.my_tickets}}@if (lotto.tickets) { · Your chance: {{(100 * lotto.my_tickets / lotto.tickets).toFixed(2)}}% }</p>

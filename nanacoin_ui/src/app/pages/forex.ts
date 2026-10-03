@@ -451,7 +451,7 @@ export class ForexPage {
           let message = `Your NanaCoin exchange for ${this.money.format(q.coins)} ${unit} at ${this.cents(q.cents_per_coin)} each was accepted.`;
           if (this.notificationAllCaps) message = message.toLocaleUpperCase();
           try { await this.mastodon.sendDirect(recipient, message); }
-          catch (e) { this.toasts.error(`Exchange completed, but the private message failed: ${e instanceof Error ? e.message : 'Mastodon error'}`); }
+          catch (e) { this.toasts.error(`Exchange completed, but the private message failed: ${e instanceof Error ? e.message : 'Mastodon error'}`, e); }
         }
       }
       await this.session.refresh();

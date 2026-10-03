@@ -361,3 +361,20 @@ withdraw a REQUESTED application. All mutations require idempotency keys and
 retain ordinary restart/replay and accounting checks. Applications share the
 bounded 32-entry loan book. Competing proposals after the first receive conflict;
 multiple simultaneous lender bids are a future extension.
+
+## Minicloud file and copyright delegation
+
+`GET /api/v1/minicloud/session` requires a browser login session. Returns
+`{url, token, owner, namespace, expires_at}` for the configured minicloud
+instance. Tokens expire in five minutes; API keys cannot use this endpoint.
+Configure `NANACOIN_MINICLOUD_URL` (HTTPS origin), `NANACOIN_MINICLOUD_BANK`
+(default: board FQDN) and `NANACOIN_MINICLOUD_SECRET` (32–128 bytes), then add
+matching bank trust in minicloud Management → Banks. The secret remains on
+the servers. Minicloud verifies bank assertions and limits file writes to
+the authenticated owner.
+
+The Angular art form supports upload plus copyright registration and browsing
+registered images. NanaCoin editions retain their existing URL/SHA-256 model.
+Selling/gifting an edition does not transfer the minicloud copyright record.
+Minicloud's HTTP service needs an HTTPS reverse proxy for use from HTTPS art
+clients; the configured origin must match its trusted-bank audience exactly.

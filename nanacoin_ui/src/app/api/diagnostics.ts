@@ -1,5 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { ApiBase } from './api-base';
+import { Log } from './log';
 
 export interface HeapInfo {
   total: number; free: number; largest: number | null; minimum: number | null;
@@ -30,6 +31,7 @@ export interface MachineInfo {
 
 @Injectable({ providedIn: 'root' })
 export class MachineDiagnostics {
+  private readonly log = inject(Log);
   private readonly base = inject(ApiBase);
 
   async read<T>(path: string, signal: AbortSignal): Promise<T> {
@@ -45,6 +47,9 @@ export class MachineDiagnostics {
       if (response.status === 404) throw new Error('This firmware does not provide these diagnostics.');
       if (!response.ok) throw new Error(`Diagnostics returned HTTP ${response.status}.`);
       return await response.json() as T;
+    } catch (error) {
+      if (!signal.aborted) this.log.error('diagnostics', `GET /diag${path} failed`, {error:String(error)});
+      throw error;
     } finally {
       clearTimeout(timeout);
       signal.removeEventListener('abort', abort);

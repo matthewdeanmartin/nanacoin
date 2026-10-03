@@ -314,6 +314,19 @@ pub fn handle_keyed<J: Journal>(
         if scope == KeyScope::Read && method != "GET" {
             return Err(Error::ReadOnlyKey);
         }
+        if method == "GET" && route_path == "/api/v1/minicloud/session" {
+            // Delegation grants file writes: never upgrade a read-only or bot API key.
+            if by_key {
+                return Err(Error::Forbidden);
+            }
+            return serialize(
+                &crate::minicloud::session(
+                    service.state.member(actor)?.username.as_str(),
+                    service.now(),
+                )?,
+                output,
+            );
+        }
         let bot_key = route_path
             .strip_prefix("/api/v1/users/")
             .and_then(|p| p.strip_suffix("/api-key"));

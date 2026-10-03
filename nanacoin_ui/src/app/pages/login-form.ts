@@ -1,3 +1,4 @@
+import { Tour } from '../ui/tour';
 import { Component, inject, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
@@ -10,7 +11,16 @@ import { Toasts } from '../ui/toasts';
   imports: [FormsModule],
   template: `
     <div class="panel">
-      <h1>{{ household() }}</h1>
+      @if (isDemo && !adding()) {
+        <div class="demo-hero"><img src="nanacoin.png" alt="A smiling NanaCoin in front of a bag of household money, drawn by the artist" width="1440" height="1723" /><h1>NanaCoin</h1><p class="muted">The household bank</p></div>
+        <button class="btn demo-login" type="button" [disabled]="busy()" (click)="loginAs('nana')">Log in as Nana</button>
+        <section class="demo-essay" aria-label="About this demo">
+          <p>This is a full implementation of the Nanacoin 2026 specification. It runs on a $5 computer you plug in at your house. You use the money to buy things from people in your own household. The GIBWG (Grandma Interbank Work Group) is still working out interbank exchanges and awaits the publication of the Nanacoin 2027.</p>
+          <p>This is the demo site. Art work by my daughter, code by a clanker, no crypto; so something to make everyone happy and/or angry.</p>
+        </section>
+        <button class="btn btn--quiet demo-login" type="button" [disabled]="busy()" (click)="startTour()">Take a tour as Nana</button>
+        <h2>Choose your seat at the table</h2>
+      } @else { <h1>{{ household() }}</h1> }
 
       @if (adding()) {
         <!--
@@ -46,7 +56,7 @@ import { Toasts } from '../ui/toasts';
               [disabled]="busy()"
               (click)="loginAs(d.username)"
             >
-              <strong>{{ d.label }}</strong>
+              <strong>Log in as {{ d.label }}</strong>
               <span class="whoami__hint">{{ d.hint }}</span>
             </button>
           }
@@ -78,8 +88,10 @@ import { Toasts } from '../ui/toasts';
       }
     </div>
   `,
+  styles: `.demo-hero{text-align:center}.demo-hero img{display:block;object-fit:contain;width:min(100%,280px);height:300px;margin:0 auto 1rem}.demo-hero h1{margin:.5rem 0}.demo-login{display:block;margin:1.3rem auto}.demo-essay{font-size:1.05rem;line-height:1.75;max-width:65ch;margin:2rem auto}.demo-essay p+p{margin-top:1.2rem}`,
 })
 export class LoginForm {
+  private readonly tour = inject(Tour);
   private readonly session = inject(Session);
   private readonly toasts = inject(Toasts);
 
@@ -104,6 +116,11 @@ export class LoginForm {
   protected readonly demoUsers = DEMO_USERS;
 
   /** One click, no password: the demo's whole login. */
+  protected async startTour(): Promise<void> {
+    await this.loginAs('nana');
+    if (this.session.signedIn()) await this.tour.start();
+  }
+
   protected async loginAs(username: string): Promise<void> {
     this.username = username;
     // The demo backend ignores it, but the client still runs the real PKCE

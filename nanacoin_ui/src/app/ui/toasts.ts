@@ -24,7 +24,10 @@ export class Toasts {
     this.push(text, 'ok');
   }
 
-  error(text: string) {
+  error(text: string, cause?: unknown) {
+    this.log.error('ui', text, cause === undefined ? undefined : {
+      error: String(cause), stack: cause instanceof Error ? firstFrames(cause.stack) : undefined,
+    });
     this.push(text, 'error');
   }
 

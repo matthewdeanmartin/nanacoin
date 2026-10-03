@@ -288,11 +288,11 @@ export class SendPage {
       this.toasts.ok(amount === 0 ? 'Message saved in NanaCoin Mail.' : 'Coins sent.');
       if (wantsScreen) {
         try { await this.api.screenMessage(transaction.id); }
-        catch (e) { this.toasts.error(`Saved in NanaCoin, but the kitchen screen copy was not queued: ${e instanceof Error ? e.message : 'screen error'}`); }
+        catch (e) { this.toasts.error(`Saved in NanaCoin, but the kitchen screen copy was not queued: ${e instanceof Error ? e.message : 'screen error'}`, e); }
       }
       if (wantsDm && recipient) {
         try { await this.mastodon.sendDirect(recipient,memo); }
-        catch (e) { this.toasts.error(`Saved in NanaCoin, but the Mastodon copy failed: ${e instanceof Error ? e.message : 'Mastodon error'}`); }
+        catch (e) { this.toasts.error(`Saved in NanaCoin, but the Mastodon copy failed: ${e instanceof Error ? e.message : 'Mastodon error'}`, e); }
       }
       await this.session.refresh();
     } catch (e) { this.toasts.fromError(e); }

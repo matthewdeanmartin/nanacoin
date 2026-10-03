@@ -35,6 +35,8 @@ describe('Mastodon', () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } }),
     );
+    // HTTP origins have getRandomValues, but no randomUUID.
+    const uuid = vi.spyOn(crypto, 'randomUUID').mockImplementation(() => { throw new Error('randomUUID unavailable on HTTP'); });
     const bob: User = {
       id: 'user-2', username: 'bob', display_name: 'Bob', role: 'user',
       status: 'ACTIVE', account: 'account-2', created_at: 1,
@@ -44,8 +46,10 @@ describe('Mastodon', () => {
     await mastodon.sendDirect(bob, 'Payment received');
 
     expect(fetchMock).toHaveBeenCalledOnce();
+    expect(uuid).not.toHaveBeenCalled();
     const [url, request] = fetchMock.mock.calls[0];
     expect(url).toBe('https://social.example/api/v1/statuses');
+    expect((request?.headers as Record<string,string>)['Idempotency-Key']).toMatch(/^[A-Za-z0-9_-]{43}$/);
     expect(JSON.parse(String(request?.body))).toEqual({
       status: '@bob@elsewhere.example Payment received', visibility: 'direct',
     });

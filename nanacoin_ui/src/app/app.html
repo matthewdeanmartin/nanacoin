@@ -15,12 +15,13 @@
   -->
   <p class="demobar">
     Demo of Nanacoin! A non-crypto household currency! Implements
-    <a href="https://www.smbc-comics.com/comic/nanacoin">SMBC Specification (2021 ed)</a>.
+    <a routerLink="/specification">Nanacoin Specification (2026)</a>.
     <a routerLink="/docs">Get your own!</a>
   </p>
 }
 
 <app-site-menu />
+<app-tour />
 @if (money.changed()) {
   <main id="main-content" class="screen"><h1>The currency has been reformed</h1><p>Reload to use the new unit. Open forms and unsent amounts must be reviewed again.</p><button class="btn" (click)="reloadCurrency()">Reload currency & balances</button></main>
 } @else if (publicPage()) {
@@ -35,12 +36,14 @@
 
   @case ('connect') {
     <main id="main-content" class="screen screen--centred" tabindex="-1">
+      @defer (on immediate) {
       <app-connect-form
         [reason]="connectReason()"
         [logsAvailable]="logsOfferable()"
         (connected)="onConnected()"
         (showLogs)="showLogs()"
       />
+      } @placeholder { <p role="status">Loading connection form…</p> }
     </main>
   }
 
@@ -53,14 +56,16 @@
         </div>
       </header>
       <main id="main-content" tabindex="-1">
-        <app-logs />
+        @defer (on immediate) { <app-logs /> }
+        @placeholder { <p role="status">Loading server logs…</p> }
       </main>
     </div>
   }
 
   @case ('setup') {
     <main id="main-content" class="screen screen--centred" tabindex="-1">
-      <app-setup-form (done)="onProvisioned()" />
+      @defer (on immediate) { <app-setup-form (done)="onProvisioned()" /> }
+      @placeholder { <p role="status">Loading household setup…</p> }
     </main>
   }
 
@@ -88,7 +93,7 @@
 
         <span class="request-state" role="status" aria-live="polite">
           @if (activity.failed()) { <span class="request-failed">Server failed</span> }
-          @else if (activity.pending()) { <span class="request-spinner" aria-hidden="true"></span> <span>Working�</span> }
+          @else if (activity.pending()) { <span class="request-spinner" aria-hidden="true"></span> <span>Working…</span> }
         </span>
 
         <div class="topbar__balance" [attr.aria-label]="money.format(session.balance()) + ' NanaCoin'">

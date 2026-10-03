@@ -52,7 +52,7 @@ export function averageOfferRate(loans: Loan[], account: string, direction: 'len
       </section>
       @if (book.isLoading()) { <p role="status">Loading loans…</p> }
       @for (loan of visibleLoans(); track loan.id) {
-        <article class="card">
+        <article data-keyboard-row tabindex="-1" class="card">
           <h2>{{loan.status === 'REQUESTED' ? loan.borrower_name + ' wants a loan' : loan.lender_name + ' to ' + loan.borrower_name}}</h2>
           @if (loan.status === 'REQUESTED' && loan.borrower !== session.me()?.account) {
             <button class="btn" (click)="respond(loan)">Propose a loan</button>

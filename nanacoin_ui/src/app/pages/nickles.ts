@@ -1,3 +1,4 @@
+import { Log } from '../api/log';
 import { Money, MoneyPipe } from '../api/money';
 import { inject as moneyInject } from '@angular/core';
 import { Component, computed, inject, resource, signal } from '@angular/core';
@@ -72,6 +73,7 @@ export function redemptionUrl(token: string, pageUrl = location.href): string {
 export class NicklesPage {
   protected readonly money = moneyInject(Money);
  readonly demo = IS_DEMO; readonly session = inject(Session);
+ private readonly log = inject(Log);
  private readonly api = inject(NanacoinService);
  private readonly route = inject(ActivatedRoute);
  private readonly router = inject(Router);
@@ -105,7 +107,7 @@ export class NicklesPage {
    if (!IS_DEMO || this.busy()) return;
    let amount: number;
    try { amount = this.money.parse(this.amount); if (amount <= 0) throw new Error('Enter a positive amount.'); }
-   catch (e) { this.message.set(e instanceof Error ? e.message : String(e)); return; }
+   catch (e) { this.log.error('nickles', 'Voucher operation failed', {error:String(e),stack:e instanceof Error ? e.stack : undefined}); this.message.set(e instanceof Error ? e.message : String(e)); return; }
    this.busy.set(true);
    try {
      const voucher = await this.api.createNickle(amount, this.session.isNana() && this.fresh);
@@ -120,12 +122,13 @@ export class NicklesPage {
      try {
        this.qrCode.set(await QRCode.toDataURL(redemptionUrl(voucher.token), { errorCorrectionLevel: 'M', margin: 2, width: 256 }));
        this.message.set('Voucher and QR code created. Save the secret before leaving this page.');
-     } catch {
+     } catch (error) {
+       this.log.warn('nickles', 'Could not draw voucher QR code', {error:String(error)});
        this.qrCode.set('');
        this.message.set('Voucher created. The QR code could not be drawn, so save the text code.');
      }
    }
-   catch (e) { this.message.set(e instanceof Error ? e.message : 'Could not create voucher.'); }
+   catch (e) { this.log.error('nickles', 'Voucher operation failed', {error:String(e),stack:e instanceof Error ? e.stack : undefined}); this.message.set(e instanceof Error ? e.message : 'Could not create voucher.'); }
    finally { this.busy.set(false); }
  }
  async redeem(): Promise<void> {
@@ -135,7 +138,7 @@ export class NicklesPage {
    if (mine) { this.message.set(`You issued ${mine.serial}, so you cannot redeem it yourself.`); return; }
    this.busy.set(true);
    try { await this.api.redeemNickle(secret); this.token = ''; await this.session.refresh(); this.ledger.reload(); this.message.set('Redeemed. These coins are now in your account.'); }
-   catch (e) { this.message.set(e instanceof Error ? e.message : 'Could not redeem voucher.'); }
+   catch (e) { this.log.error('nickles', 'Voucher operation failed', {error:String(e),stack:e instanceof Error ? e.stack : undefined}); this.message.set(e instanceof Error ? e.message : 'Could not redeem voucher.'); }
    finally { this.busy.set(false); }
  }
  print(): void { if (this.voucher()) window.print(); }
@@ -143,7 +146,7 @@ export class NicklesPage {
  async showSaved(item: SavedNickle): Promise<void> {
    this.voucher.set({ token: item.token, amount: item.amount, serial: item.serial });
    try { this.qrCode.set(await QRCode.toDataURL(redemptionUrl(item.token), { errorCorrectionLevel: 'M', margin: 2, width: 256 })); }
-   catch { this.qrCode.set(''); }
+   catch (error) { this.log.warn('nickles', 'Could not draw saved voucher QR code', {error:String(error)}); this.qrCode.set(''); }
    requestAnimationFrame(() => document.querySelector('.printable-voucher')?.scrollIntoView({ behavior: 'smooth' }));
  }
  redeemed(item: SavedNickle): boolean { return (this.ledger.value()?.transactions ?? []).some((txn) => txn.reference === `nickle:${item.serial}` && txn.description.startsWith('Redeem nana-nickle')); }

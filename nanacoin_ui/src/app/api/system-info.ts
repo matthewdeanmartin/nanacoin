@@ -1,7 +1,8 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { timeout } from 'rxjs';
+import { tap, timeout } from 'rxjs';
 import { ApiBase } from './api-base';
+import { Log } from './log';
 
 export interface CollectionInfo {
   name: string; persistence: string; used: number; capacity: number; free: number;
@@ -30,10 +31,13 @@ export interface EconomyConfiguration {
 
 @Injectable({ providedIn: 'root' })
 export class SystemInfo {
+  private readonly log = inject(Log);
   private readonly http = inject(HttpClient);
   private readonly base = inject(ApiBase);
   /** Public allowlisted GETs only; no token, mutation or automatic retry. */
   read<T>(path: '/configuration' | '/diag' | '/diag/database' | '/diag/database/benchmark' | '/diag/events') {
-    return this.http.get<T>(this.base.current() + path).pipe(timeout(10000));
+    return this.http.get<T>(this.base.current() + path).pipe(timeout(10000), tap({
+      error: (error: unknown) => this.log.error('system', `GET ${path} failed`, {error:String(error)}),
+    }));
   }
 }

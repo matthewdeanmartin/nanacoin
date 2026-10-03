@@ -8,6 +8,7 @@ import { IS_DEMO } from './demo/demo';
  * and the part most people never open - are not in the initial bundle.
  */
 export const routes: Routes = [
+  { path: 'wealth', loadComponent: () => import('./pages/wealth').then(m => m.WealthPage), title: 'My wealth — NanaCoin' },
   { path: 'docs', loadComponent: () => import('./pages/docs').then(m => m.DocsPage), title: 'Docs — NanaCoin' },
   { path: 'specification', loadComponent: () => import('./pages/specification').then(m => m.SpecificationPage), title: 'NanaCoin Specification (2026) — NanaCoin' },
   { path: 'error-log', loadComponent: () => import('./pages/error-log').then(m => m.ErrorLogPage), title: 'Error Log — NanaCoin' },

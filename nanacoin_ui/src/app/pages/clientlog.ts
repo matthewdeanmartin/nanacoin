@@ -35,7 +35,7 @@ import { Toasts } from '../ui/toasts';
       <label class="checkbox">
         <input type="checkbox" [checked]="log.toConsole()"
                (change)="log.toConsole.set($any($event.target).checked)" />
-        Also print to the console
+        Also print informational entries to the console (errors and warnings always print)
       </label>
 
       <button class="btn btn--quiet btn--small" title="Copy the visible browser log to the clipboard" (click)="copy()">Copy</button>

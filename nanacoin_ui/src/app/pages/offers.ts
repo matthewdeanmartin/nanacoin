@@ -31,7 +31,7 @@ import { Mastodon } from '../api/mastodon';
           <p class="muted small">{{group.description}}</p>
           <div class="cards">
             @for (o of group.offers; track o.id) {
-              <article class="card" [id]="o.id">
+              <article data-keyboard-row tabindex="-1" class="card" [id]="o.id">
                 <h3>{{o.listing_title || 'Listing no longer available'}}</h3>
                 <p>{{sentence(o)}}</p>
                 @if (o.status === 'OPEN') { <p class="tag">{{o.listing_owner === session.me()?.account ? 'Response received - awaiting your acceptance' : 'Awaiting listing owner acceptance'}}</p> }
@@ -154,7 +154,7 @@ export class OffersPage {
           let message = `Your NanaCoin offer for ${offer.listing_title} was accepted for ${this.money.format(offer.amount)} coins.`;
           if (this.notificationAllCaps) message = message.toLocaleUpperCase();
           try { await this.mastodon.sendDirect(recipient, message); }
-          catch (e) { this.toasts.error(`Offer accepted, but the private message failed: ${e instanceof Error ? e.message : 'Mastodon error'}`); }
+          catch (e) { this.toasts.error(`Offer accepted, but the private message failed: ${e instanceof Error ? e.message : 'Mastodon error'}`, e); }
         }
       }
       await this.session.refresh();

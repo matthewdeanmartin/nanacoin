@@ -1,3 +1,4 @@
+import { Tour } from './tour';
 import { Component, ElementRef, inject, signal, viewChild } from '@angular/core';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -16,8 +17,9 @@ import { IS_DEMO } from '../demo/demo';
    <nav id="site-navigation" aria-label="Main navigation" [class.is-open]="open()">
      @if (session.signedIn()) {
        <details name="site-menu-group" class="menu-group" routerLinkActive="current">
-         <summary>Accounts</summary><div class="menu-group__items">
+         <summary>My Account</summary><div class="menu-group__items">
            <a routerLink="/history" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">My Account</a>
+           <a routerLink="/wealth" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">My wealth</a>
            <a routerLink="/people" routerLinkActive="current" [routerLinkActiveOptions]="{ exact: true }" ariaCurrentWhenActive="page" (click)="close()">Demographics</a>
            @if (session.isNana()) {
              <a routerLink="/nana" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Household</a>
@@ -108,6 +110,9 @@ import { IS_DEMO } from '../demo/demo';
      }
      <details name="site-menu-group" class="menu-group help-group" routerLinkActive="current">
        <summary>Help</summary><div class="menu-group__items">
+         <a href="https://matthewdeanmartin.github.io/nanacoin/" (click)="close()">Demo Site</a>
+         @if (session.signedIn()) { <button type="button" (click)="close(); tour.start()">Take a tour</button> }
+         <a routerLink="/clientlog" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Browser Log</a>
          <a routerLink="/about" routerLinkActive="current" [routerLinkActiveOptions]="{ exact: true }" ariaCurrentWhenActive="page" (click)="close()">NanaCoin vs Crypto</a>
          <a routerLink="/about/nickles" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">About Nana-nickles</a>
          <a routerLink="/about/smbc" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">SMBC</a>
@@ -124,6 +129,7 @@ export class SiteMenu {
  readonly open = signal(false);
  private readonly host = inject(ElementRef<HTMLElement>);
  private readonly toggle = viewChild<ElementRef<HTMLButtonElement>>('toggle');
+ protected readonly tour = inject(Tour);
  protected readonly session = inject(Session);
  readonly demo = IS_DEMO;
  constructor() {

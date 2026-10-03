@@ -8,7 +8,7 @@ describe('responsive site navigation', () => {
  afterEach(() => TestBed.resetTestingModule());
  function setup(nana = false) {
    TestBed.configureTestingModule({ providers: [provideRouter([]), { provide: Session, useValue: {
-     signedIn: signal(true), isNana: signal(nana), diagAvailable: signal(true), logsAvailable: signal(false),
+     me: signal(null), signedIn: signal(true), isNana: signal(nana), diagAvailable: signal(true), logsAvailable: signal(false),
    } }] });
    const fixture = TestBed.createComponent(SiteMenu); fixture.detectChanges(); return fixture;
  }
@@ -21,8 +21,8 @@ describe('responsive site navigation', () => {
    expect(buySell?.textContent).toContain('Market');
    expect(buySell?.textContent).toContain('Buy, sell, hire');
    expect(buySell?.textContent).toContain('Digital Art');
-   const accounts = [...fixture.nativeElement.querySelectorAll('details')].find((g: Element) => g.querySelector('summary')?.textContent === 'Accounts');
-   expect([...accounts!.querySelectorAll('a')].map((a: Element)=>a.textContent)).toEqual(['My Account','Demographics']);
+   const accounts = [...fixture.nativeElement.querySelectorAll('details')].find((g: Element) => g.querySelector('summary')?.textContent === 'My Account');
+   expect([...accounts!.querySelectorAll('a')].map((a: Element)=>a.textContent)).toEqual(['My Account','My wealth','Demographics']);
    expect(buySell?.textContent).not.toContain('Offers');
    const mail = [...fixture.nativeElement.querySelectorAll('details')].find((g: Element) => g.querySelector('summary')?.textContent === 'Mail');
    expect([...mail!.querySelectorAll('a')].map((a: Element)=>a.textContent)).toEqual(['Send Money','Gift Requests','Messages','Offers','Invitations']);
@@ -32,7 +32,7 @@ describe('responsive site navigation', () => {
  });
  it('exposes the new System Info pages without signing in', () => {
    TestBed.configureTestingModule({ providers: [provideRouter([]), { provide: Session, useValue: {
-     signedIn: signal(false), isNana: signal(false), diagAvailable: signal(false), logsAvailable: signal(false),
+     me: signal(null), signedIn: signal(false), isNana: signal(false), diagAvailable: signal(false), logsAvailable: signal(false),
    } }] });
    const fixture = TestBed.createComponent(SiteMenu); fixture.detectChanges();
    const links = [...fixture.nativeElement.querySelectorAll('a')].map((a: HTMLAnchorElement) => a.textContent?.trim());
@@ -52,9 +52,9 @@ describe('responsive site navigation', () => {
    expect(button.getAttribute('aria-expanded')).toBe('false');
    expect(fixture.nativeElement.textContent).toContain('Household');
    const groups=Array.from(fixture.nativeElement.querySelectorAll('details')) as HTMLDetailsElement[];
-   expect(groups.find(g=>g.querySelector('summary')?.textContent==='Accounts')?.textContent).toContain('My Account');
-   expect(groups.find(g=>g.querySelector('summary')?.textContent==='Accounts')?.textContent).toContain('Good Deeds');
+   expect(groups.find(g=>g.querySelector('summary')?.textContent==='My Account')?.textContent).toContain('My Account');
+   expect(groups.find(g=>g.querySelector('summary')?.textContent==='My Account')?.textContent).toContain('Good Deeds');
    const help=groups.find(g=>g.querySelector('summary')?.textContent==='Help')!;
-   expect(Array.from(help.querySelectorAll('a')).map(a=>a.textContent)).toEqual(['NanaCoin vs Crypto','About Nana-nickles','SMBC','Lemon Bars','Docs','NanaCoin Specification (2026)']);
+   expect(Array.from(help.querySelectorAll('a')).map(a=>a.textContent)).toEqual(['Demo Site','Browser Log','NanaCoin vs Crypto','About Nana-nickles','SMBC','Lemon Bars','Docs','NanaCoin Specification (2026)']);
  });
 });

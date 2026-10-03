@@ -1,3 +1,5 @@
+import { TourPanel } from './ui/tour';
+import { ProblemLog } from './ui/problem-log';
 import { Activity } from './api/activity';
 import { Money, MoneyPipe } from './api/money';
 import { inject as moneyInject } from '@angular/core';
@@ -32,7 +34,7 @@ type Phase = 'loading' | 'connect' | 'setup' | 'login' | 'app' | 'logs';
   selector: 'app-root',
   imports: [MoneyPipe,
     RouterOutlet, RouterLink,
-    SiteMenu,
+    SiteMenu, TourPanel,
     KeyboardHelp,
     ConnectForm,
     LoginForm,
@@ -97,6 +99,7 @@ export class App {
   );
 
   constructor() {
+    inject(ProblemLog);
     // Mastodon redirects cannot target a hash route. Move its root-level query
     // into My Settings before the callback component is created.
     const callback = new URLSearchParams(location.search);
@@ -111,7 +114,7 @@ export class App {
         void this.session.checkForChanges();
         const path = event.urlAfterRedirects.split('?')[0];
         this.aboutPage.set(path === '/about' || path.startsWith('/about/'));
-        this.publicPage.set(['/about', '/about/nickles', '/about/smbc', '/docs', '/recipes', '/ledger', '/diagnostics', '/error-log', '/database', '/configuration', '/settings'].includes(path));
+        this.publicPage.set(['/clientlog', '/specification', '/about', '/about/nickles', '/about/smbc', '/docs', '/recipes', '/ledger', '/diagnostics', '/error-log', '/database', '/configuration', '/settings'].includes(path));
         requestAnimationFrame(() => document.getElementById('main-content')?.focus());
       }
     });

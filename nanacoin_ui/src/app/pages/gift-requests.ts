@@ -57,7 +57,7 @@ const bytes = (text: string) => new TextEncoder().encode(text).length;
       } @else {
         <div class="cards gift-requests">
           @for (r of visible(); track r.id) {
-            <article class="card" [class.card--closed]="state(r) !== 'open'" [attr.aria-label]="r.title">
+            <article data-keyboard-row tabindex="-1" class="card" [class.card--closed]="state(r) !== 'open'" [attr.aria-label]="r.title">
               <h3>{{ r.title }}</h3>
               <p class="card__meta">{{ isMine(r) ? 'Your request' : 'From ' + ownerName(r) }} · {{ r.created_at * 1000 | date:'MMM d' }}</p>
               @if (r.description) { <p class="card__desc">{{ r.description }}</p> }

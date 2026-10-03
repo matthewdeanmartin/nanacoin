@@ -35,6 +35,22 @@ npm run build     # production bundle into dist/
 npm test          # unit tests, vitest
 ```
 
+The demo build (`npx ng serve --configuration demo`) opens with the artwork,
+introduction, and one-click household logins. Its tour signs in as Nana;
+signed-in members can start their own role-aware tour from **Help → Take a tour**.
+The live tour uses the current account and includes available board diagnostics.
+
+**My Account → My wealth** reports cash, loan assets and liabilities, savings-pool
+principal, and personal cash income and expenses. A per-account USD/NC valuation
+override is saved locally. Charts use retained history and distinguish principal
+from accrued interest; the report explains omitted or unavailable valuations.
+
+Press **?** for current keyboard bindings, including Mastodon-style mail and
+profile navigation. **Help → Browser Log** is available before login. Error
+toasts, inline problems, request failures, and uncaught errors are recorded;
+warnings and errors always print to the console even when informational logging
+is disabled.
+
 ## Pointing it at the board
 
 The site does not have to be served by the thing it talks to — that is the
