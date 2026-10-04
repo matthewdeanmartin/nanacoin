@@ -7,7 +7,7 @@ repository are different firmware targets; their flashing offsets and runtime
 instructions are not interchangeable.
 
 The current development combination is TinyGo 0.42.0 and Go 1.26.5. The latter
-is declared in `nanacoin_go/go.mod`. Treat these as the tested combination, not a
+is declared in `archive/nanacoin_go/go.mod`. Treat these as the tested combination, not a
 promise that arbitrary newer or older versions work together. Start with the
 [TinyGo installation instructions](https://tinygo.org/getting-started/install/)
 when installing the compiler.
@@ -26,7 +26,7 @@ python -m serial.tools.list_ports -v
 
 ## Local networking dependencies
 
-From `nanacoin_go/`, bootstrap the patched dependencies:
+From `archive/nanacoin_go/`, bootstrap the patched dependencies:
 
 ```powershell
 .\patches\apply.ps1
@@ -35,7 +35,7 @@ From `nanacoin_go/`, bootstrap the patched dependencies:
 The Go module uses local replacements under `third_party`. The patches cover
 radio/network behavior needed by this application; downloading an unmodified
 upstream package is not an equivalent setup. Read the
-[patch notes](https://github.com/matthewdeanmartin/nanacoin/blob/main/nanacoin_go/patches/README.md)
+[patch notes](https://github.com/matthewdeanmartin/nanacoin/blob/main/archive/nanacoin_go/patches/README.md)
 when updating dependencies.
 
 The bootstrap script skips existing dependency directories. Running it again

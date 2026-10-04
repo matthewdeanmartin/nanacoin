@@ -45,9 +45,9 @@ class PartitionSafety(unittest.TestCase):
         self.assertEqual(max(offset + size for _, _, offset, size in layout.values()), 0x400000)
 
     def test_other_bank_layout_rejected_by_name(self):
-        with self.assertRaisesRegex(ValueError, 'has the s2 bank layout'):
+        with self.assertRaisesRegex(ValueError, 'has the s2 layout'):
             deploy.verify_partition_table(S3, table(S2.layout()))
-        with self.assertRaisesRegex(ValueError, 'has the s3 bank layout'):
+        with self.assertRaisesRegex(ValueError, 'has the s3 layout'):
             deploy.verify_partition_table(S2, table(S3.layout()))
 
     def test_other_layout_rejected(self):
@@ -72,9 +72,9 @@ class PartitionSafety(unittest.TestCase):
 class BoardIdentity(unittest.TestCase):
     def test_mac_must_match_board(self):
         self.assertEqual(deploy.verify_mac(S2, f'Chip is ESP32-S2\nMAC: {S2.mac.upper()}\n'), S2.mac)
-        with self.assertRaisesRegex(ValueError, 'is the s3 bank'):
+        with self.assertRaisesRegex(ValueError, 'is the s3 board'):
             deploy.verify_mac(S2, f'MAC: {S3.mac}\n')
-        with self.assertRaisesRegex(ValueError, 'is the s2 bank'):
+        with self.assertRaisesRegex(ValueError, 'is the s2 board'):
             deploy.verify_mac(S3, f'MAC: {S2.mac}\n')
         with self.assertRaisesRegex(ValueError, 'not the recorded'):
             deploy.verify_mac(S3, 'MAC: 00:11:22:33:44:55\n')
@@ -98,7 +98,7 @@ class BoardIdentity(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'marked for board s3'):
                 deploy.check_image(S2, path)
             path.write_bytes(image(S2, size=S2.app_size() + 1))
-            with self.assertRaisesRegex(ValueError, 'factory partition'):
+            with self.assertRaisesRegex(ValueError, 'app partition'):
                 deploy.check_image(S2, path)
 
     def test_boards_are_distinct(self):

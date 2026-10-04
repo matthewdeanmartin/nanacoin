@@ -65,7 +65,7 @@ The separate [nanacoin_load project](https://github.com/matthewdeanmartin/nanaco
 contains Python/Locust tests and HTML reports. Python is test tooling, not
 part of the firmware.
 
-The [project README](https://github.com/matthewdeanmartin/nanacoin/blob/main/nanacoin_go/README.md)
+The [project README](https://github.com/matthewdeanmartin/nanacoin/blob/main/archive/nanacoin_go/README.md)
 is the quick reference. Its linked memory and experiment notes contain
 implementation history and measurements for particular builds. This guide
 describes the architecture; an old throughput number is not a device guarantee.

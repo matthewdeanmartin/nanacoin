@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { ConfigurationPage } from './configuration';
 import { DatabasePage } from './database';
 import { ApiBase } from '../api/api-base';
+import { IS_DEMO } from '../demo/demo';
 
 afterEach(() => { TestBed.inject(HttpTestingController).verify(); TestBed.resetTestingModule(); });
 function setup() {
@@ -30,7 +31,7 @@ describe('public system information', () => {
     expect(fixture.nativeElement.querySelectorAll('input, select, textarea')).toHaveLength(0);
     fixture.destroy();
   });
-  it('benchmarks only on demand, never overlaps, and sends only GET requests', () => {
+  it.skipIf(IS_DEMO)('benchmarks only on demand, never overlaps, and sends only GET requests', () => {
     const http = setup();
     const fixture = TestBed.createComponent(DatabasePage);
     http.expectOne('/api/v1/diag').flush({}, { status: 404, statusText: 'no hardware' });
@@ -49,6 +50,15 @@ describe('public system information', () => {
     request.flush({ generation: 0, sequence: 0, read_only: true, elapsed_us: 40, queries: [], note: 'No writes.' });
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('No writes.');
+    fixture.destroy();
+  });
+  it.skipIf(!IS_DEMO)('explains unavailable board diagnostics without making requests in the demo', () => {
+    const http = setup();
+    const fixture = TestBed.createComponent(DatabasePage);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('This browser demo has no board journal or NVS database.');
+    expect(fixture.nativeElement.querySelectorAll('button')).toHaveLength(0);
+    http.expectNone(() => true);
     fixture.destroy();
   });
 });

@@ -3,7 +3,7 @@
 The household-facing site. A static Angular app that talks to the NanaCoin
 HTTP API, wherever that happens to be running.
 
-This is the client meant for daily use. `../nanacoin_go/web/` holds an earlier
+This is the client meant for daily use. `../archive/nanacoin_go/web/` holds an earlier
 vanilla TypeScript client with the same design; it is kept because it is small
 enough to serve off the TinyGo board itself.
 

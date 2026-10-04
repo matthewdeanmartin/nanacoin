@@ -21,11 +21,13 @@ required-features = ["esp32"]
 
 [features]
 default = ["desktop"]
-desktop = ["dep:tiny_http", "dep:fs2"]
-esp32 = ["dep:esp-idf-svc", "dep:embuild", "dep:log", "bundled-web"]
+desktop = ["dep:fs2"]
+esp32 = ["miniframework/esp32", "dep:esp-idf-svc", "dep:embuild", "dep:log", "bundled-web"]
 bundled-web = []
 # Smaller-board bank; see src/board.rs. Never enabled for the S3 firmware.
 board-s2 = []
+# Also serve HTTP/2 (ALPN over HTTPS); HTTP and HTTPS are always built.
+http2 = ["miniframework/http2"]
 
 [dependencies]
 heapless = { version = "0.8", features = ["serde"] }
@@ -39,8 +41,10 @@ base64 = { version = "0.22", default-features = false }
 getrandom = "0.2"
 crc32fast = "1.4"
 hmac = "0.12"
-httparse = "1.10.1"
-tiny_http = { version = "0.12", optional = true }
+# The HTTP/HTTPS server, static files, board runner and deploy tooling.
+# Without gzip: NanaCoin's API replies are small and its bundle is
+# compressed at build time, so the deflate code would only cost flash.
+miniframework = { path = "../../microcontroller/miniframework/crates/miniframework", default-features = false, features = ["tls"] }
 fs2 = { version = "0.4", optional = true }
 log = { version = "0.4", optional = true }
 

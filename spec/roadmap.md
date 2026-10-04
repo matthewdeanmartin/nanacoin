@@ -4,14 +4,14 @@ Implemented API foundation, September 26, 2026: binary journal/checkpoints,
 bounded committed archive, immutable monetary history, correction annotations,
 partial refunds, sanitized business audit and exact per-epoch totals. Gift
 requests and unique digital-art mint/list/buy/gift/equip APIs are available.
-See [storage/API contract](nanacoin_rs/spec/STORAGE_V2.md) and
-[commerce API](nanacoin_rs/spec/COMMERCE_API.md). UI features, company accounts,
+See [storage/API contract](../nanacoin_rs/spec/STORAGE_V2.md) and
+[commerce API](../nanacoin_rs/spec/COMMERCE_API.md). UI features, company accounts,
 federation, memo privacy and art returns remain future work. The proposals below
 remain guidance where they go beyond that implemented scope.
 
 ## Storage and transaction foundations — proposed September 26, 2026
 
-See [binary storage review](nanacoin_rs/spec/FIX_JSON_REVIEW.md) for findings,
+See [binary storage review](../nanacoin_rs/spec/FIX_JSON_REVIEW.md) for findings,
 recovery invariants and the implementation waterfall. These are recommendations,
 not shipped features. Pre-release development data is disposable: no migration
 or old-format compatibility work. Schema freeze/migrations begin with the first

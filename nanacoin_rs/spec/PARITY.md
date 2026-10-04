@@ -1,7 +1,7 @@
 # Fresh TinyGo / Rust parity review — 2026-09-19
 
 Compared the current working tree, including the uncommitted TinyGo memory work,
-in `../nanacoin_go/internal/{api,core,ledger,auth,marketplace}`, the board entry point,
+in `../archive/nanacoin_go/internal/{api,core,ledger,auth,marketplace}`, the board entry point,
 and the Angular client contracts against this Rust implementation. Changes in
 this pass are confined to `nanacoin_rs`. No board connection or existing household
 journal was used during validation.

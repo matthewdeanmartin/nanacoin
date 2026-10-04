@@ -281,7 +281,7 @@ Board remains attached upstairs; this is a short correctness pass, not endurance
 
 ## 2026-09-18: bounded write memory and listing text recovery
 
-See [WRITE_MEMORY.md](../nanacoin_go/WRITE_MEMORY.md) for implementation, full
+See [WRITE_MEMORY.md](../archive/nanacoin_go/WRITE_MEMORY.md) for implementation, full
 experiment history, retry/commit explanations, and verified CPU-core usage.
 Fixed response/retry/parser/transaction storage and direct typed commit
 application are flashed. Discard-only journaling no longer encodes/decode-copies

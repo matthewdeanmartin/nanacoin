@@ -11,7 +11,11 @@
     "design:build": "ng run nanacoin-web:build-storybook --quiet",
     "design:check": "prettier --ignore-path ../design_system/.prettierignore --check \"../design_system/**/*.{ts,mjs,css,json,md}\" && tsc --project ../design_system/.storybook/tsconfig.json --noEmit",
     "design:format": "prettier --ignore-path ../design_system/.prettierignore --write \"../design_system/**/*.{ts,mjs,css,json,md}\"",
-    "design:rules": "node --test ../design_system/rules/*.test.mjs"
+    "design:rules": "node --test ../design_system/rules/*.test.mjs",
+    "test:ci": "ng test --watch=false",
+    "test:demo": "ng test --watch=false --build-target nanacoin-web:build:demo",
+    "coverage": "ng test --watch=false --coverage --runner-config vitest.coverage.config.mts",
+    "coverage:demo": "ng test --watch=false --coverage --build-target nanacoin-web:build:demo --runner-config vitest.coverage-demo.config.mts"
   },
   "private": true,
   "packageManager": "npm@12.0.2",
@@ -38,11 +42,12 @@
     "@storybook/angular": "10.6.0",
     "@types/node": "^22.20.4",
     "@types/qrcode": "^1.5.6",
+    "@vitest/coverage-v8": "4.1.11",
     "jsdom": "^28.0.0",
     "prettier": "^3.8.1",
     "storybook": "10.6.0",
     "typescript": "~6.0.2",
-    "vitest": "^4.0.8",
+    "vitest": "4.1.11",
     "zone.js": "0.16.3"
   },
   "description": "NanaCoin household client. Static Angular site; talks to the NanaCoin HTTP API wherever it runs."

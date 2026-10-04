@@ -124,5 +124,5 @@ grow an unbounded slice, hold a service lock across a socket write, or retain
 a string backed by a buffer another worker can reuse.
 
 Useful source entry points are the
-[API package](https://github.com/matthewdeanmartin/nanacoin/tree/main/nanacoin_go/internal/api)
-and [board adapter](https://github.com/matthewdeanmartin/nanacoin/tree/main/nanacoin_go/internal/boardhttp).
+[API package](https://github.com/matthewdeanmartin/nanacoin/tree/main/archive/nanacoin_go/internal/api)
+and [board adapter](https://github.com/matthewdeanmartin/nanacoin/tree/main/archive/nanacoin_go/internal/boardhttp).

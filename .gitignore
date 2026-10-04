@@ -49,3 +49,8 @@ site/
 
 # Local build logs and board investigations.
 /.local/
+
+# Local coverage reports and LLVM instrumentation.
+coverage/
+coverage-s2/
+*.profraw

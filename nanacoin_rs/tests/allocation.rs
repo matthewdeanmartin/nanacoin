@@ -59,37 +59,6 @@ fn incident_writers_and_sampler_do_not_allocate() {
     );
 }
 
-#[cfg(feature = "bundled-web")]
-#[test]
-fn static_routes_borrow_assets_without_allocating() {
-    COUNT.with(|count| count.set(0));
-    ENABLED.with(|enabled| enabled.set(true));
-    for _ in 0..1000 {
-        let reply = nanacoin::web::respond("GET", "/market?test=1", "gzip", "").unwrap();
-        assert_eq!(reply.status, 200);
-        let etag = reply
-            .headers
-            .iter()
-            .find(|(key, _)| *key == "ETag")
-            .unwrap()
-            .1;
-        assert_eq!(
-            nanacoin::web::respond("GET", "/", "gzip", etag)
-                .unwrap()
-                .status,
-            304
-        );
-        assert_eq!(
-            nanacoin::web::respond("GET", "/missing.js", "", "")
-                .unwrap()
-                .status,
-            404
-        );
-    }
-    ENABLED.with(|enabled| enabled.set(false));
-    assert_eq!(COUNT.with(Cell::get), 0);
-}
-
 #[test]
 fn checkpoint_and_reset_reuse_preallocated_application_memory() {
     struct Store {

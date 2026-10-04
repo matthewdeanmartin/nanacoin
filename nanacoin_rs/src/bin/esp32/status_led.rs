@@ -1,5 +1,9 @@
 //! Optional WS2812 RGB diagnostics. Never owns the service or network lock.
 //! A missing LED cannot be detected (WS2812 has no acknowledgement).
+//!
+//! Startup steps, Wi-Fi, mDNS, readiness and fatal errors come from
+//! miniframework's `SIGNALS` (the board runner sets them); the colours,
+//! Morse rotation and the household's light settings are NanaCoin's.
 use esp_idf_svc::{
     hal::{
         gpio::{AnyOutputPin, PinDriver, Pins},
@@ -12,14 +16,12 @@ use esp_idf_svc::{
     },
     sys::EspError,
 };
+use miniframework::status::SIGNALS;
 use nanacoin::{
     board_status::{self, Health, LedPin},
     incidents::{Kind, LOG},
 };
-use std::{
-    sync::atomic::{AtomicBool, AtomicU8, Ordering::Relaxed},
-    time::Duration,
-};
+use std::time::Duration;
 
 static CONFIG: std::sync::Mutex<Option<board_status::LightConfig>> = std::sync::Mutex::new(None);
 pub fn configure(config: &board_status::LightConfig) {
@@ -29,29 +31,18 @@ pub fn configure(config: &board_status::LightConfig) {
     }
 }
 
-static READY: AtomicBool = AtomicBool::new(false);
-static WIFI: AtomicBool = AtomicBool::new(false);
-static MDNS: AtomicBool = AtomicBool::new(false);
-static FATAL: AtomicBool = AtomicBool::new(false);
-static STAGE: AtomicU8 = AtomicU8::new(0);
-
-/// The startup step in progress; a fatal error blinks this number.
-pub fn stage(step: u8) {
-    STAGE.store(step, Relaxed);
-}
-pub fn current_stage() -> u8 {
-    STAGE.load(Relaxed)
-}
-
-pub fn wifi(up: bool) {
-    WIFI.store(up, Relaxed);
-}
-pub fn ready(mdns: bool) {
-    MDNS.store(mdns, Relaxed);
-    READY.store(true, Relaxed);
-}
-pub fn fatal() {
-    FATAL.store(true, Relaxed);
+/// The framework's view of the board, in NanaCoin's health terms.
+fn health(now: u64, recent_error: bool) -> Health {
+    let board = SIGNALS.health(recent_error);
+    Health {
+        ready: board.ready,
+        wifi: board.wifi,
+        setup: false,
+        workers: LOG.workers_healthy(now),
+        mdns: board.mdns,
+        fatal: SIGNALS.is_fatal() || LOG.count(Kind::StorageFailed) > 0,
+        recent_error,
+    }
 }
 
 pub fn start(pins: Pins) {
@@ -136,15 +127,7 @@ fn run_mono(pin: AnyOutputPin<'static>) -> Result<(), EspError> {
             error_until = now + 10_000;
             last_errors = errors;
         }
-        let health = Health {
-            ready: READY.load(Relaxed),
-            wifi: WIFI.load(Relaxed),
-            setup: false,
-            workers: LOG.workers_healthy(now),
-            mdns: MDNS.load(Relaxed),
-            fatal: FATAL.load(Relaxed) || LOG.count(Kind::StorageFailed) > 0,
-            recent_error: now < error_until,
-        };
+        let health = health(now, now < error_until);
         if let Ok(pending) = CONFIG.try_lock() {
             if let Some(next) = pending.as_ref().filter(|next| *next != &config) {
                 config.clone_from(next);
@@ -157,8 +140,8 @@ fn run_mono(pin: AnyOutputPin<'static>) -> Result<(), EspError> {
         if state != board_status::State::Healthy || startup.is_some() {
             healthy_since = None;
         }
-        let on = if FATAL.load(Relaxed) {
-            board_status::stage_code(STAGE.load(Relaxed), now)
+        let on = if SIGNALS.is_fatal() {
+            board_status::stage_code(SIGNALS.current_stage(), now)
         } else if health.fatal {
             board_status::mono(state, now)
         } else if let Some(color) = startup {
@@ -237,15 +220,7 @@ fn run(pin: AnyOutputPin<'static>) -> Result<(), EspError> {
             error_until = now + 10_000;
             last_errors = errors;
         }
-        let health = Health {
-            ready: READY.load(Relaxed),
-            wifi: WIFI.load(Relaxed),
-            setup: false,
-            workers: LOG.workers_healthy(now),
-            mdns: MDNS.load(Relaxed),
-            fatal: FATAL.load(Relaxed) || LOG.count(Kind::StorageFailed) > 0,
-            recent_error: now < error_until,
-        };
+        let health = health(now, now < error_until);
         if let Ok(pending) = CONFIG.try_lock() {
             if let Some(next) = pending.as_ref().filter(|next| *next != &config) {
                 config.clone_from(next);
@@ -260,8 +235,8 @@ fn run(pin: AnyOutputPin<'static>) -> Result<(), EspError> {
         }
         // A failed startup blinks its step number in red (see DEPLOY.md);
         // stalled workers or storage failure while running stay solid red.
-        let color = if FATAL.load(Relaxed) {
-            if board_status::stage_code(STAGE.load(Relaxed), now) {
+        let color = if SIGNALS.is_fatal() {
+            if board_status::stage_code(SIGNALS.current_stage(), now) {
                 [8, 0, 0]
             } else {
                 [0, 0, 0]

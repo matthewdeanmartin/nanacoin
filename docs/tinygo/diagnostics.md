@@ -138,5 +138,5 @@ evidence of overheating. Do not assign an I/O, memory or thermal cause without
 an observation that supports it.
 
 For focused scripts and historical findings, see the
-[board-probe tools](https://github.com/matthewdeanmartin/nanacoin/tree/main/nanacoin_go/tools/boardprobe).
+[board-probe tools](https://github.com/matthewdeanmartin/nanacoin/tree/main/archive/nanacoin_go/tools/boardprobe).
 Use previous experiments to form hypotheses, not as current capacity ratings.

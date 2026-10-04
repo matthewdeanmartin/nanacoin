@@ -20,7 +20,6 @@ pub mod forex;
 pub mod lotto;
 
 pub mod fulfillment;
-pub mod http_transport;
 pub mod incidents;
 
 pub mod commerce;
@@ -31,5 +30,7 @@ pub mod board_status;
 pub mod cache;
 
 pub mod screen;
+
+pub mod server;
 
 pub mod minicloud;

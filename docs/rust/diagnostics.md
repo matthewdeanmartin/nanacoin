@@ -55,7 +55,7 @@ persist; the per-request output does not.
 
 ## TinyGo: same dashboard, different capabilities
 
-[machine_diag.go](https://github.com/matthewdeanmartin/nanacoin/blob/main/nanacoin_go/cmd/nanacoin-esp32/machine_diag.go)
+[machine_diag.go](https://github.com/matthewdeanmartin/nanacoin/blob/main/archive/nanacoin_go/cmd/nanacoin-esp32/machine_diag.go)
 adds a current heap reading when an existing HTTP worker serves `/diag`:
 
 ```go

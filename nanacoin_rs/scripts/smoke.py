@@ -87,7 +87,8 @@ def main():
                 assert error.code == 404
                 assert json.loads(error.read())['error'] == 'not_found'
             assert request('/status')[1]['provisioned'] is False
-            assert request('/me', method='OPTIONS')[0] == 200
+            # CORS preflight: 204 No Content (any 2xx satisfies browsers).
+            assert request('/me', method='OPTIONS')[0] in (200, 204)
             assert request('/status', origin='https://not-allowed.example')[0] == 403
             provision = dict(household_name='Home', username='nana', display_name='Nana', password='1234')
             assert request('/provision', provision)[0] == 201

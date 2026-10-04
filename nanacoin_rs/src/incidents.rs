@@ -259,6 +259,56 @@ impl Recorder {
         })
     }
 
+    /// Records one of miniframework's transport events (installed as its
+    /// observer by the firmware). Turns are heartbeats: worker 0 is the TLS
+    /// handshake task, worker 1 the connection multiplexer.
+    pub fn apply(&self, now: u64, event: &miniframework::events::Event) {
+        use miniframework::events::{Event as E, Task};
+        match *event {
+            E::Turn {
+                task: Task::Handshake,
+                tls,
+                ..
+            } => {
+                self.beat(0, now);
+                self.connections(0, tls.into());
+            }
+            E::Turn {
+                task: Task::Serve,
+                tls,
+                http,
+            } => {
+                self.beat(1, now);
+                self.connections(1, tls.into());
+                self.connections(2, http.into());
+            }
+            E::Handshake { ms } => self.handshake(ms),
+            E::TlsInitFailed { code } => self.record(now, Kind::TlsInitFailed, code, 0),
+            E::TlsFailed { code, ms } => self.record(now, Kind::TlsFailed, code, ms),
+            E::TlsTimeout { ms } => self.record(now, Kind::TlsTimeout, 0, ms),
+            E::HandoffFull => self.record(now, Kind::HandoffFull, 0, 0),
+            E::AdmissionRejected { secure } => {
+                self.record(now, Kind::AdmissionRejected, i32::from(secure), 0)
+            }
+            E::SocketError { code } => self.record(now, Kind::SocketError, code, 0),
+            E::RequestTimeout { ms } => self.record(now, Kind::RequestTimeout, 0, ms),
+            // Code 1 tells a stalled reader from a slow sender, as before.
+            E::WriteStalled { ms } => self.record(now, Kind::RequestTimeout, 1, ms),
+            E::SlowRequest { status, ms } => {
+                self.record(now, Kind::SlowRequest, i32::from(status), ms)
+            }
+            E::InvalidRequest { status } => {
+                self.record(now, Kind::InvalidRequest, i32::from(status), 0)
+            }
+            E::IdleExpired => self.record(now, Kind::IdleExpired, 0, 0),
+            E::AllocationFailed => self.record(now, Kind::AllocationFailed, 1, 0),
+            E::WifiDown { reason, .. } => self.record(now, Kind::WifiDown, i32::from(reason), 0),
+            E::WifiUp => self.record(now, Kind::WifiUp, 0, 0),
+            E::Reconnect => self.record(now, Kind::Reconnect, 0, 0),
+            E::ReconnectFailed { code } => self.record(now, Kind::ReconnectFailed, code, 0),
+        }
+    }
+
     pub fn count(&self, kind: Kind) -> u32 {
         self.counts[kind as usize].load(Relaxed)
     }
@@ -466,5 +516,72 @@ mod tests {
         assert_eq!(snapshot.events.len(), 48);
         assert_eq!(snapshot.samples.len(), 32);
         assert!(serde_json::to_vec(&snapshot).unwrap().len() < 32768);
+    }
+
+    #[test]
+    fn framework_events_land_as_incidents_and_heartbeats() {
+        use miniframework::events::{Event as E, Task};
+        let log = Recorder::new();
+        assert!(!log.workers_healthy(100));
+        log.apply(
+            100,
+            &E::Turn {
+                task: Task::Handshake,
+                tls: 1,
+                http: 0,
+            },
+        );
+        log.apply(
+            100,
+            &E::Turn {
+                task: Task::Serve,
+                tls: 3,
+                http: 2,
+            },
+        );
+        assert!(log.workers_healthy(200));
+        assert!(!log.workers_healthy(100 + u64::from(STALL_MS)));
+        for event in [
+            E::TlsFailed {
+                code: -0x7780,
+                ms: 900,
+            },
+            E::TlsTimeout { ms: 4000 },
+            E::AdmissionRejected { secure: true },
+            E::SlowRequest {
+                status: 200,
+                ms: 750,
+            },
+            E::WriteStalled { ms: 15_000 },
+            E::RequestTimeout { ms: 5000 },
+            E::WifiDown {
+                reason: 201,
+                rssi: -90,
+            },
+            E::ReconnectFailed { code: 12 },
+            E::IdleExpired,
+        ] {
+            log.apply(300, &event);
+        }
+        log.apply(400, &E::Handshake { ms: 640 });
+        let snapshot = log.snapshot();
+        assert_eq!(snapshot.high_water, [1, 3, 2]);
+        assert_eq!(snapshot.last_handshake_ms, 640);
+        let find = |kind: Kind, code: i32| {
+            snapshot
+                .events
+                .iter()
+                .find(|e| e.kind == kind && e.code == code)
+                .copied()
+        };
+        assert_eq!(find(Kind::TlsFailed, -0x7780).unwrap().duration_ms, 900);
+        assert_eq!(find(Kind::AdmissionRejected, 1).unwrap().count, 1);
+        assert_eq!(find(Kind::SlowRequest, 200).unwrap().duration_ms, 750);
+        assert_eq!(find(Kind::RequestTimeout, 1).unwrap().duration_ms, 15_000);
+        assert_eq!(find(Kind::RequestTimeout, 0).unwrap().duration_ms, 5000);
+        assert!(find(Kind::WifiDown, 201).is_some());
+        // Idle expiry is counted, never logged as an incident.
+        assert_eq!(log.count(Kind::IdleExpired), 1);
+        assert!(find(Kind::IdleExpired, 0).is_none());
     }
 }

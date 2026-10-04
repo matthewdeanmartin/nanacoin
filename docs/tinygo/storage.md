@@ -134,5 +134,5 @@ lost before selecting a flush interval or a "flush when full" policy. None
 of this board persistence is enabled merely by using RAM rings today.
 
 For implementation details, see
-[RAM history](https://github.com/matthewdeanmartin/nanacoin/blob/main/nanacoin_go/RAM_HISTORY.md)
-and [write memory](https://github.com/matthewdeanmartin/nanacoin/blob/main/nanacoin_go/WRITE_MEMORY.md).
+[RAM history](https://github.com/matthewdeanmartin/nanacoin/blob/main/archive/nanacoin_go/RAM_HISTORY.md)
+and [write memory](https://github.com/matthewdeanmartin/nanacoin/blob/main/archive/nanacoin_go/WRITE_MEMORY.md).

@@ -3,7 +3,7 @@
 This extends the existing `demo` Angular configuration and
 `.github/workflows/nanacoin-pages.yml`, not a second website. `nanacoin_web`
 serves this same Angular client from the legacy MicroPython board; Rust bundles
-it into firmware. TinyGo firmware remains frozen under `nanacoin_go/AGENTS.md`.
+it into firmware. TinyGo firmware remains frozen under `archive/nanacoin_go/AGENTS.md`.
 
 | Feature | Static browser demo | Rust API | TinyGo API |
 | --- | --- | --- | --- |

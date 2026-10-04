@@ -72,15 +72,19 @@ the only option for the TinyGo firmware, which cannot host the site — TinyGo's
 ESP32-S3 target uses internal SRAM only and cannot reach the board's 8MB PSRAM,
 so there is nowhere to put the bundle. That changes when
 [upstream PSRAM support](https://github.com/tinygo-org/tinygo/pull/5554) lands;
-see [`nanacoin_go/PSRAM_EPIC.md`](nanacoin_go/PSRAM_EPIC.md).
+see [`archive/nanacoin_go/spec/PSRAM_EPIC.md`](archive/nanacoin_go/spec/PSRAM_EPIC.md).
 
 ## Projects
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for tests and HTML coverage reports,
+[SECURITY.md](SECURITY.md) for private vulnerability reporting, and
+[spec/roadmap.md](spec/roadmap.md) and [spec/PROPOSAL.md](spec/PROPOSAL.md) for plans.
 
 | Directory | What it is |
 |---|---|
 | [`nanacoin_rs/`](nanacoin_rs/) | **The active implementation.** The ledger and JSON API in Rust, for desktop and ESP32-S3. |
 | [`nanacoin_ui/`](nanacoin_ui/) | **The active browser UI.** One Angular client for the Rust API, firmware bundle and static demo. |
-| [`nanacoin_go/`](nanacoin_go/) | The original TinyGo implementation. Firmware is frozen pending upstream PSRAM support. |
+| [`archive/nanacoin_go/`](archive/nanacoin_go/) | Archived Go/TinyGo implementation, retained for reference and possible future work. Outside active builds and tests. |
 | [`nanacoin_web/`](nanacoin_web/) | MicroPython static host that serves the Angular bundle from an ESP32-S2. |
 | [`nanacoin_load/`](nanacoin_load/) | Load lab: Python 3.14 and Locust, with HTML reports. Answers "does the board fall over?" |
 
@@ -174,6 +178,6 @@ and the [esp-rs](https://github.com/esp-rs) project, [Espressif's ESP-IDF](https
 [Locust](https://locust.io/). The TinyGo networking stack uses
 [soypat/lneto](https://github.com/soypat/lneto) and
 [espradio](https://github.com/tinygo-org/espradio), with local patches in
-[`nanacoin_go/patches/`](nanacoin_go/patches/).
+[`archive/nanacoin_go/patches/`](archive/nanacoin_go/patches/).
 
 MIT licensed — see [LICENSE](LICENSE).

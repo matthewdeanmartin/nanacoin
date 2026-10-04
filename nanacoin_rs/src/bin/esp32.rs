@@ -1,33 +1,42 @@
+//! A NanaCoin bank on miniframework's board runner. The framework brings up
+//! Wi-Fi, SNTP, mDNS, HTTP and HTTPS, and serves the site; this file opens
+//! the ledger, starts NanaCoin's own light, incident sampler, diagnostics
+//! and screen worker, and runs scheduled payments.
+//!
+//! Startup steps (a failed startup blinks the number and explains itself
+//! on http://<board>:8080/): 1-7 are miniframework's (system, NVS, Wi-Fi
+//! driver, Wi-Fi join, network, app, listen); NanaCoin adds:
+//! 8 ledger partition, 9 journal storage, 10 ledger replay, 11 background
+//! tasks.
+
 #[cfg(not(target_os = "espidf"))]
 compile_error!(
     "build firmware with scripts/build-esp32.sh s3|s2 (xtensa target, --features esp32)"
 );
 
 use esp_idf_svc::{
-    eventloop::EspSystemEventLoop,
-    hal::{cpu::Core, peripherals::Peripherals, task::thread::ThreadSpawnConfiguration},
-    mdns::EspMdns,
-    nvs::{EspDefaultNvsPartition, EspNvsPartition, NvsCustom},
-    wifi::{AuthMethod, BlockingWifi, ClientConfiguration, Configuration, EspWifi},
+    hal::{cpu::Core, peripherals::Peripherals},
+    sys,
 };
-use nanacoin::journal::Service;
+use miniframework::{
+    esp::{self, BoardConfig},
+    status::SIGNALS,
+    sys::STATS,
+    Site,
+};
+use nanacoin::{
+    incidents::Kind,
+    journal::Service,
+    server::{self, Bank},
+};
 use std::{
-    sync::{
-        atomic::{AtomicI32, Ordering},
-        Arc, Mutex,
-    },
-    time::Duration,
+    sync::{atomic::Ordering, Arc, Mutex},
+    time::{Duration, Instant},
 };
-
-#[cfg(feature = "board-s2")]
-use esp_idf_svc::hal::task::thread::MallocCap;
 
 #[path = "esp32/diagnostics.rs"]
 mod diagnostics;
 use diagnostics::Diagnostics;
-
-#[path = "esp32/server.rs"]
-mod server;
 
 #[path = "esp32/incidents.rs"]
 mod incidents;
@@ -39,28 +48,21 @@ use nvs_journal::NvsJournal;
 #[path = "esp32/status_led.rs"]
 mod status_led;
 
-/// Task placement. The S3 keeps Wi-Fi, TLS handshakes and diagnostics on core 0
-/// and HTTP/ledger work on core 1. The single-core S2 leaves tasks unpinned.
+/// Where NanaCoin's own tasks (light, samplers) run. The S3 keeps them with
+/// Wi-Fi and TLS handshakes on core 0, leaving core 1 to serving; the
+/// single-core S2 leaves tasks unpinned.
 #[cfg(not(feature = "board-s2"))]
 pub(crate) const NETWORK_CORE: Option<Core> = Some(Core::Core0);
-#[cfg(not(feature = "board-s2"))]
-pub(crate) const APP_CORE: Option<Core> = Some(Core::Core1);
 #[cfg(feature = "board-s2")]
 pub(crate) const NETWORK_CORE: Option<Core> = None;
-
-/// Last Wi-Fi disconnect, for the main task to log. IDF reason codes:
-/// 2 auth expired, 15 4-way handshake timeout (often a wrong password),
-/// 201 no AP found, 202 auth failed, 203 association failed.
-static LAST_WIFI_REASON: AtomicI32 = AtomicI32::new(0);
-static LAST_WIFI_RSSI: AtomicI32 = AtomicI32::new(0);
 
 /// Deployment tooling refuses an image whose marker names another board.
 #[used]
 static BOARD_MARKER: &str = nanacoin::board::MARKER;
 
 #[allow(non_upper_case_globals)] // ESP-IDF generated constant names.
-fn reset_reason(reason: esp_idf_svc::sys::esp_reset_reason_t) -> &'static str {
-    use esp_idf_svc::sys::*;
+fn reset_reason(reason: sys::esp_reset_reason_t) -> &'static str {
+    use sys::*;
     match reason {
         esp_reset_reason_t_ESP_RST_POWERON => "power on",
         esp_reset_reason_t_ESP_RST_EXT => "reset pin",
@@ -76,6 +78,44 @@ fn reset_reason(reason: esp_idf_svc::sys::esp_reset_reason_t) -> &'static str {
     }
 }
 
+/// Each bank has a leaf for its own hostname, signed by the household CA.
+#[cfg(not(feature = "board-s2"))]
+fn board_config() -> BoardConfig {
+    let mut config = BoardConfig::s3(
+        env!("NANACOIN_WIFI_SSID"),
+        env!("NANACOIN_WIFI_PASSWORD"),
+        nanacoin::board::HOSTNAME,
+    );
+    config.instance = "NanaCoin Rust household ledger";
+    config.cert_pem = concat!(include_str!("../../certs/nanacoin-ca-signed.crt"), "\0").as_bytes();
+    config.key_pem = concat!(include_str!("../../certs/nanacoin-ca-signed.key"), "\0").as_bytes();
+    // At most this plus one maximum reply is held for slow readers.
+    config.limits.response_budget = 2 * 1024 * 1024;
+    config.ntp_server = option_env!("NANACOIN_NTP_SERVER");
+    config
+}
+
+/// 2 MiB PSRAM: each TLS session keeps a 16 KiB receive record buffer.
+#[cfg(feature = "board-s2")]
+fn board_config() -> BoardConfig {
+    let mut config = BoardConfig::s2(
+        env!("NANACOIN_WIFI_SSID"),
+        env!("NANACOIN_WIFI_PASSWORD"),
+        nanacoin::board::HOSTNAME,
+    );
+    config.instance = "NanaCoin second household bank";
+    config.cert_pem =
+        concat!(include_str!("../../certs/nanacoin-s2-ca-signed.crt"), "\0").as_bytes();
+    config.key_pem =
+        concat!(include_str!("../../certs/nanacoin-s2-ca-signed.key"), "\0").as_bytes();
+    config.limits.tls_clients = 3;
+    config.limits.http_clients = 2;
+    config.limits.handshakes = 1;
+    config.limits.response_budget = 2 * nanacoin::api::RESPONSE_LIMIT;
+    config.ntp_server = option_env!("NANACOIN_NTP_SERVER");
+    config
+}
+
 fn scheduled_payments(shared: &Mutex<Service<NvsJournal>>, screen: &mut nanacoin::screen::Worker) {
     let mut service = shared.lock().unwrap();
     screen.pump(&mut service);
@@ -84,64 +124,28 @@ fn scheduled_payments(shared: &Mutex<Service<NvsJournal>>, screen: &mut nanacoin
         log::warn!("Scheduled payments: {error:?}");
     }
     if !failed_before && service.storage_failed() {
-        incidents::record(nanacoin::incidents::Kind::StorageFailed, 0);
+        incidents::record(Kind::StorageFailed, 0);
     }
 }
 
 fn main() {
     if let Err(error) = run() {
-        status_led::fatal();
-        // Repeat: a native-USB console (the S2) attaches after early boot
-        // output is gone, so a single line would never be seen.
-        loop {
-            log::error!("Startup failed: {error}");
-            std::thread::sleep(Duration::from_secs(5));
-        }
+        // Blinks the step, logs every 5 s, explains itself on port 8080.
+        esp::fail(&error.to_string());
     }
 }
 
 fn run() -> Result<(), Box<dyn std::error::Error>> {
-    esp_idf_svc::sys::link_patches();
-    esp_idf_svc::log::EspLogger::initialize_default();
+    esp::init();
+    miniframework::events::observe(|event| nanacoin::incidents::LOG.apply(incidents::now(), event));
+    incidents::start()?;
     let peripherals = Peripherals::take()?;
     status_led::start(peripherals.pins);
-    // Startup steps, counted out by a single-colour LED if startup fails.
-    status_led::stage(1); // incidents and system event loop
-    incidents::start()?;
-    let event_loop = EspSystemEventLoop::take()?;
-    let _wifi_events = event_loop.subscribe::<esp_idf_svc::wifi::WifiEvent, _>(|event| {
-        if let esp_idf_svc::wifi::WifiEvent::StaDisconnected(info) = event {
-            // Runs on IDF's small system-event task: record only. The main
-            // task logs these; logging here stalled the S2.
-            LAST_WIFI_REASON.store(i32::from(info.reason()), Ordering::Relaxed);
-            LAST_WIFI_RSSI.store(i32::from(info.rssi()), Ordering::Relaxed);
-            status_led::wifi(false);
-            incidents::record(
-                nanacoin::incidents::Kind::WifiDown,
-                i32::from(info.reason()),
-            );
-        }
-    })?;
-    let _ip_events =
-        event_loop.subscribe::<esp_idf_svc::netif::IpEvent, _>(|event| match event {
-            esp_idf_svc::netif::IpEvent::DhcpIpAssigned(_) => status_led::wifi(true),
-            esp_idf_svc::netif::IpEvent::DhcpIpDeassigned(_) => status_led::wifi(false),
-            _ => {}
-        })?;
-    status_led::stage(2); // system NVS
-                          // Never auto-erase NVS on a version/full error: it may contain data.
-    let system_nvs = EspDefaultNvsPartition::take_with(false)?;
-    status_led::stage(3); // ledger partition
-                          // The svc custom-partition convenience constructor auto-erases on some
-                          // init errors. Pre-initialize and propagate every error before calling it.
-                          // IDF initialization is idempotent; its second call sees an initialized
-                          // partition. Never reach the convenience constructor after a failed init.
-                          // SAFETY: the partition name is a static NUL-terminated C string.
-    esp_idf_svc::sys::esp!(unsafe {
-        esp_idf_svc::sys::nvs_flash_init_partition(c"ledger".as_ptr())
-    })?;
-    let partition = EspNvsPartition::<NvsCustom>::take("ledger")?;
-    status_led::stage(4); // journal storage
+    let board = esp::start(board_config(), peripherals.modem)?;
+
+    SIGNALS.step(8, "ledger partition");
+    let partition = board.partition("ledger")?;
+    SIGNALS.step(9, "journal storage");
     let mut journal = NvsJournal::open(partition).map_err(|e| format!("journal storage: {e:?}"))?;
     if option_env!("NANACOIN_RECOVER_HTTP") == Some("1") {
         use nanacoin::journal::Journal;
@@ -150,273 +154,76 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             .map_err(|e| format!("transport recovery: {e:?}"))?;
         log::warn!("USB recovery build: HTTP enabled; reinstall normal firmware next");
     }
-    status_led::stage(5); // ledger replay
+    SIGNALS.step(10, "ledger replay");
     let service = Service::open(journal).map_err(|e| format!("ledger startup: {e:?}"))?;
-    // The mutex covers API/domain work, including JSON encoding; all network
-    // I/O and TLS handshakes happen outside it.
     status_led::configure(&service.light_config);
     let shared = Arc::new(Mutex::new(service));
-    let diagnostics = Arc::new(Diagnostics::default());
-    status_led::stage(6); // Wi-Fi driver
-    let mut wifi = BlockingWifi::wrap(
-        EspWifi::new(peripherals.modem, event_loop.clone(), Some(system_nvs))?,
-        event_loop,
+
+    SIGNALS.step(11, "background tasks");
+    // Core 0 owns live probes. Only a small snapshot copy uses the
+    // diagnostics mutex; ledger work and sockets never hold it. Never writes
+    // flash, so on the S2 its stack may live in PSRAM.
+    let samples = Arc::new(Diagnostics::default());
+    let sampler = Arc::clone(&samples);
+    esp::spawn_task(
+        c"nanacoin-diag",
+        4096,
+        cfg!(feature = "board-s2"),
+        NETWORK_CORE,
+        0,
+        move || sampler.run(),
     )?;
-    status_led::stage(7); // Wi-Fi configuration and start
-    wifi.set_configuration(&Configuration::Client(ClientConfiguration {
-        ssid: env!("NANACOIN_WIFI_SSID")
-            .try_into()
-            .map_err(|_| "SSID exceeds 32 bytes")?,
-        password: env!("NANACOIN_WIFI_PASSWORD")
-            .try_into()
-            .map_err(|_| "Wi-Fi password exceeds 64 bytes")?,
-        auth_method: AuthMethod::WPA2Personal,
-        ..Default::default()
-    }))?;
-    wifi.start()?;
-    // A transient association/DHCP timeout must not terminate the server at
-    // boot. Keep retrying just as we do after a later Wi-Fi disconnection.
-    loop {
-        match wifi.connect().and_then(|_| wifi.wait_netif_up()) {
-            Ok(()) => break,
-            Err(error) => {
-                incidents::record(nanacoin::incidents::Kind::ReconnectFailed, error.code());
-                log::warn!(
-                    "Initial Wi-Fi connection: {error}; last disconnect reason {} rssi {}; retrying",
-                    LAST_WIFI_REASON.load(Ordering::Relaxed),
-                    LAST_WIFI_RSSI.load(Ordering::Relaxed)
-                );
-                std::thread::sleep(Duration::from_secs(2));
-            }
-        }
-    }
-    // From here Wi-Fi is up. A later startup failure keeps Wi-Fi running and
-    // explains itself on port 8080, since the S2 may have no usable console.
-    if let Err(error) = online(&mut wifi, shared, diagnostics) {
-        status_led::fatal();
-        report_failure(&*error);
-    }
-    Ok(())
-}
-
-fn online(
-    wifi: &mut BlockingWifi<EspWifi<'static>>,
-    shared: Arc<Mutex<Service<NvsJournal>>>,
-    diagnostics: Arc<Diagnostics>,
-) -> Result<(), Box<dyn std::error::Error>> {
-    status_led::stage(8); // power save and time
-                          // USB-powered server: avoid incoming packet delays from modem sleep.
-    esp_idf_svc::sys::esp!(unsafe {
-        esp_idf_svc::sys::esp_wifi_set_ps(esp_idf_svc::sys::wifi_ps_type_t_WIFI_PS_NONE)
-    })?;
-    // Keep the SNTP service alive. Timed offers refuse writes until wall time
-    // is valid; persisted deadlines must not restart when the board reboots.
-    let mut time_config = esp_idf_svc::sntp::SntpConf::default();
-    if let Some(server) = option_env!("NANACOIN_NTP_SERVER") {
-        time_config.servers.fill(server);
-    }
-    let _sntp = esp_idf_svc::sntp::EspSntp::new(&time_config)?;
-
-    status_led::stage(9); // HTTP/TLS server
-    let http = server::start(server::Context {
-        shared: Arc::clone(&shared),
-        diagnostics: Arc::clone(&diagnostics),
-    })?;
-    #[cfg(not(feature = "board-s2"))]
-    server::spawn(http)?;
-    status_led::stage(10); // mDNS and background tasks
-    let _mdns = (|| -> Result<EspMdns, esp_idf_svc::sys::EspError> {
-        let mut mdns = EspMdns::take()?;
-        // The legacy standalone UI board must not advertise this name concurrently.
-        mdns.set_hostname(nanacoin::board::HOSTNAME)?;
-        mdns.set_instance_name(if nanacoin::board::ID == "s3" {
-            "NanaCoin Rust household ledger"
-        } else {
-            "NanaCoin second household bank"
-        })?;
-        mdns.add_service(
-            Some("NanaCoin setup"),
-            "_http",
-            "_tcp",
-            80,
-            &[("path", "/trust")],
-        )?;
-        mdns.add_service(
-            Some("NanaCoin"),
-            "_https",
-            "_tcp",
-            443,
-            &[("path", "/api/v1/status")],
-        )?;
-        Ok(mdns)
-    })()
-    .map_err(|error| {
-        log::warn!("mDNS unavailable: {error}; server continues by IP");
-        error
-    })
-    .ok();
-    // Core 0 owns live probes. Only a small snapshot copy uses the independent
-    // diagnostics mutex; ledger work and sockets never hold that mutex.
-    let sampler = Arc::clone(&diagnostics);
-    // Applies to the next thread spawned on this task, then is restored so it
-    // does not leak onto anything spawned later.
-    ThreadSpawnConfiguration {
-        name: Some(c"nanacoin-diag"),
-        pin_to_core: NETWORK_CORE,
-        // Never writes flash. The S2's internal RAM cannot hold every worker
-        // stack beside Wi-Fi, so there this stack lives in PSRAM.
-        #[cfg(feature = "board-s2")]
-        stack_alloc_caps: MallocCap::Spiram | MallocCap::Cap8bit,
-        ..Default::default()
-    }
-    .set()?;
-    let _sampler = std::thread::Builder::new()
-        .stack_size(4096)
-        .spawn(move || sampler.run())?;
-    #[cfg(feature = "board-s2")]
-    ThreadSpawnConfiguration {
-        name: Some(c"nanacoin-screen"),
-        stack_alloc_caps: MallocCap::Spiram | MallocCap::Cap8bit,
-        ..Default::default()
-    }
-    .set()?;
-    #[cfg(not(feature = "board-s2"))]
-    ThreadSpawnConfiguration::default().set()?;
     let mut screen = nanacoin::screen::Worker::spawn()?;
-    ThreadSpawnConfiguration::default().set()?;
-    // Independent of HTTP traffic and potentially blocking Wi-Fi reconnection.
-    // The S2 cannot spare another 24 KiB internal stack (the tick writes
-    // flash, so PSRAM is not an option); its main loop runs the tick instead.
-    #[cfg(not(feature = "board-s2"))]
-    {
-        let scheduler = Arc::clone(&shared);
-        ThreadSpawnConfiguration {
-            name: Some(c"nanacoin-loans"),
-            pin_to_core: APP_CORE,
-            ..Default::default()
-        }
-        .set()?;
-        let _scheduler = std::thread::Builder::new()
-            .stack_size(24 * 1024)
-            .spawn(move || loop {
-                std::thread::sleep(Duration::from_secs(1));
-                scheduled_payments(&scheduler, &mut screen);
-            })?;
-    }
-    ThreadSpawnConfiguration::default().set()?;
-    // SAFETY: monotonic timer query has no pointer arguments.
-    diagnostics.boot_ready_ms.store(
-        unsafe { esp_idf_svc::sys::esp_timer_get_time() / 1000 } as u32,
-        Ordering::Relaxed,
+
+    let origins = option_env!("NANACOIN_ORIGINS").unwrap_or(nanacoin::api::DEFAULT_ORIGINS);
+    let latest = Arc::clone(&samples);
+    let bank = Bank::new(Arc::clone(&shared))
+        .with_diagnostics(Box::new(move |path, out| {
+            if path.ends_with("/events") {
+                let limit = out.len().min(nanacoin::incidents::RESPONSE_BYTES);
+                nanacoin::diagnostics::response(
+                    &nanacoin::incidents::LOG.snapshot(),
+                    &mut out[..limit],
+                )
+            } else if path.ends_with("/static") {
+                nanacoin::diagnostics::response(&diagnostics::system_info(), out)
+            } else {
+                let mut snapshot = latest.snapshot();
+                snapshot.requests = STATS.requests.load(Ordering::Relaxed);
+                snapshot.errors = STATS.errors.load(Ordering::Relaxed);
+                nanacoin::diagnostics::response(&snapshot, out)
+            }
+        }))
+        .on_storage_failed(|| incidents::record(Kind::StorageFailed, 0));
+    let site = Site::new(
+        server::config(nanacoin::board::FQDN, origins),
+        bank,
+        board.platform(),
     );
-    status_led::ready(_mdns.is_some());
-    incidents::record(nanacoin::incidents::Kind::Ready, 0);
+    // SAFETY: monotonic timer query has no pointer arguments.
+    let ready_ms = unsafe { sys::esp_timer_get_time() / 1000 } as u32;
+    samples.boot_ready_ms.store(ready_ms, Ordering::Relaxed);
+    incidents::record(Kind::Ready, 0);
     log::info!(
-        "Ready at https://{}; board {}; bundled UI + API; {}",
+        "Ready at https://{} after {ready_ms} ms; board {}; bundled UI + API",
         nanacoin::board::FQDN,
         nanacoin::board::ID,
-        server::PLACEMENT
     );
-    // S3: the main task only keeps house. S2: the main task (whose 32 KiB
-    // internal stack already exists) runs the HTTP multiplexer, with the
-    // scheduled-payment tick and housekeeping between turns. A Wi-Fi
-    // reconnect pauses serving there, which costs nothing while it is down.
-    #[cfg(feature = "board-s2")]
-    {
-        let mut last_tick = std::time::Instant::now();
-        let mut last_house = last_tick;
-        http.serve(move || {
-            if last_tick.elapsed() >= Duration::from_secs(1) {
-                last_tick = std::time::Instant::now();
-                scheduled_payments(&shared, &mut screen);
-            }
-            if last_house.elapsed() >= Duration::from_secs(10) {
-                last_house = std::time::Instant::now();
-                if let Err(error) = housekeeping(wifi, &shared) {
-                    log::warn!("Housekeeping: {error}");
-                }
-            }
-        })
-    }
-    #[cfg(not(feature = "board-s2"))]
-    loop {
-        std::thread::sleep(Duration::from_secs(10));
-        housekeeping(wifi, &shared)?;
-    }
-}
-
-/// Every ten seconds: LED settings, Wi-Fi reconnection and a heap log line.
-fn housekeeping(
-    wifi: &mut BlockingWifi<EspWifi<'static>>,
-    shared: &Mutex<Service<NvsJournal>>,
-) -> Result<(), esp_idf_svc::sys::EspError> {
-    {
-        if let Ok(service) = shared.try_lock() {
-            status_led::configure(&service.light_config);
+    // Scheduled payments write flash, so they run on the calling (main)
+    // task, whose stack is internal RAM: between connection-loop turns on
+    // the S2, beside the serving core on the S3.
+    let mut last_tick = Instant::now();
+    let mut last_light = last_tick;
+    board.serve(site, move |_| {
+        if last_tick.elapsed() >= Duration::from_secs(1) {
+            last_tick = Instant::now();
+            scheduled_payments(&shared, &mut screen);
         }
-        if !wifi.is_connected()? {
-            incidents::record(nanacoin::incidents::Kind::Reconnect, 0);
-            log::warn!("Wi-Fi disconnected; reconnecting");
-            if let Err(e) = wifi.connect().and_then(|_| wifi.wait_netif_up()) {
-                incidents::record(nanacoin::incidents::Kind::ReconnectFailed, e.code());
-                log::warn!(
-                    "Reconnect: {e}; last disconnect reason {} rssi {}",
-                    LAST_WIFI_REASON.load(Ordering::Relaxed),
-                    LAST_WIFI_RSSI.load(Ordering::Relaxed)
-                );
+        if last_light.elapsed() >= Duration::from_secs(10) {
+            last_light = Instant::now();
+            if let Ok(service) = shared.try_lock() {
+                status_led::configure(&service.light_config);
             }
         }
-        // Internal largest-free-block matters more for TLS than total PSRAM.
-        let caps = esp_idf_svc::sys::MALLOC_CAP_INTERNAL | esp_idf_svc::sys::MALLOC_CAP_8BIT;
-        // SAFETY: ESP-IDF heap query functions have no pointer arguments.
-        unsafe {
-            log::info!(
-                "internal heap: free={} largest={} minimum={}",
-                esp_idf_svc::sys::heap_caps_get_free_size(caps),
-                esp_idf_svc::sys::heap_caps_get_largest_free_block(caps),
-                esp_idf_svc::sys::heap_caps_get_minimum_free_size(caps)
-            );
-        }
-    }
-    Ok(())
-}
-
-/// Plain-text failure report on HTTP port 8080 (no TLS, no allocation-heavy
-/// server), repeated in the log. Never returns.
-fn report_failure(error: &dyn std::error::Error) -> ! {
-    use std::io::Write;
-    let listener = std::net::TcpListener::bind(("0.0.0.0", 8080));
-    loop {
-        let (internal, internal_largest, psram, psram_largest) = unsafe {
-            use esp_idf_svc::sys::*;
-            let internal = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
-            (
-                heap_caps_get_free_size(internal),
-                heap_caps_get_largest_free_block(internal),
-                heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
-                heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM),
-            )
-        };
-        let text = format!(
-            "NanaCoin {} ({}) startup failed at step {}: {error}\n\
-             internal free {internal} largest {internal_largest}; \
-             psram free {psram} largest {psram_largest}\n",
-            nanacoin::board::ID,
-            nanacoin::board::FQDN,
-            status_led::current_stage(),
-        );
-        log::error!("{text}");
-        match &listener {
-            Ok(listener) => {
-                if let Ok((mut stream, _)) = listener.accept() {
-                    let _ = stream.set_write_timeout(Some(Duration::from_secs(5)));
-                    let _ = write!(
-                        stream,
-                        "HTTP/1.0 500 Startup failed\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n{text}"
-                    );
-                }
-            }
-            Err(_) => std::thread::sleep(Duration::from_secs(5)),
-        }
-    }
+    })
 }

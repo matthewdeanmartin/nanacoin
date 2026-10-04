@@ -2,7 +2,7 @@
 
 ## Develop the behavior on the laptop
 
-From `nanacoin_go/`, start the API:
+From `archive/nanacoin_go/`, start the API:
 
 ```powershell
 go run ./cmd/nanacoin -web ""
@@ -26,7 +26,7 @@ It does not model TinyGo's allocator, the embedded TCP stack or weak WiFi.
 
 ## Test before flashing
 
-Run these from `nanacoin_go/`:
+Run these from `archive/nanacoin_go/`:
 
 ```powershell
 go test ./internal/...
@@ -52,7 +52,7 @@ go test ./internal/api -run '^$' -fuzz FuzzTransferParserAgainstJSON -fuzztime 1
 
 ## Compile, flash, observe
 
-Use the deploy script from `nanacoin_go/` after setting up the patched dependencies:
+Use the deploy script from `archive/nanacoin_go/` after setting up the patched dependencies:
 
 ```powershell
 .\deploy.ps1 -Port COM8 -Ssid "YourWiFi" -Password "YourPassword"
@@ -76,11 +76,11 @@ offset `0x0`; do not borrow the S2's `0x1000` command.
 To watch the native console independently, from the repository root:
 
 ```powershell
-python nanacoin_go/tools/boardprobe/serial_watch.py 30
+python archive/nanacoin_go/tools/boardprobe/serial_watch.py 30
 ```
 
 The serial tools and their port-selection options are documented in the
-[board-probe README](https://github.com/matthewdeanmartin/nanacoin/blob/main/nanacoin_go/tools/boardprobe/README.md).
+[board-probe README](https://github.com/matthewdeanmartin/nanacoin/blob/main/archive/nanacoin_go/tools/boardprobe/README.md).
 Avoid incidental resets when collecting evidence about a suspected crash.
 
 ## Connect the browser

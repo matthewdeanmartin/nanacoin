@@ -13,13 +13,15 @@ help:
 	  'make migrate-login  Upgrade an existing Rust token account to a username/password' \
 	  'make build     Build the desktop server' \
 	  'make test      Run Rust tests' \
+	  'make coverage-setup  Install cargo-llvm-cov and matching LLVM tools' \
+	  'make coverage / coverage-s2  Generate desktop HTML, LCOV and JSON coverage' \
 	  'make check     Check formatting, lint, tests, and HTTP restart smoke' \
 	  'make fmt       Format Rust source' \
 	  'make smoke     Build and test the real desktop HTTP server' \
 	  'make certs     Generate local development TLS certificate files' \
 	  'make certs-check  Validate certificate/key compatibility without a board' \
 	  'make rotate-certs  Archive the current CA and generate a compatible replacement' 	  'make adopt-ca CA_DIR=dir  Sign with an existing household CA (e.g. mastomini); optional' \
-	  'make firmware BOARD=s3|s2  Build one bank firmware including Angular (no flashing)' \
+	  'make firmware BOARD=s3|s2  Build one bank firmware including Angular (no flashing); HTTP2=1 adds HTTP/2' \
 	  'make bundle    Build desktop server including Angular' \
 	  'make run-bundle  Serve UI + API locally on port 8080' \
 	  'make web-check Test bundled assets and deployment safety without a board' \
@@ -44,6 +46,26 @@ test:
 
 test-s2:
 	$(CARGO) test --locked --features board-s2
+
+.PHONY: coverage-setup coverage coverage-s2
+coverage-setup:
+	rustup component add llvm-tools-preview
+	$(CARGO) install cargo-llvm-cov --version 0.9.1 --locked
+
+# Desktop tests cover the shared ledger/API. Do not run these profiles concurrently.
+# Exclude test harness files and build.rs from the application coverage denominator.
+COVERAGE_IGNORE := '([/\\]tests[/\\]|[/\\]build\.rs$$)'
+coverage:
+	$(CARGO) llvm-cov --locked --all-targets --ignore-filename-regex $(COVERAGE_IGNORE) --html --output-dir coverage
+	$(CARGO) llvm-cov report --ignore-filename-regex $(COVERAGE_IGNORE) --lcov --output-path coverage/lcov.info
+	$(CARGO) llvm-cov report --ignore-filename-regex $(COVERAGE_IGNORE) --json --summary-only --output-path coverage/summary.json
+	$(CARGO) llvm-cov report --ignore-filename-regex $(COVERAGE_IGNORE) --summary-only
+
+coverage-s2:
+	$(CARGO) llvm-cov --locked --all-targets --features board-s2 --ignore-filename-regex $(COVERAGE_IGNORE) --html --output-dir coverage-s2
+	$(CARGO) llvm-cov report --ignore-filename-regex $(COVERAGE_IGNORE) --lcov --output-path coverage-s2/lcov.info
+	$(CARGO) llvm-cov report --ignore-filename-regex $(COVERAGE_IGNORE) --json --summary-only --output-path coverage-s2/summary.json
+	$(CARGO) llvm-cov report --ignore-filename-regex $(COVERAGE_IGNORE) --summary-only
 
 check:
 	$(CARGO) fmt --check

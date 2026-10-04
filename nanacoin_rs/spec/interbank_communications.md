@@ -143,7 +143,7 @@ is holding a foreign currency and never counts toward local issuance.
 
 ## What must be designed before money crosses
 
-Carried over from the Federation section of `../../roadmap.md`, made concrete
+Carried over from the Federation section of `../../spec/roadmap.md`, made concrete
 for these two boards:
 
 1. **Bank identity keys.** A per-bank signing key (generated on the board,

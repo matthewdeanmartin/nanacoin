@@ -1,5 +1,82 @@
 # Deploy Rust NanaCoin and the Angular app to a bank
 
+## October 4, 2026: NanaCoin runs on miniframework (built, not deployed)
+
+The HTTP/HTTPS server, static files, `/trust`, `/ca`, `/metrics` and the
+board runner (Wi-Fi, SNTP, mDNS, task placement) now come from
+`../../microcontroller/miniframework`; NanaCoin keeps the ledger, its API,
+its RGB/Morse light, incidents and Board Health. See
+[spec/MINIFRAMEWORK_MIGRATION.md](spec/MINIFRAMEWORK_MIGRATION.md). Both
+bank images compile; **neither board has been flashed with it**. It is an
+ordinary app-only upgrade: same partition tables, ledger untouched.
+
+What a deployment check should now expect:
+
+- Startup step numbers changed (table under "The S2's blue LED"):
+  Wi-Fi now comes up before the ledger opens, so `http://<ip>:8080/` explains
+  any failure from step 5 on, including ledger and journal errors.
+- `/metrics` is miniframework's line, with the same field names:
+  `board,host=nanacoin.local,app=nanacoin,bank=s3 ...` (tag order changed;
+  Influx tags are unordered). It adds `tls_open`, `http_open`, `rejected`
+  and drops NanaCoin-only `tasks` and `sampler_stack_free_min`.
+- `/api/v1/sys` and `/api/v1/log` exist (framework built-ins). `HEAD` of a
+  bundled file is 200 without a body (was 405). CORS preflight is 204.
+- A refused request (body over 1 KiB, bad framing) carries CORS headers and
+  the connection lingers briefly so the client reads the error.
+- The deploy checks and probe are miniframework's `tools/boardsafe`;
+  `scripts/deploy.py`, `firmware-image.py` and `probe-board.py` bind them to
+  `scripts/boards.py`. Same commands, same refusals. The probe also checks
+  that `/api/v1/sys` reports `app=nanacoin` on this bank's hostname.
+
+## October 3, 2026: current Angular UI deployed to S3
+
+The owner authorized deployment to the connected board. Windows showed only
+the S3 bank on COM9, native USB MAC `ac:a7:04:2c:2c:04`. esptool independently
+confirmed that MAC and ESP32-S3; reading the MAC reset the live bank's uptime
+from 6,395 to 15 seconds, tying the USB port to `192.168.1.158`.
+
+Built the current working tree with `bash scripts/deploy.sh s3 COM9 --dry-run`,
+then deployed that same prepared image with the underlying `deploy.py` writer.
+The application is **3,665,200 / 4,194,304 bytes**, SHA-256
+`92b299ce33d5e769bb732d634c13aa01e737e3fd99c7bdc21a114df2ec8175d7`.
+The writer verified the MAC and exact S3 partition layout, wrote only the app
+at `0x10000` (erased app sectors `0x10000–0x38efff`), verified its hash and
+restarted the board. No provisioning, economy reset or certificate rotation
+was performed. Existing working-tree changes were retained.
+
+Verification passed:
+
+- Angular live and demo coverage suites, Rust default and S2 coverage suites,
+  and all nine deployment-safety tests passed before deployment.
+- The strict live probe passed CA and hostname validation, correct S3 identity,
+  all **75 exact bundled assets** in identity/gzip forms, ETags, concurrent
+  keep-alive and slow-reader checks, public notebook, Board Health and `/ca`.
+- Private pre/post status and public-ledger snapshots matched exactly; the
+  ledger remained balanced. No financial transaction was created for testing.
+- Both HTTP and trusted HTTPS `/metrics` returned 200 with
+  `board,app=nanacoin,bank=s3,host=nanacoin.local`.
+- The browser connector exposed no browsers, so manual navigation and signed-in
+  product checks were not performed. The strict probe verified the live assets
+  and public endpoints; it does not claim browser interactions were clicked.
+- S2 was not connected or flashed.
+
+Notes from this deployment:
+
+- Moving Go into `../archive/nanacoin_go` does not change the active firmware
+  workflow. The build still obtains ignored Wi-Fi configuration from
+  `../nanacoin_web/config.py`; no credential values should be printed or copied
+  into this document.
+- The live production UI is 521.29 kB initially: the 500 kB advisory warning
+  remains, but the build passes its 1 MB error limit. Coverage tooling is a
+  development dependency and is not included in the board's application assets.
+- The build reused and validated the existing S3 certificate/key. A direct
+  prepared-image deployment avoids an unnecessary second firmware build.
+
+Evidence stays in ignored `.embuild/current-deploy-build-s3.log`,
+`current-deploy-write-s3.log`, `current-deploy-probe-s3.log` and the
+`current-deploy-before-s3.json` / `current-deploy-after-s3.json` snapshots.
+Keep the snapshots private; do not print their household data.
+
 ## October 3 observability fix (deployed to S3)
 
 The live S3 bank returned 404 at `http://nanacoin.local/metrics`. The source
@@ -221,9 +298,9 @@ lamp; no light at all means no power, a charge-only cable, or download mode).
 | Morse rotation and three blinks | Healthy and serving (same messages as the S3's RGB light) |
 | Mostly on: 1.75 s on, 0.25 s off | Serving but degraded (mDNS failed or a recent allocation/TLS error) |
 | Fast, 5 per second | Server stalled or storage failed |
-| **N blinks, 1.6 s dark, repeat** | Startup failed at step N: 1 event loop, 2 system NVS, 3 ledger partition, 4 journal, 5 ledger replay, 6 Wi-Fi driver, 7 Wi-Fi start, 8 time, 9 web server, 10 mDNS/background tasks |
+| **N blinks, 1.6 s dark, repeat** | Startup failed at step N. miniframework's steps: 1 system/event loop, 2 system NVS, 3 Wi-Fi driver, 4 Wi-Fi join, 5 time/mDNS, 6 app setup, 7 web server. NanaCoin's (between 6 and 7): 8 ledger partition, 9 journal storage, 10 ledger replay, 11 background tasks |
 
-For a startup failure at step 8 or later, Wi-Fi is already up and the board
+For a startup failure at step 5 or later, Wi-Fi is already up and the board
 keeps it up: `curl http://<board-ip>:8080/` returns the exact error with
 internal-RAM and PSRAM figures (both boards). Find the IP from the router, or
 ping-sweep and look for the MAC in `arp -a`.
@@ -443,7 +520,7 @@ After provisioning:
 | S2: esptool cannot connect / no port | Board not in download mode or charge-only cable: the power-on BOOT routine, list ports again. Do not retry in a loop. |
 | S2: "USB device not recognized" | Normal while NanaCoin runs on the S2. Not a fault by itself; use the LED and network diagnostics. |
 | S2: LED dark after a deployment | Still in download mode after the write. Tap RST once. |
-| LED counts N blinks | Startup failed at step N; read `http://<ip>:8080/` for step 8 and later. |
+| LED counts N blinks | Startup failed at step N; read `http://<ip>:8080/` for step 5 and later. |
 | Probe: board `None`, "wrong bank" on the S3 | The S3 still runs firmware from before the two-bank change, which does not report its board. Deploy the current S3 build first. |
 | Partition-layout refusal | Stop. This is not an upgradeable bank of that type, and often not the NanaCoin server at all. |
 | Image lacks/has another board marker, wrong chip ID | The wrong build was selected. Rebuild with the right board. |

@@ -11,6 +11,9 @@ field() { python scripts/boards.py "$board" "$1"; }
 target=$(field target)
 export NANACOIN_BOARD=$board
 features=esp32
+# HTTP and HTTPS are always built; HTTP2=1 adds HTTP/2 (browsers choose it
+# by ALPN during the TLS handshake).
+http2=${HTTP2:+,http2}
 if [[ $board == s2 ]]; then
   features=esp32,board-s2
   # The S2 Mini has one plain LED on GPIO15, not a WS2812 pixel; never
@@ -77,10 +80,10 @@ if [[ -d /c/Espressif/frameworks/esp-idf-v5.5.3 ]]; then
   # directly so esp-idf-sys inherits the IDF-supported GCC from PATH.
   esp_toolchain="$(cygpath -u "$USERPROFILE")/.rustup/toolchains/esp/bin"
   export RUSTC="$(cygpath -m "$esp_toolchain/rustc.exe")"
-  "$esp_toolchain/cargo.exe" build --locked --release --no-default-features --features "$features" \
+  "$esp_toolchain/cargo.exe" build --locked --release --no-default-features --features "$features$http2" \
     --bin nanacoin-esp32 --target "$target" -Z build-std=std,panic_abort "$@"
 else
-  cargo +esp build --locked --release --no-default-features --features "$features" \
+  cargo +esp build --locked --release --no-default-features --features "$features$http2" \
     --bin nanacoin-esp32 --target "$target" -Z build-std=std,panic_abort "$@"
 fi
 esp_python="${NANACOIN_ESPTOOL_PYTHON:-python}"

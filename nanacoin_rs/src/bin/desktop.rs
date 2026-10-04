@@ -1,9 +1,16 @@
+//! The desktop server: the same framework connection loop the boards run,
+//! over loopback HTTP, with the journal in a file.
+use miniframework::desktop::{serve, DesktopPlatform};
+use miniframework::Site;
 use nanacoin::{
     api,
     journal::{file::FileJournal, Service},
+    server::{self, Bank},
 };
-use std::time::Duration;
-use tiny_http::{Header, Response, Server};
+use std::{
+    sync::{Arc, Mutex},
+    time::{Duration, Instant},
+};
 
 fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let path = std::env::var("NANACOIN_JOURNAL").unwrap_or_else(|_| "nanacoin.journal".into());
@@ -20,177 +27,33 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .unwrap_or_else(|_| "8080".into())
         .parse()?;
     let address = format!("127.0.0.1:{port}");
-    let server = Server::http(&address)?;
-    let mut output = vec![0u8; api::RESPONSE_LIMIT].into_boxed_slice();
-    println!("NanaCoin: http://{address} (loopback development server)");
     let origins = format!(
         "{},http://{address},http://localhost:{port}",
         std::env::var("NANACOIN_ORIGINS").unwrap_or_else(|_| api::DEFAULT_ORIGINS.into())
     );
+    miniframework::desktop::init_logging();
+    println!("NanaCoin: http://{address} (loopback development server)");
+    let ledger = Arc::new(Mutex::new(service));
+    let site = Site::new(
+        server::config(&address, &origins),
+        Bank::new(Arc::clone(&ledger)),
+        DesktopPlatform,
+    );
     let mut screen = nanacoin::screen::Worker::spawn()?;
-    loop {
+    let mut last = Instant::now() - Duration::from_secs(1);
+    serve(&site, &address, || {
+        // Scheduled payments and screen delivery, once a second.
+        if last.elapsed() < Duration::from_secs(1) {
+            return;
+        }
+        last = Instant::now();
+        let mut service = ledger.lock().unwrap_or_else(|e| e.into_inner());
         screen.pump(&mut service);
         if let Err(error) = service.tick() {
             eprintln!("scheduled payments: {error:?}");
         }
-        let Some(request) = server.recv_timeout(Duration::from_secs(1))? else {
-            continue;
-        };
-        if let Err(error) = serve(request, &mut service, &mut output, &origins) {
-            eprintln!("request disconnected: {error}");
-        }
-    }
-}
-
-fn serve(
-    mut request: tiny_http::Request,
-    service: &mut Service<FileJournal>,
-    output: &mut [u8],
-    origins: &str,
-) -> std::io::Result<()> {
-    let reply = if service.https_only() {
-        nanacoin::web::onboarding(request.method().as_str(), request.url(), true)
-    } else {
-        nanacoin::web::respond(
-            request.method().as_str(),
-            request.url(),
-            request
-                .headers()
-                .iter()
-                .find(|h| h.field.equiv("Accept-Encoding"))
-                .map(|h| h.value.as_str())
-                .unwrap_or(""),
-            request
-                .headers()
-                .iter()
-                .find(|h| h.field.equiv("If-None-Match"))
-                .map(|h| h.value.as_str())
-                .unwrap_or(""),
-        )
-    };
-    if let Some(reply) = reply {
-        if reply.status == 304 {
-            return not_modified(
-                request,
-                reply.headers.iter().map(|(k, v)| header(k, v)).collect(),
-            );
-        }
-        return request.respond(Response::new(
-            reply.status.into(),
-            reply.headers.iter().map(|(k, v)| header(k, v)).collect(),
-            reply.bytes,
-            Some(reply.bytes.len()),
-            None,
-        ));
-    }
-    let origin = request
-        .headers()
-        .iter()
-        .find(|h| h.field.equiv("Origin"))
-        .map(|h| h.value.as_str())
-        .unwrap_or("")
-        .to_owned();
-    let allowed = api::origin_allowed(&origin, origins);
-    let mut headers = vec![
-        header("Content-Type", "application/json"),
-        header("Vary", "Origin"),
-    ];
-    if allowed && !origin.is_empty() {
-        headers.push(header("Access-Control-Allow-Origin", &origin));
-        headers.push(header(
-            "Access-Control-Allow-Methods",
-            "GET, POST, PATCH, OPTIONS",
-        ));
-        headers.push(header(
-            "Access-Control-Allow-Headers",
-            "Authorization, Content-Type, Idempotency-Key, If-None-Match, Cache-Control",
-        ));
-    }
-    let method = request.method().as_str().to_owned();
-    let (status, len) = if !allowed {
-        api::error_response(nanacoin::domain::Error::Forbidden, output)
-    } else if method == "OPTIONS" {
-        output[..2].copy_from_slice(b"{}");
-        (200, 2)
-    } else {
-        let length = if method == "POST" || method == "PATCH" {
-            request.body_length().unwrap_or(usize::MAX)
-        } else {
-            0
-        };
-        if length > api::BODY_LIMIT {
-            let (_, len) = api::error_response(nanacoin::domain::Error::Capacity, output);
-            (413, len)
-        } else {
-            let mut body = [0; api::BODY_LIMIT];
-            if request.as_reader().read_exact(&mut body[..length]).is_err() {
-                api::error_response(nanacoin::domain::Error::InvalidInput, output)
-            } else {
-                let auth = request
-                    .headers()
-                    .iter()
-                    .find(|h| h.field.equiv("Authorization"))
-                    .map(|h| h.value.as_str())
-                    .unwrap_or("");
-                let key = request
-                    .headers()
-                    .iter()
-                    .find(|h| h.field.equiv("Idempotency-Key"))
-                    .map(|h| h.value.as_str())
-                    .unwrap_or("");
-                api::handle_keyed_on(
-                    service,
-                    &method,
-                    request.url(),
-                    auth,
-                    key,
-                    &body[..length],
-                    output,
-                    false,
-                )
-            }
-        }
-    };
-    let policy = nanacoin::cache::api(
-        &method,
-        request.url(),
-        status,
-        &output[..len],
-        request
-            .headers()
-            .iter()
-            .find(|h| h.field.equiv("If-None-Match"))
-            .map(|h| h.value.as_str())
-            .unwrap_or(""),
-    );
-    headers.push(header("Cache-Control", policy.control));
-    if let Some(etag) = &policy.etag {
-        headers.push(header("ETag", etag));
-    }
-    let status = policy.status;
-    let len = if status == 304 { 0 } else { len };
-    headers.push(header(
-        "X-Nanacoin-Generation",
-        &service.generation().to_string(),
-    ));
-    headers.push(header(
-        "Access-Control-Expose-Headers",
-        "X-Nanacoin-Generation, ETag",
-    ));
-    if status == 304 {
-        return not_modified(request, headers);
-    }
-    request.respond(Response::new(
-        status.into(),
-        headers,
-        &output[..len],
-        Some(len),
-        None,
-    ))
-}
-
-fn header(name: &str, value: &str) -> Header {
-    Header::from_bytes(name, value).unwrap()
+    })?;
+    Ok(())
 }
 
 fn migrate_login(
@@ -252,20 +115,4 @@ fn migrate_login(
         .map_err(|e| format!("migration: {e:?}"))?;
     println!("Login migrated. Ledger and member identity preserved; the old access token no longer authenticates.");
     Ok(())
-}
-
-// tiny_http 0.12 adds an incorrect zero length to empty 304 responses.
-fn not_modified(request: tiny_http::Request, headers: Vec<Header>) -> std::io::Result<()> {
-    use std::io::Write;
-    let mut writer = request.into_writer();
-    writer.write_all(b"HTTP/1.1 304 Not Modified")?;
-    writer.write_all(&[13, 10])?;
-    for header in headers {
-        if !header.field.equiv("Content-Length") && !header.field.equiv("Transfer-Encoding") {
-            write!(writer, "{}: {}", header.field, header.value)?;
-            writer.write_all(&[13, 10])?;
-        }
-    }
-    writer.write_all(&[13, 10])?;
-    writer.flush()
 }

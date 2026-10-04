@@ -60,16 +60,18 @@ def main():
                 return status, {key.lower(): value for key, value in fields.items()}, body
 
             for asset in bundled_assets():
-                # tiny_http uses chunked transfer for large desktop responses;
-                # the board uses Content-Length. Both must match all bytes.
-                verify_asset(asset_get, asset, require_length=False)
+                # The desktop runs the boards' miniframework connection loop,
+                # so the same exact Content-Length rule applies.
+                verify_asset(asset_get, asset)
                 uri = asset[0]
                 path = Path(uri)
                 status, headers, _ = get(uri)
                 if path.suffix in ('.js', '.css') and '-' in path.name:
                     assert 'immutable' in headers['Cache-Control'], uri
-                status, _, body = get(uri, method='HEAD')
-                assert status == 405 and not body, uri
+                # HEAD: the GET's headers without a body (RFC 9110 9.3.2).
+                status, head_headers, body = get(uri, method='HEAD')
+                assert status == 200 and not body, uri
+                assert head_headers['ETag'] == headers['ETag'], uri
             assert get('/nana?test=1')[2] == html
             for missing in ['/missing.js', '/%2e%2e/config.py', '/config.py']:
                 assert get(missing)[0] == 404
