@@ -12,7 +12,7 @@ from boards import BOARDS  # noqa: E402
 spec = importlib.util.spec_from_file_location('deploy', Path(__file__).with_name('deploy.py'))
 deploy = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(deploy)
-S2, S3 = BOARDS['s2'], BOARDS['s3']
+S2, S3, P4 = BOARDS['s2'], BOARDS['s3'], BOARDS['p4']
 
 
 def table(entries):
@@ -43,6 +43,30 @@ class PartitionSafety(unittest.TestCase):
     def test_s2_layout_fits_4mib(self):
         layout = S2.layout()
         self.assertEqual(max(offset + size for _, _, offset, size in layout.values()), 0x400000)
+
+    def test_p4_layout_and_cross_board_guards(self):
+        self.assertEqual(P4.image_chip_id, 18)
+        self.assertEqual(P4.bootloader_offset, 0x2000)
+        self.assertEqual(P4.app_size(), 8 * 1024 * 1024)
+        self.assertLessEqual(max(o + s for _, _, o, s in P4.layout().values()), 32 * 1024 * 1024)
+        self.assertEqual(deploy.verify_mac(P4, f'Chip is ESP32-P4\nMAC: {P4.mac}\n'), P4.mac)
+        for other in (S2, S3):
+            with self.assertRaises(ValueError):
+                deploy.verify_partition_table(P4, table(other.layout()))
+            with self.assertRaises(ValueError):
+                deploy.verify_mac(P4, f'MAC: {other.mac}\n')
+            with self.assertRaises(ValueError):
+                deploy.verify_mac(other, f'MAC: {P4.mac}\n')
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / 'app.bin'
+            path.write_bytes(image(P4))
+            deploy.check_image(P4, path)
+            for other in (S2, S3):
+                with self.assertRaises(ValueError):
+                    deploy.check_image(other, path)
+                path.write_bytes(image(P4, marker=other.marker))
+                with self.assertRaises(ValueError):
+                    deploy.check_image(P4, path)
 
     def test_other_bank_layout_rejected_by_name(self):
         with self.assertRaisesRegex(ValueError, 'has the s2 layout'):

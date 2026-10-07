@@ -485,6 +485,9 @@ pub struct Transaction {
 
 #[derive(Debug, Serialize)]
 pub struct State {
+    #[cfg(feature = "cobol-core")]
+    #[serde(skip)]
+    pub(crate) prepared: Box<crate::cobol::Prepared>,
     #[serde(skip)]
     pub ledger: crate::ledger::Ledger,
     #[serde(skip)]
@@ -550,36 +553,60 @@ pub fn token_hash(token: &str) -> Result<TokenHash, Error> {
     Ok(Sha256::digest(token.as_bytes()).into())
 }
 
-impl Default for State {
-    fn default() -> Self {
-        Self {
-            ledger: crate::ledger::Ledger::default(),
-            archive: Default::default(),
-            commerce: crate::commerce::Commerce::default(),
-            decimals: 4,
-            money_epoch: 0,
-            credit_blocked: 0,
-            loans: Vec::new(),
-            lottos: Vec::new(),
-            lotto_escrow: 0,
-            household_name: Name::new(),
-            initial_grant: 1_000_000,
-            currency: Name::try_from("NanaCoin").unwrap(),
-            offer_settles_after: DEFAULT_SETTLEMENT,
-            offers: Vec::new(),
-            last_timestamp: 0,
-            sequence: 0,
-            transactions: 0,
-            issuance_balance: 0,
-            usd_issuance_balance: 0,
-            quotes: Vec::new(),
-            members: Vec::new(),
-            listings: Vec::new(),
-            things: Vec::new(),
-            history: VecDeque::with_capacity(HISTORY),
-            fulfillments: std::vec::Vec::with_capacity(crate::fulfillment::CAPACITY),
+// Keep ordinary defaults and heap construction in one field list. The ordinary
+// struct initializer makes missing fields a compile error in both paths.
+macro_rules! state_defaults {
+    ($( $(#[$attribute:meta])* $field:ident: $value:expr, )*) => {
+        impl Default for State {
+            fn default() -> Self {
+                Self { $( $(#[$attribute])* $field: $value, )* }
+            }
         }
-    }
+        impl State {
+            pub(crate) fn boxed_default() -> Box<Self> {
+                let mut state = Box::<Self>::new_uninit();
+                let pointer = state.as_mut_ptr();
+                // SAFETY: allocate the complete State, then initialize each
+                // field once without reading uninitialized memory. The shared
+                // struct initializer above guarantees this is every field.
+                // On a panicking initializer MaybeUninit drops no partial State.
+                unsafe {
+                    $( $(#[$attribute])* std::ptr::addr_of_mut!((*pointer).$field).write($value); )*
+                    state.assume_init()
+                }
+            }
+        }
+    };
+}
+
+state_defaults! {
+    #[cfg(feature = "cobol-core")]
+    prepared: Default::default(),
+    ledger: crate::ledger::Ledger::default(),
+    archive: Default::default(),
+    commerce: crate::commerce::Commerce::default(),
+    decimals: 4,
+    money_epoch: 0,
+    credit_blocked: 0,
+    loans: Vec::new(),
+    lottos: Vec::new(),
+    lotto_escrow: 0,
+    household_name: Name::new(),
+    initial_grant: 1_000_000,
+    currency: Name::try_from("NanaCoin").unwrap(),
+    offer_settles_after: DEFAULT_SETTLEMENT,
+    offers: Vec::new(),
+    last_timestamp: 0,
+    sequence: 0,
+    transactions: 0,
+    issuance_balance: 0,
+    usd_issuance_balance: 0,
+    quotes: Vec::new(),
+    members: Vec::new(),
+    listings: Vec::new(),
+    things: Vec::new(),
+    history: VecDeque::with_capacity(HISTORY),
+    fulfillments: std::vec::Vec::with_capacity(crate::fulfillment::CAPACITY),
 }
 
 impl State {
@@ -637,6 +664,23 @@ impl State {
                 found = Some((member, KeyScope::Read));
             }
         }
+        #[cfg(feature = "cobol-core")]
+        {
+            let eligible = crate::cobol::identity_query(&[
+                2,
+                found.is_some().into(),
+                found.is_some_and(|(m, _)| m.disabled).into(),
+                found.is_some_and(|(m, _)| m.password.is_some()).into(),
+            ])?[16]
+                != 0;
+            if eligible {
+                let (m, scope) = found.expect("selected key member");
+                Ok((m.id, scope))
+            } else {
+                Err(Error::Unauthorized)
+            }
+        }
+        #[cfg(not(feature = "cobol-core"))]
         match found {
             Some((m, scope)) if !m.disabled && m.password.is_some() => Ok((m.id, scope)),
             _ => Err(Error::Unauthorized),
@@ -646,6 +690,16 @@ impl State {
     /// When the member's API key of `scope` was made, if they have one.
     pub fn api_key_created(&self, id: MemberId, scope: KeyScope) -> Result<Option<u64>, Error> {
         let m = self.member(id)?;
+        #[cfg(feature = "cobol-core")]
+        {
+            let (present, created) = match scope {
+                KeyScope::Full => (m.api_key != [0; 32], m.api_key_created),
+                KeyScope::Read => (m.read_key != [0; 32], m.read_key_created),
+            };
+            let out = crate::cobol::identity_query(&[3, present.into(), created as i64])?;
+            Ok((out[16] != 0).then_some(out[17] as u64))
+        }
+        #[cfg(not(feature = "cobol-core"))]
         Ok(match scope {
             KeyScope::Full => (m.api_key != [0; 32]).then_some(m.api_key_created),
             KeyScope::Read => (m.read_key != [0; 32]).then_some(m.read_key_created),
@@ -674,14 +728,31 @@ impl State {
     }
 
     pub(crate) fn admin(&self, actor: MemberId) -> Result<(), Error> {
-        if (self.members.is_empty() && actor == MemberId(1))
-            || self
-                .member(actor)
-                .is_ok_and(|m| m.role == Role::Nana && !m.disabled)
+        #[cfg(feature = "cobol-core")]
         {
-            Ok(())
-        } else {
-            Err(Error::Forbidden)
+            let m = self.member(actor).ok();
+            crate::cobol::policy(
+                10,
+                &[
+                    self.members.is_empty().into(),
+                    actor.0.into(),
+                    m.is_some().into(),
+                    m.is_some_and(|m| m.role == Role::Nana).into(),
+                    m.is_some_and(|m| m.disabled).into(),
+                ],
+            )
+        }
+        #[cfg(not(feature = "cobol-core"))]
+        {
+            if (self.members.is_empty() && actor == MemberId(1))
+                || self
+                    .member(actor)
+                    .is_ok_and(|m| m.role == Role::Nana && !m.disabled)
+            {
+                Ok(())
+            } else {
+                Err(Error::Forbidden)
+            }
         }
     }
 
@@ -696,30 +767,41 @@ impl State {
         amount: i64,
         correction: bool,
     ) -> Result<(), Error> {
-        if from == to || !(1..=MAX_AMOUNT).contains(&amount) {
-            return Err(Error::InvalidInput);
+        #[cfg(feature = "cobol-core")]
+        {
+            self.account_posting(from, to, amount, correction, false)
         }
-        let balance = |id| {
-            if id == MemberId(0) {
-                Ok(self.issuance_balance)
-            } else {
-                let member = self.member(id)?;
-                if !correction && member.disabled {
-                    return Err(Error::Disabled);
-                }
-                Ok(member.balance)
+        #[cfg(not(feature = "cobol-core"))]
+        {
+            if from == to || !(1..=MAX_AMOUNT).contains(&amount) {
+                return Err(Error::InvalidInput);
             }
-        };
-        let debit = balance(from)?.checked_sub(amount).ok_or(Error::Overflow)?;
-        let credit = balance(to)?.checked_add(amount).ok_or(Error::Overflow)?;
-        // JSON numbers must remain exact for the browser as well as Rust.
-        if debit < -(MAX_SEQUENCE as i64) || credit > MAX_SEQUENCE as i64 {
-            return Err(Error::Overflow);
+            let balance = |id| {
+                if id == MemberId(0) {
+                    Ok(self.issuance_balance)
+                } else {
+                    let member = self.member(id)?;
+                    if !correction && member.disabled {
+                        return Err(Error::Disabled);
+                    }
+                    Ok(member.balance)
+                }
+            };
+            let source = balance(from)?;
+            let target = balance(to)?;
+            {
+                let debit = source.checked_sub(amount).ok_or(Error::Overflow)?;
+                let credit = target.checked_add(amount).ok_or(Error::Overflow)?;
+                // JSON numbers must remain exact for the browser as well as Rust.
+                if debit < -(MAX_SEQUENCE as i64) || credit > MAX_SEQUENCE as i64 {
+                    return Err(Error::Overflow);
+                }
+                if !correction && from != MemberId(0) && debit < 0 {
+                    return Err(Error::InsufficientFunds);
+                }
+                Ok(())
+            }
         }
-        if !correction && from != MemberId(0) && debit < 0 {
-            return Err(Error::InsufficientFunds);
-        }
-        Ok(())
     }
 
     pub fn validate(&self, actor: MemberId, command: &Command) -> Result<(), Error> {
@@ -738,6 +820,25 @@ impl State {
         if matches!(command, Command::RunLoan { .. }) {
             return self.validate_loan(actor, command, now);
         }
+        #[cfg(feature = "cobol-core")]
+        {
+            let member = self.members.iter().find(|m| m.id == actor);
+            crate::cobol::policy(
+                44,
+                &[
+                    self.members.len() as i64,
+                    actor.0.into(),
+                    member.is_some().into(),
+                    member.is_some_and(|m| m.disabled).into(),
+                    matches!(
+                        command,
+                        Command::AddMember { .. } | Command::Provision { .. }
+                    )
+                    .into(),
+                ],
+            )?;
+        }
+        #[cfg(not(feature = "cobol-core"))]
         if !self.members.is_empty() {
             if self.member(actor)?.disabled {
                 return Err(Error::Disabled);
@@ -750,16 +851,30 @@ impl State {
         {
             return Err(Error::Forbidden);
         }
+        #[cfg(feature = "cobol-core")]
+        self.validate_fulfillment_capacity(command)?;
+        #[cfg(not(feature = "cobol-core"))]
         if self.creates_fulfillment(command) && !self.fulfillment_room() {
             return Err(Error::Capacity);
         }
         match command {
+            #[cfg(feature = "cobol-core")]
+            Command::List { .. }
+            | Command::ClassifiedList { .. }
+            | Command::Cancel { .. }
+            | Command::UpdateListing { .. }
+            | Command::Buy { .. } => {
+                self.listing_plan(actor, command, now)?;
+            }
             Command::Commerce { action } => self.validate_commerce(actor, action, now)?,
             Command::Refund {
                 transaction,
                 amount,
                 memo,
             } => {
+                #[cfg(feature = "cobol-core")]
+                crate::cobol::policy(49, &[4, memo.chars().any(char::is_control).into()])?;
+                #[cfg(not(feature = "cobol-core"))]
                 if memo.chars().any(char::is_control) {
                     return Err(Error::InvalidInput);
                 }
@@ -787,10 +902,12 @@ impl State {
                 expected_sequence,
             } => {
                 self.admin(actor)?;
-                if *expected_epoch != self.money_epoch || *expected_sequence != self.sequence {
-                    return Err(Error::Conflict);
-                }
-                self.validate_reform(*decimals, *power)?;
+                self.validate_reform_request(
+                    *decimals,
+                    *power,
+                    *expected_epoch,
+                    *expected_sequence,
+                )?;
             }
             Command::Provision {
                 household_name,
@@ -798,6 +915,9 @@ impl State {
                 display_name,
                 password,
             } => {
+                #[cfg(feature = "cobol-core")]
+                crate::cobol::policy(49, &[5, self.members.len() as i64])?;
+                #[cfg(not(feature = "cobol-core"))]
                 if !self.members.is_empty() {
                     return Err(Error::Forbidden);
                 }
@@ -822,15 +942,20 @@ impl State {
                 self.admin(actor)?;
                 self.validate_new_member(username, display_name, password)?;
                 valid_mastodon_id(mastodon_id)?;
-                if !(0..=MAX_AMOUNT).contains(grant) {
-                    return Err(Error::InvalidInput);
-                }
-                if self
-                    .issuance_balance
-                    .checked_sub(*grant)
-                    .is_none_or(|n| n < -(MAX_SEQUENCE as i64))
+                #[cfg(feature = "cobol-core")]
+                crate::cobol::policy(13, &[self.issuance_balance, *grant])?;
+                #[cfg(not(feature = "cobol-core"))]
                 {
-                    return Err(Error::Overflow);
+                    if !(0..=MAX_AMOUNT).contains(grant) {
+                        return Err(Error::InvalidInput);
+                    }
+                    if self
+                        .issuance_balance
+                        .checked_sub(*grant)
+                        .is_none_or(|n| n < -(MAX_SEQUENCE as i64))
+                    {
+                        return Err(Error::Overflow);
+                    }
                 }
             }
             Command::Configure {
@@ -842,13 +967,34 @@ impl State {
                 self.admin(actor)?;
                 valid_name(household_name)?;
                 valid_name(currency)?;
-                if !(0..=MAX_AMOUNT).contains(initial_grant) {
-                    return Err(Error::InvalidInput);
-                }
-                if offer_settles_after.is_some_and(|v| v > MAX_SEQUENCE.saturating_sub(now)) {
-                    return Err(Error::InvalidInput);
+                #[cfg(feature = "cobol-core")]
+                crate::cobol::policy(
+                    14,
+                    &[
+                        *initial_grant,
+                        offer_settles_after
+                            .map(|v| i64::try_from(v).unwrap_or(i64::MAX))
+                            .unwrap_or(-1),
+                        i64::try_from(now).unwrap_or(i64::MAX),
+                    ],
+                )?;
+                #[cfg(not(feature = "cobol-core"))]
+                {
+                    if !(0..=MAX_AMOUNT).contains(initial_grant) {
+                        return Err(Error::InvalidInput);
+                    }
+                    if offer_settles_after.is_some_and(|v| v > MAX_SEQUENCE.saturating_sub(now)) {
+                        return Err(Error::InvalidInput);
+                    }
                 }
             }
+            #[cfg(feature = "cobol-core")]
+            Command::UpdateMember { .. }
+            | Command::MigrateMember { .. }
+            | Command::AddMember { .. } => {
+                self.identity_policy(actor, command)?;
+            }
+            #[cfg(not(feature = "cobol-core"))]
             Command::UpdateMember {
                 member,
                 display_name,
@@ -880,6 +1026,20 @@ impl State {
                 if password.as_ref().is_some_and(|p| !p.valid()) {
                     return Err(Error::InvalidInput);
                 }
+                #[cfg(feature = "cobol-core")]
+                crate::cobol::policy(
+                    11,
+                    &[
+                        (target.role == Role::Nana).into(),
+                        target.disabled.into(),
+                        (*role == Some(Role::User) || *disabled == Some(true)).into(),
+                        self.members
+                            .iter()
+                            .filter(|m| m.role == Role::Nana && !m.disabled)
+                            .count() as i64,
+                    ],
+                )?;
+                #[cfg(not(feature = "cobol-core"))]
                 if target.role == Role::Nana
                     && !target.disabled
                     && (*role == Some(Role::User) || *disabled == Some(true))
@@ -899,15 +1059,31 @@ impl State {
                 // mints a bot member's full key (bots never sign in).
                 let nana_for_bot =
                     target.kind == MemberKind::Bot && matches!(command, Command::SetApiKey { .. });
-                if actor != *member
-                    && (self.admin(actor).is_err() || (*key_hash != [0; 32] && !nana_for_bot))
+                #[cfg(feature = "cobol-core")]
+                crate::cobol::policy(
+                    12,
+                    &[
+                        (actor == *member).into(),
+                        self.admin(actor).is_ok().into(),
+                        (*key_hash == [0; 32]).into(),
+                        nana_for_bot.into(),
+                        target.password.is_some().into(),
+                        target.disabled.into(),
+                    ],
+                )?;
+                #[cfg(not(feature = "cobol-core"))]
                 {
-                    return Err(Error::Forbidden);
-                }
-                if *key_hash != [0; 32] && (target.password.is_none() || target.disabled) {
-                    return Err(Error::Forbidden);
+                    if actor != *member
+                        && (self.admin(actor).is_err() || (*key_hash != [0; 32] && !nana_for_bot))
+                    {
+                        return Err(Error::Forbidden);
+                    }
+                    if *key_hash != [0; 32] && (target.password.is_none() || target.disabled) {
+                        return Err(Error::Forbidden);
+                    }
                 }
             }
+            #[cfg(not(feature = "cobol-core"))]
             Command::MigrateMember {
                 member,
                 username,
@@ -927,6 +1103,7 @@ impl State {
                     return Err(Error::Conflict);
                 }
             }
+            #[cfg(not(feature = "cobol-core"))]
             Command::AddMember { name, token_hash } => {
                 self.admin(actor)?;
                 if name.trim().is_empty() || *token_hash == [0; 32] {
@@ -953,6 +1130,11 @@ impl State {
                 self.member(*from)?;
                 self.posting(*from, MemberId(0), *amount)?;
             }
+            #[cfg(feature = "cobol-core")]
+            Command::Transfer { .. } | Command::ClassifiedTransfer { .. } => {
+                self.transfer_policy(actor, command)?
+            }
+            #[cfg(not(feature = "cobol-core"))]
             Command::Transfer { to, amount, memo } => {
                 let recipient = self.member(*to)?;
                 if *amount == 0 {
@@ -969,6 +1151,7 @@ impl State {
                     self.posting(actor, *to, *amount)?;
                 }
             }
+            #[cfg(not(feature = "cobol-core"))]
             Command::ClassifiedTransfer {
                 to,
                 amount,
@@ -988,6 +1171,7 @@ impl State {
                     }
                 }
             }
+            #[cfg(not(feature = "cobol-core"))]
             Command::List {
                 title,
                 price,
@@ -1024,6 +1208,7 @@ impl State {
                     return Err(Error::Capacity);
                 }
             }
+            #[cfg(not(feature = "cobol-core"))]
             Command::ClassifiedList {
                 title,
                 price,
@@ -1073,6 +1258,7 @@ impl State {
                     return Err(Error::Capacity);
                 }
             }
+            #[cfg(not(feature = "cobol-core"))]
             Command::Cancel { listing } => {
                 let l = self.listing(*listing)?;
                 if actor != l.owner {
@@ -1082,6 +1268,7 @@ impl State {
                     return Err(Error::Conflict);
                 }
             }
+            #[cfg(not(feature = "cobol-core"))]
             Command::UpdateListing {
                 listing,
                 title,
@@ -1101,6 +1288,7 @@ impl State {
                     return Err(Error::InvalidInput);
                 }
             }
+            #[cfg(not(feature = "cobol-core"))]
             Command::Buy { listing } => {
                 let l = self.listing(*listing)?;
                 if l.status != ListingStatus::Active {
@@ -1119,6 +1307,19 @@ impl State {
                 }
                 self.posting(from, to, l.price)?;
             }
+            #[cfg(feature = "cobol-core")]
+            Command::Reverse { transaction, .. } => {
+                let p = self.correction_policy(actor, *transaction, None)?;
+                let tx = self.original_payment(*transaction)?;
+                self.validate_currency_posting(
+                    p.payer,
+                    p.payee,
+                    self.current_amount(tx, p.units)?,
+                    p.overdraft,
+                    tx.usd,
+                )?;
+            }
+            #[cfg(not(feature = "cobol-core"))]
             Command::Reverse { transaction, .. } => {
                 let tx = self
                     .history
@@ -1179,18 +1380,35 @@ impl State {
         display_name: &Name,
         password: &PasswordVerifier,
     ) -> Result<(), Error> {
-        valid_name(username)?;
-        valid_name(display_name)?;
-        if !password.valid() {
-            return Err(Error::InvalidInput);
+        #[cfg(feature = "cobol-core")]
+        return crate::cobol::policy(
+            48,
+            &[
+                username.trim().is_empty().into(),
+                username.chars().any(char::is_control).into(),
+                display_name.trim().is_empty().into(),
+                display_name.chars().any(char::is_control).into(),
+                password.valid().into(),
+                self.members.len() as i64,
+                self.members.capacity() as i64,
+                self.members.iter().any(|m| m.username == *username).into(),
+            ],
+        );
+        #[cfg(not(feature = "cobol-core"))]
+        {
+            valid_name(username)?;
+            valid_name(display_name)?;
+            if !password.valid() {
+                return Err(Error::InvalidInput);
+            }
+            if self.members.is_full() {
+                return Err(Error::Capacity);
+            }
+            if self.members.iter().any(|m| m.username == *username) {
+                return Err(Error::Conflict);
+            }
+            Ok(())
         }
-        if self.members.is_full() {
-            return Err(Error::Capacity);
-        }
-        if self.members.iter().any(|m| m.username == *username) {
-            return Err(Error::Conflict);
-        }
-        Ok(())
     }
 
     pub fn needs_login_migration(&self) -> bool {
@@ -1218,6 +1436,8 @@ impl State {
             return Err(Error::CorruptJournal);
         }
         self.validate_at(event.actor, &event.command, event.timestamp)?;
+        #[cfg(feature = "cobol-core")]
+        self.prepare_bank(event)?;
         self.apply(event);
         Ok(())
     }
@@ -1252,6 +1472,12 @@ impl State {
 
     pub(crate) fn apply(&mut self, event: &Event) {
         let actor = event.actor;
+        #[cfg(feature = "cobol-core")]
+        let listing_plan = self.prepared.listing.take();
+        #[cfg(feature = "cobol-core")]
+        let identity_plan = self.prepared.identity.take();
+        #[cfg(feature = "cobol-core")]
+        let audit_plan = self.prepared.audit.take().expect("prepared audit");
         let mut posting = None;
         let mut posting_economic = EconomicDetails::default();
         let mut usd = false;
@@ -1290,13 +1516,19 @@ impl State {
                 password,
             } => {
                 self.household_name = household_name.clone();
-                self.add_password_member(
-                    username,
-                    display_name,
-                    password,
+                #[cfg(feature = "cobol-core")]
+                let seed = {
+                    let p = identity_plan.as_ref().expect("prepared provision");
+                    (p.id, p.role, p.kind, p.disabled)
+                };
+                #[cfg(not(feature = "cobol-core"))]
+                let seed = (
+                    MemberId(self.members.len() as u8 + 1),
                     Role::Nana,
-                    event.timestamp,
+                    MemberKind::Human,
+                    false,
                 );
+                self.add_password_member(username, display_name, password, seed, event.timestamp);
             }
             Command::CreateMember {
                 username,
@@ -1306,12 +1538,30 @@ impl State {
                 grant,
                 mastodon_id,
             } => {
-                self.add_password_member(username, display_name, password, *role, event.timestamp);
+                #[cfg(feature = "cobol-core")]
+                let seed = {
+                    let p = identity_plan.as_ref().expect("prepared member creation");
+                    (p.id, p.role, p.kind, p.disabled)
+                };
+                #[cfg(not(feature = "cobol-core"))]
+                let seed = (
+                    MemberId(self.members.len() as u8 + 1),
+                    *role,
+                    MemberKind::Human,
+                    false,
+                );
+                #[cfg(feature = "cobol-core")]
+                let _ = role;
+                self.add_password_member(username, display_name, password, seed, event.timestamp);
                 self.members.last_mut().unwrap().mastodon_id = mastodon_id.clone();
-                if *grant > 0 {
+                #[cfg(feature = "cobol-core")]
+                let apply_grant = identity_plan.as_ref().unwrap().grant;
+                #[cfg(not(feature = "cobol-core"))]
+                let apply_grant = *grant > 0;
+                if apply_grant {
                     posting = Some((
                         MemberId(0),
-                        MemberId(self.members.len() as u8),
+                        seed.0,
                         *grant,
                         Memo::try_from("Initial household allocation").unwrap(),
                         None,
@@ -1326,21 +1576,30 @@ impl State {
                 grant,
                 mastodon_id,
             } => {
-                self.add_password_member(
-                    username,
-                    display_name,
-                    password,
+                #[cfg(feature = "cobol-core")]
+                let seed = {
+                    let p = identity_plan.as_ref().expect("prepared bot creation");
+                    (p.id, p.role, p.kind, p.disabled)
+                };
+                #[cfg(not(feature = "cobol-core"))]
+                let seed = (
+                    MemberId(self.members.len() as u8 + 1),
                     Role::User,
-                    event.timestamp,
+                    MemberKind::Bot,
+                    false,
                 );
+                self.add_password_member(username, display_name, password, seed, event.timestamp);
                 let m = self.members.last_mut().unwrap();
                 m.mastodon_id = mastodon_id.clone();
-                m.kind = MemberKind::Bot;
                 // A bot gets the starting grant like anyone, when Nana gives one.
-                if *grant > 0 {
+                #[cfg(feature = "cobol-core")]
+                let apply_grant = identity_plan.as_ref().unwrap().grant;
+                #[cfg(not(feature = "cobol-core"))]
+                let apply_grant = *grant > 0;
+                if apply_grant {
                     posting = Some((
                         MemberId(0),
-                        MemberId(self.members.len() as u8),
+                        seed.0,
                         *grant,
                         Memo::try_from("Initial household allocation").unwrap(),
                         None,
@@ -1357,6 +1616,15 @@ impl State {
                 self.household_name = household_name.clone();
                 self.initial_grant = *initial_grant;
                 self.currency = currency.clone();
+                #[cfg(feature = "cobol-core")]
+                {
+                    let _ = offer_settles_after;
+                    self.offer_settles_after = identity_plan
+                        .as_ref()
+                        .expect("prepared configuration")
+                        .settlement;
+                }
+                #[cfg(not(feature = "cobol-core"))]
                 if let Some(seconds) = offer_settles_after {
                     self.offer_settles_after = if *seconds == 0 {
                         DEFAULT_SETTLEMENT
@@ -1383,6 +1651,15 @@ impl State {
                 }
                 if let Some(password) = password {
                     m.password = Some(password.clone());
+                }
+                #[cfg(feature = "cobol-core")]
+                let revoke_keys = identity_plan
+                    .as_ref()
+                    .expect("prepared member update")
+                    .revoke_keys;
+                #[cfg(not(feature = "cobol-core"))]
+                let revoke_keys = password.is_some();
+                if revoke_keys {
                     m.token_hash = [0; 32];
                     // A password change is how a member says "I may be
                     // compromised"; a standing key must not outlive it.
@@ -1391,9 +1668,18 @@ impl State {
                     m.read_key = [0; 32];
                     m.read_key_created = 0;
                 }
+                #[cfg(feature = "cobol-core")]
+                {
+                    let _ = (role, disabled);
+                    let p = identity_plan.as_ref().unwrap();
+                    m.role = p.role;
+                    m.disabled = p.disabled;
+                }
+                #[cfg(not(feature = "cobol-core"))]
                 if let Some(role) = role {
                     m.role = *role;
                 }
+                #[cfg(not(feature = "cobol-core"))]
                 if let Some(disabled) = disabled {
                     m.disabled = *disabled;
                 }
@@ -1403,12 +1689,22 @@ impl State {
             }
             Command::SetApiKey { member, key_hash } | Command::SetReadKey { member, key_hash } => {
                 let m = self.members.iter_mut().find(|m| m.id == *member).unwrap();
+                #[cfg(feature = "cobol-core")]
+                let created = identity_plan
+                    .as_ref()
+                    .expect("prepared key transition")
+                    .key_created;
+                #[cfg(not(feature = "cobol-core"))]
                 let created = if *key_hash == [0; 32] {
                     0
                 } else {
                     event.timestamp
                 };
-                if matches!(event.command, Command::SetApiKey { .. }) {
+                #[cfg(feature = "cobol-core")]
+                let full_key = identity_plan.as_ref().unwrap().full_key;
+                #[cfg(not(feature = "cobol-core"))]
+                let full_key = matches!(event.command, Command::SetApiKey { .. });
+                if full_key {
                     (m.api_key, m.api_key_created) = (*key_hash, created);
                 } else {
                     (m.read_key, m.read_key_created) = (*key_hash, created);
@@ -1419,7 +1715,14 @@ impl State {
                 username,
                 password,
             } => {
-                if self.household_name.is_empty() {
+                #[cfg(feature = "cobol-core")]
+                let default_household = identity_plan
+                    .as_ref()
+                    .expect("prepared credential setup")
+                    .default_household;
+                #[cfg(not(feature = "cobol-core"))]
+                let default_household = self.household_name.is_empty();
+                if default_household {
                     self.household_name = Name::try_from("NanaCoin").unwrap();
                 }
                 let m = self.members.iter_mut().find(|m| m.id == *member).unwrap();
@@ -1428,19 +1731,33 @@ impl State {
                 m.token_hash = [0; 32];
             }
             Command::AddMember { name, token_hash } => {
+                #[cfg(feature = "cobol-core")]
+                let id = identity_plan.as_ref().expect("prepared token member").id;
+                #[cfg(not(feature = "cobol-core"))]
                 let id = MemberId(self.members.len() as u8 + 1);
+                #[cfg(feature = "cobol-core")]
+                let role = identity_plan.as_ref().unwrap().role;
+                #[cfg(not(feature = "cobol-core"))]
+                let role = if id == MemberId(1) {
+                    Role::Nana
+                } else {
+                    Role::User
+                };
+                #[cfg(feature = "cobol-core")]
+                let (kind, disabled) = {
+                    let p = identity_plan.as_ref().unwrap();
+                    (p.kind, p.disabled)
+                };
+                #[cfg(not(feature = "cobol-core"))]
+                let (kind, disabled) = (MemberKind::Human, false);
                 self.members
                     .push(Member {
                         id,
                         name: name.clone(),
                         username: Name::new(),
                         mastodon_id: MastodonId::new(),
-                        role: if id == MemberId(1) {
-                            Role::Nana
-                        } else {
-                            Role::User
-                        },
-                        disabled: false,
+                        role,
+                        disabled,
                         bio: Memo::new(),
                         password: None,
                         balance: 0,
@@ -1452,7 +1769,7 @@ impl State {
                         api_key_created: 0,
                         read_key: [0; 32],
                         read_key_created: 0,
-                        kind: MemberKind::Human,
+                        kind,
                         last_command: [0; 32],
                         last_sequence: 0,
                     })
@@ -1484,6 +1801,13 @@ impl State {
                 details,
             } => {
                 if self.listings.is_full() {
+                    #[cfg(feature = "cobol-core")]
+                    let i = listing_plan
+                        .as_ref()
+                        .expect("prepared listing")
+                        .recycle
+                        .expect("prepared listing recycling index");
+                    #[cfg(not(feature = "cobol-core"))]
                     let i = self
                         .listings
                         .iter()
@@ -1499,7 +1823,18 @@ impl State {
                         description: description.clone(),
                         price: *price,
                         side: *side,
-                        status: ListingStatus::Active,
+                        status: {
+                            #[cfg(feature = "cobol-core")]
+                            {
+                                crate::cobol::listing_status(
+                                    listing_plan.as_ref().expect("prepared listing").status,
+                                )
+                            }
+                            #[cfg(not(feature = "cobol-core"))]
+                            {
+                                ListingStatus::Active
+                            }
+                        },
                         buyer: None,
                         sold_tx: None,
                         details: details.clone().unwrap_or_default(),
@@ -1518,6 +1853,13 @@ impl State {
                 standard,
             } => {
                 if self.listings.is_full() {
+                    #[cfg(feature = "cobol-core")]
+                    let i = listing_plan
+                        .as_ref()
+                        .expect("prepared classified listing")
+                        .recycle
+                        .expect("prepared listing recycling index");
+                    #[cfg(not(feature = "cobol-core"))]
                     let i = self
                         .listings
                         .iter()
@@ -1526,6 +1868,37 @@ impl State {
                     self.listings.remove(i);
                 }
                 let mut resolved = *economic;
+                #[cfg(feature = "cobol-core")]
+                let resolved_title = {
+                    let _ = standard;
+                    let plan = listing_plan.as_ref().expect("prepared classified listing");
+                    if let Some(index) = plan.thing_index {
+                        let thing = &mut self.things[index];
+                        resolved.thing = thing.id;
+                        thing.updated_at = event.timestamp;
+                        thing.standard = plan.standard;
+                        thing.name.clone()
+                    } else {
+                        if self.things.is_full() {
+                            self.things.remove(
+                                plan.thing_recycle.expect("prepared thing recycling index"),
+                            );
+                        }
+                        resolved.thing = event.sequence;
+                        self.things
+                            .push(Thing {
+                                id: event.sequence,
+                                name: title.clone(),
+                                kind: economic.kind,
+                                unit: economic.unit,
+                                standard: plan.standard,
+                                updated_at: event.timestamp,
+                            })
+                            .unwrap();
+                        title.clone()
+                    }
+                };
+                #[cfg(not(feature = "cobol-core"))]
                 let resolved_title = if economic.thing == 0 {
                     if let Some(thing) = self
                         .things
@@ -1585,7 +1958,21 @@ impl State {
                         description: description.clone(),
                         price: *price,
                         side: *side,
-                        status: ListingStatus::Active,
+                        status: {
+                            #[cfg(feature = "cobol-core")]
+                            {
+                                crate::cobol::listing_status(
+                                    listing_plan
+                                        .as_ref()
+                                        .expect("prepared classified listing")
+                                        .status,
+                                )
+                            }
+                            #[cfg(not(feature = "cobol-core"))]
+                            {
+                                ListingStatus::Active
+                            }
+                        },
                         buyer: None,
                         sold_tx: None,
                         details: ListingDetails::default(),
@@ -1597,7 +1984,16 @@ impl State {
             }
             Command::Cancel { listing } => {
                 let l = self.listings.iter_mut().find(|l| l.id == *listing).unwrap();
-                l.status = ListingStatus::Cancelled;
+                #[cfg(feature = "cobol-core")]
+                {
+                    l.status = crate::cobol::listing_status(
+                        listing_plan.as_ref().expect("prepared cancellation").status,
+                    );
+                }
+                #[cfg(not(feature = "cobol-core"))]
+                {
+                    l.status = ListingStatus::Cancelled;
+                }
                 l.updated_at = event.timestamp;
             }
             Command::UpdateListing {
@@ -1620,8 +2016,23 @@ impl State {
             }
             Command::Buy { listing } => {
                 let l = self.listings.iter_mut().find(|l| l.id == *listing).unwrap();
-                l.status = ListingStatus::Sold;
+                #[cfg(feature = "cobol-core")]
+                {
+                    l.status = crate::cobol::listing_status(
+                        listing_plan.as_ref().expect("prepared purchase").status,
+                    );
+                }
+                #[cfg(not(feature = "cobol-core"))]
+                {
+                    l.status = ListingStatus::Sold;
+                }
                 l.updated_at = event.timestamp;
+                #[cfg(feature = "cobol-core")]
+                let (from, to) = {
+                    let plan = listing_plan.as_ref().expect("prepared purchase");
+                    (plan.payer, plan.payee)
+                };
+                #[cfg(not(feature = "cobol-core"))]
                 let (from, to) = match l.side {
                     Side::Sell => (actor, l.owner),
                     Side::Buy => (l.owner, actor),
@@ -1653,13 +2064,34 @@ impl State {
                     .clone();
                 gift_request = tx.meta.gift_request;
                 quote = tx.quote;
-                refund_units = tx.amount;
+                #[cfg(feature = "cobol-core")]
+                let p = self
+                    .prepared
+                    .correction_policy
+                    .take()
+                    .expect("prepared correction policy");
+                #[cfg(feature = "cobol-core")]
+                {
+                    refund_units = p.units;
+                }
+                #[cfg(not(feature = "cobol-core"))]
+                {
+                    refund_units = tx.amount;
+                }
                 usd = tx.usd;
                 posting_economic = tx.economic;
+                #[cfg(feature = "cobol-core")]
+                let amount = self.prepared_amount(0);
+                #[cfg(not(feature = "cobol-core"))]
+                let amount = self.current_amount(&tx, tx.amount).unwrap();
+                #[cfg(feature = "cobol-core")]
+                let (payer, payee) = (p.payer, p.payee);
+                #[cfg(not(feature = "cobol-core"))]
+                let (payer, payee) = (tx.to, tx.from);
                 posting = Some((
-                    tx.to,
-                    tx.from,
-                    self.current_amount(&tx, tx.amount).unwrap(),
+                    payer,
+                    payee,
+                    amount,
                     memo.clone(),
                     Some(*transaction),
                     tx.listing,
@@ -1700,7 +2132,13 @@ impl State {
                 economic: posting_economic,
             });
         }
+        #[cfg(feature = "cobol-core")]
+        self.finish_bank_plan();
+        #[cfg(feature = "cobol-core")]
+        self.ledger.apply_audit(audit_plan.0, audit_plan.1);
+        #[cfg(not(feature = "cobol-core"))]
         self.ledger.audit(event);
+        #[cfg(not(feature = "cobol-core"))]
         if let Some(a) = self.ledger.audit.back_mut() {
             if let crate::ledger::AuditAction::Identity { member, .. } = &mut a.action {
                 if *member == MemberId(0) {
@@ -1726,6 +2164,7 @@ impl State {
         tx.meta.decimals = if tx.usd { 2 } else { self.decimals };
         self.ledger_post(&tx);
         self.track_fulfillment(&tx);
+        #[cfg(not(feature = "cobol-core"))]
         if !tx.usd && tx.amount != 0 {
             for id in [tx.from, tx.to] {
                 if id != MemberId(0) && id != crate::lotto::ESCROW {
@@ -1739,6 +2178,9 @@ impl State {
             }
         }
         self.transactions += 1;
+        #[cfg(feature = "cobol-core")]
+        self.apply_balances(&tx);
+        #[cfg(not(feature = "cobol-core"))]
         for (id, delta) in [(tx.from, -tx.amount), (tx.to, tx.amount)] {
             if id == crate::lotto::ESCROW {
                 self.lotto_escrow += delta;
@@ -1764,104 +2206,115 @@ impl State {
     }
 
     pub fn check_invariants(&self) -> Result<(), Error> {
-        self.check_ledger()?;
-        self.check_lottos()?;
-        self.check_commerce()?;
-        if self.ledger.epochs.len() != self.money_epoch as usize + 1
-            || self.ledger.corrections.len() > crate::ledger::CORRECTIONS
+        #[cfg(feature = "cobol-core")]
         {
-            return Err(Error::CorruptJournal);
+            self.check_ledger()?;
+            self.check_lottos()?;
+            self.check_commerce()?;
+            self.check_fulfillments()?;
+            self.bank_base_invariants()
         }
-        self.check_fulfillments()?;
-        if self.decimals > 8 || self.money_epoch > MAX_SEQUENCE {
-            return Err(Error::CorruptJournal);
-        }
-        for (index, l) in self.loans.iter().enumerate() {
-            if l.id == 0
-                || l.id > self.sequence
-                || self.loans[..index].iter().any(|other| other.id == l.id)
-                || l.lender == l.terms.borrower
-                || (l.lender == MemberId(0)
-                    && !matches!(
-                        l.status,
-                        crate::loans::LoanStatus::Requested | crate::loans::LoanStatus::Cancelled
-                    ))
-                || (l.lender != MemberId(0) && self.member(l.lender).is_err())
-                || (l.status == crate::loans::LoanStatus::Requested
-                    && (l.lender != MemberId(0) || l.principal != 0 || l.interest != 0))
-                || self.member(l.terms.borrower).is_err()
-                || !(1..=MAX_AMOUNT).contains(&l.terms.amount)
-                || !(1..=l.terms.amount).contains(&l.terms.installment)
-                || ![1, 7, 30, 365].contains(&l.terms.rate_days)
-                || ![1, 7, 30].contains(&l.terms.payment_days)
-                || !(0..=l.terms.amount).contains(&l.principal)
-                || l.interest < 0
-                || l.principal
-                    .checked_add(l.interest)
-                    .is_none_or(|v| v > MAX_SEQUENCE as i64)
-                || !(0..=l.principal).contains(&l.principal_due)
-                || !(0..=l.interest).contains(&l.interest_due)
-                || l.remainder >= l.denominator()
-                || l.accrued_at > self.last_timestamp
-                || l.updated_at > self.last_timestamp
-                || (l.status == crate::loans::LoanStatus::Active
-                    && !(crate::offers::MIN_CLOCK..=MAX_SEQUENCE).contains(&l.next_due_at))
+        #[cfg(not(feature = "cobol-core"))]
+        {
+            self.check_ledger()?;
+            self.check_lottos()?;
+            self.check_commerce()?;
+            if self.ledger.epochs.len() != self.money_epoch as usize + 1
+                || self.ledger.corrections.len() > crate::ledger::CORRECTIONS
             {
                 return Err(Error::CorruptJournal);
             }
-        }
-        for q in &self.quotes {
-            if q.nc_scale != crate::money::scale(self.decimals)
-                || !(1..=MAX_AMOUNT).contains(&q.coins)
-                || !(1..=MAX_AMOUNT).contains(&q.cents_per_coin)
-            {
+            self.check_fulfillments()?;
+            if self.decimals > 8 || self.money_epoch > MAX_SEQUENCE {
                 return Err(Error::CorruptJournal);
             }
-            let product = q.coins as i128 * q.cents_per_coin as i128;
-            if product % q.nc_scale as i128 != 0
-                || !(1..=MAX_AMOUNT as i128).contains(&(product / q.nc_scale as i128))
-            {
-                return Err(Error::CorruptJournal);
-            }
-        }
-        let sum = self.members.iter().try_fold(
-            self.issuance_balance
-                .checked_add(self.lotto_escrow)
-                .ok_or(Error::CorruptJournal)?,
-            |sum, m| {
-                if m.balance.unsigned_abs() > MAX_SEQUENCE {
-                    None
-                } else {
-                    sum.checked_add(m.balance)
+            for (index, l) in self.loans.iter().enumerate() {
+                if l.id == 0
+                    || l.id > self.sequence
+                    || self.loans[..index].iter().any(|other| other.id == l.id)
+                    || l.lender == l.terms.borrower
+                    || (l.lender == MemberId(0)
+                        && !matches!(
+                            l.status,
+                            crate::loans::LoanStatus::Requested
+                                | crate::loans::LoanStatus::Cancelled
+                        ))
+                    || (l.lender != MemberId(0) && self.member(l.lender).is_err())
+                    || (l.status == crate::loans::LoanStatus::Requested
+                        && (l.lender != MemberId(0) || l.principal != 0 || l.interest != 0))
+                    || self.member(l.terms.borrower).is_err()
+                    || !(1..=MAX_AMOUNT).contains(&l.terms.amount)
+                    || !(1..=l.terms.amount).contains(&l.terms.installment)
+                    || ![1, 7, 30, 365].contains(&l.terms.rate_days)
+                    || ![1, 7, 30].contains(&l.terms.payment_days)
+                    || !(0..=l.terms.amount).contains(&l.principal)
+                    || l.interest < 0
+                    || l.principal
+                        .checked_add(l.interest)
+                        .is_none_or(|v| v > MAX_SEQUENCE as i64)
+                    || !(0..=l.principal).contains(&l.principal_due)
+                    || !(0..=l.interest).contains(&l.interest_due)
+                    || l.remainder >= l.denominator()
+                    || l.accrued_at > self.last_timestamp
+                    || l.updated_at > self.last_timestamp
+                    || (l.status == crate::loans::LoanStatus::Active
+                        && !(crate::offers::MIN_CLOCK..=MAX_SEQUENCE).contains(&l.next_due_at))
+                {
+                    return Err(Error::CorruptJournal);
                 }
-            },
-        );
-        let usd_sum = self
-            .members
-            .iter()
-            .try_fold(self.usd_issuance_balance, |sum, m| {
-                if m.usd_cents.unsigned_abs() > MAX_SEQUENCE {
-                    None
-                } else {
-                    sum.checked_add(m.usd_cents)
+            }
+            for q in &self.quotes {
+                if q.nc_scale != crate::money::scale(self.decimals)
+                    || !(1..=MAX_AMOUNT).contains(&q.coins)
+                    || !(1..=MAX_AMOUNT).contains(&q.cents_per_coin)
+                {
+                    return Err(Error::CorruptJournal);
                 }
-            });
-        if sum == Some(0) && usd_sum == Some(0) {
-            Ok(())
-        } else {
-            Err(Error::CorruptJournal)
+                let product = q.coins as i128 * q.cents_per_coin as i128;
+                if product % q.nc_scale as i128 != 0
+                    || !(1..=MAX_AMOUNT as i128).contains(&(product / q.nc_scale as i128))
+                {
+                    return Err(Error::CorruptJournal);
+                }
+            }
+            let sum = self.members.iter().try_fold(
+                self.issuance_balance
+                    .checked_add(self.lotto_escrow)
+                    .ok_or(Error::CorruptJournal)?,
+                |sum, m| {
+                    if m.balance.unsigned_abs() > MAX_SEQUENCE {
+                        None
+                    } else {
+                        sum.checked_add(m.balance)
+                    }
+                },
+            );
+            let usd_sum = self
+                .members
+                .iter()
+                .try_fold(self.usd_issuance_balance, |sum, m| {
+                    if m.usd_cents.unsigned_abs() > MAX_SEQUENCE {
+                        None
+                    } else {
+                        sum.checked_add(m.usd_cents)
+                    }
+                });
+            if sum == Some(0) && usd_sum == Some(0) {
+                Ok(())
+            } else {
+                Err(Error::CorruptJournal)
+            }
         }
     }
-
     fn add_password_member(
         &mut self,
         username: &Name,
         display_name: &Name,
         password: &PasswordVerifier,
-        role: Role,
+        seed: (MemberId, Role, MemberKind, bool),
         created_at: u64,
     ) {
-        let id = MemberId(self.members.len() as u8 + 1);
+        let (id, role, kind, disabled) = seed;
         self.members
             .push(Member {
                 id,
@@ -1869,7 +2322,7 @@ impl State {
                 mastodon_id: MastodonId::new(),
                 name: display_name.clone(),
                 role,
-                disabled: false,
+                disabled,
                 bio: Memo::new(),
                 password: Some(password.clone()),
                 token_hash: [0; 32],
@@ -1877,7 +2330,7 @@ impl State {
                 api_key_created: 0,
                 read_key: [0; 32],
                 read_key_created: 0,
-                kind: MemberKind::Human,
+                kind,
                 balance: 0,
                 usd_cents: 0,
                 created_at,
@@ -1890,6 +2343,16 @@ impl State {
 }
 
 fn valid_name(name: &str) -> Result<(), Error> {
+    #[cfg(feature = "cobol-core")]
+    return crate::cobol::policy(
+        49,
+        &[
+            0,
+            name.trim().is_empty().into(),
+            name.chars().any(char::is_control).into(),
+        ],
+    );
+    #[cfg(not(feature = "cobol-core"))]
     if name.trim().is_empty() || name.chars().any(char::is_control) {
         Err(Error::InvalidInput)
     } else {
@@ -1898,27 +2361,54 @@ fn valid_name(name: &str) -> Result<(), Error> {
 }
 
 fn valid_mastodon_id(value: &str) -> Result<(), Error> {
-    if value.is_empty() {
-        return Ok(());
-    }
-    let value = value.strip_prefix('@').unwrap_or(value);
-    let mut parts = value.split('@');
-    let user = parts.next().unwrap_or_default();
-    let host = parts.next().unwrap_or_default();
-    if user.is_empty()
-        || host.is_empty()
-        || parts.next().is_some()
-        || !host.contains('.')
-        || value
-            .chars()
-            .any(|c| c.is_control() || c.is_whitespace() || c == '/')
+    #[cfg(feature = "cobol-core")]
     {
-        Err(Error::InvalidInput)
-    } else {
-        Ok(())
+        let empty = value.is_empty();
+        let value = value.strip_prefix('@').unwrap_or(value);
+        let mut parts = value.split('@');
+        let user = parts.next().unwrap_or_default();
+        let host = parts.next().unwrap_or_default();
+        crate::cobol::policy(
+            49,
+            &[
+                1,
+                empty.into(),
+                user.is_empty().into(),
+                host.is_empty().into(),
+                parts.next().is_some().into(),
+                host.contains('.').into(),
+                value
+                    .chars()
+                    .any(|c| c.is_control() || c.is_whitespace() || c == '/')
+                    .into(),
+            ],
+        )
+    }
+    #[cfg(not(feature = "cobol-core"))]
+    {
+        if value.is_empty() {
+            return Ok(());
+        }
+        let value = value.strip_prefix('@').unwrap_or(value);
+        let mut parts = value.split('@');
+        let user = parts.next().unwrap_or_default();
+        let host = parts.next().unwrap_or_default();
+        if user.is_empty()
+            || host.is_empty()
+            || parts.next().is_some()
+            || !host.contains('.')
+            || value
+                .chars()
+                .any(|c| c.is_control() || c.is_whitespace() || c == '/')
+        {
+            Err(Error::InvalidInput)
+        } else {
+            Ok(())
+        }
     }
 }
 
+#[cfg(not(feature = "cobol-core"))]
 fn valid_economic(value: &EconomicDetails) -> Result<(), Error> {
     if value.quantity_milli == 0 || value.quantity_milli > 1_000_000_000 {
         Err(Error::InvalidInput)

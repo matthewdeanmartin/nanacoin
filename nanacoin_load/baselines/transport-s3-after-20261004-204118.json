@@ -1,0 +1,467 @@
+{
+  "label": "s3-after",
+  "started": "2026-10-04T20:36:09",
+  "target": "nanacoin.local",
+  "address": "192.168.1.158",
+  "scheme": "https",
+  "settings": {
+    "repeats": 2,
+    "levels": [
+      1,
+      3,
+      5
+    ],
+    "duration": 30.0,
+    "think": 0.5,
+    "page_connections": 6,
+    "warm_connections": 2
+  },
+  "health_before": {
+    "uptime_seconds": 334,
+    "free_heap": 91619,
+    "minimum_free_heap": 46515,
+    "largest_free_block": 31744,
+    "psram_free": 5243676,
+    "requests": 1998,
+    "errors": 0,
+    "internal_min": 46515
+  },
+  "site_files": [
+    "/",
+    "/styles-LNRAF7SX.css",
+    "/chunk-DmkRSN25.js",
+    "/chunk-0UdJ4Iuy.js",
+    "/chunk-Csz1ktBt.js",
+    "/chunk-C08Umtjb.js",
+    "/main-GJSYM474.js"
+  ],
+  "reads_per_member": {
+    "nana": 13,
+    "matt": 11,
+    "tasi": 11,
+    "tano": 11,
+    "pia": 11
+  },
+  "modes": {
+    "h1": {
+      "cold": {
+        "views": [
+          {
+            "member": "nana",
+            "ms": 6892.187100020237,
+            "connections": 6,
+            "setup_ms": [
+              979,
+              1458,
+              1066,
+              1163,
+              1034,
+              1068
+            ],
+            "bytes": 551848,
+            "statuses": [
+              200
+            ]
+          },
+          {
+            "member": "matt",
+            "ms": 6859.572799992748,
+            "connections": 6,
+            "setup_ms": [
+              956,
+              1332,
+              1074,
+              1174,
+              1040,
+              1078
+            ],
+            "bytes": 551677,
+            "statuses": [
+              200
+            ]
+          },
+          {
+            "member": "tasi",
+            "ms": 7184.16950001847,
+            "connections": 6,
+            "setup_ms": [
+              960,
+              1247,
+              1370,
+              1284,
+              1058,
+              1091
+            ],
+            "bytes": 551320,
+            "statuses": [
+              200
+            ]
+          },
+          {
+            "member": "tano",
+            "ms": 6697.176499990746,
+            "connections": 6,
+            "setup_ms": [
+              975,
+              1311,
+              1026,
+              1154,
+              1034,
+              1058
+            ],
+            "bytes": 550965,
+            "statuses": [
+              200
+            ]
+          },
+          {
+            "member": "pia",
+            "ms": 6880.3619999671355,
+            "connections": 6,
+            "setup_ms": [
+              944,
+              1244,
+              1107,
+              1235,
+              1060,
+              1074
+            ],
+            "bytes": 551318,
+            "statuses": [
+              200
+            ]
+          },
+          {
+            "member": "nana",
+            "ms": 6907.66819997225,
+            "connections": 6,
+            "setup_ms": [
+              1040,
+              1219,
+              1051,
+              1261,
+              1051,
+              1118
+            ],
+            "bytes": 551848,
+            "statuses": [
+              200
+            ]
+          },
+          {
+            "member": "matt",
+            "ms": 7092.543699895032,
+            "connections": 6,
+            "setup_ms": [
+              995,
+              1330,
+              1033,
+              1138,
+              1040,
+              1048
+            ],
+            "bytes": 551677,
+            "statuses": [
+              200
+            ]
+          },
+          {
+            "member": "tasi",
+            "ms": 6771.516199922189,
+            "connections": 6,
+            "setup_ms": [
+              989,
+              1220,
+              1022,
+              1194,
+              1050,
+              1097
+            ],
+            "bytes": 551320,
+            "statuses": [
+              200
+            ]
+          },
+          {
+            "member": "tano",
+            "ms": 7365.397199988365,
+            "connections": 6,
+            "setup_ms": [
+              1002,
+              1401,
+              1049,
+              1611,
+              1118,
+              1054
+            ],
+            "bytes": 550965,
+            "statuses": [
+              200
+            ]
+          },
+          {
+            "member": "pia",
+            "ms": 7057.939300080761,
+            "connections": 6,
+            "setup_ms": [
+              994,
+              1397,
+              1155,
+              1291,
+              1028,
+              1057
+            ],
+            "bytes": 551318,
+            "statuses": [
+              200
+            ]
+          }
+        ],
+        "page_ms_median": 6900,
+        "page_ms_p95": 7365,
+        "setup_ms_median": 1071,
+        "failed_views": 0
+      },
+      "warm": [
+        {
+          "requests": 455,
+          "errors": 0,
+          "non_200": 0,
+          "p50_ms": 29.1,
+          "p95_ms": 122.1,
+          "p99_ms": 214.7,
+          "level": 1,
+          "requests_per_s": 15.0,
+          "connection_failures": 0,
+          "failure_examples": []
+        },
+        {
+          "requests": 873,
+          "errors": 0,
+          "non_200": 0,
+          "p50_ms": 55.0,
+          "p95_ms": 201.8,
+          "p99_ms": 345.6,
+          "level": 3,
+          "requests_per_s": 28.3,
+          "connection_failures": 0,
+          "failure_examples": []
+        },
+        {
+          "requests": 294,
+          "errors": 0,
+          "non_200": 0,
+          "p50_ms": 51.8,
+          "p95_ms": 235.8,
+          "p99_ms": 355.1,
+          "level": 5,
+          "requests_per_s": 8.9,
+          "connection_failures": 6,
+          "failure_examples": [
+            "ConnectionResetError: ConnectionAbortedError: [WinError 10053] An established connection was aborted by the software in your host machine",
+            "ConnectionResetError: RemoteDisconnected: Remote end closed connection without response"
+          ]
+        }
+      ],
+      "health_after": {
+        "uptime_seconds": 516,
+        "free_heap": 88727,
+        "minimum_free_heap": 46035,
+        "largest_free_block": 31744,
+        "psram_free": 4917320,
+        "requests": 3912,
+        "errors": 0,
+        "internal_min": 46035
+      }
+    },
+    "h2": {
+      "cold": {
+        "views": [
+          {
+            "member": "nana",
+            "ms": 1986.239599995315,
+            "connections": 1,
+            "setup_ms": [
+              986
+            ],
+            "bytes": 186860,
+            "statuses": [
+              200
+            ]
+          },
+          {
+            "member": "matt",
+            "ms": 2233.0071000615135,
+            "connections": 1,
+            "setup_ms": [
+              945
+            ],
+            "bytes": 186689,
+            "statuses": [
+              200
+            ]
+          },
+          {
+            "member": "tasi",
+            "ms": 1804.603600059636,
+            "connections": 1,
+            "setup_ms": [
+              971
+            ],
+            "bytes": 186332,
+            "statuses": [
+              200
+            ]
+          },
+          {
+            "member": "tano",
+            "ms": 2123.4906000318006,
+            "connections": 1,
+            "setup_ms": [
+              973
+            ],
+            "bytes": 185977,
+            "statuses": [
+              200
+            ]
+          },
+          {
+            "member": "pia",
+            "ms": 1736.0151000320911,
+            "connections": 1,
+            "setup_ms": [
+              965
+            ],
+            "bytes": 186330,
+            "statuses": [
+              200
+            ]
+          },
+          {
+            "member": "nana",
+            "ms": 1980.5016999598593,
+            "connections": 1,
+            "setup_ms": [
+              1092
+            ],
+            "bytes": 186860,
+            "statuses": [
+              200
+            ]
+          },
+          {
+            "member": "matt",
+            "ms": 1925.3883000928909,
+            "connections": 1,
+            "setup_ms": [
+              960
+            ],
+            "bytes": 186689,
+            "statuses": [
+              200
+            ]
+          },
+          {
+            "member": "tasi",
+            "ms": 1697.4721000296995,
+            "connections": 1,
+            "setup_ms": [
+              962
+            ],
+            "bytes": 186332,
+            "statuses": [
+              200
+            ]
+          },
+          {
+            "member": "tano",
+            "ms": 1800.6814999971539,
+            "connections": 1,
+            "setup_ms": [
+              1007
+            ],
+            "bytes": 185977,
+            "statuses": [
+              200
+            ]
+          },
+          {
+            "member": "pia",
+            "ms": 2228.8548999931663,
+            "connections": 1,
+            "setup_ms": [
+              985
+            ],
+            "bytes": 186330,
+            "statuses": [
+              200
+            ]
+          }
+        ],
+        "page_ms_median": 1953,
+        "page_ms_p95": 2233,
+        "setup_ms_median": 972,
+        "failed_views": 0
+      },
+      "warm": [
+        {
+          "requests": 481,
+          "errors": 0,
+          "non_200": 0,
+          "p50_ms": 139.5,
+          "p95_ms": 326.6,
+          "p99_ms": 459.2,
+          "level": 1,
+          "requests_per_s": 15.6,
+          "connection_failures": 0,
+          "failure_examples": []
+        },
+        {
+          "requests": 851,
+          "errors": 0,
+          "non_200": 0,
+          "p50_ms": 370.3,
+          "p95_ms": 811.2,
+          "p99_ms": 1937.9,
+          "level": 3,
+          "requests_per_s": 27.8,
+          "connection_failures": 0,
+          "failure_examples": []
+        },
+        {
+          "requests": 1072,
+          "errors": 0,
+          "non_200": 0,
+          "p50_ms": 532.3,
+          "p95_ms": 1032.0,
+          "p99_ms": 2505.5,
+          "level": 5,
+          "requests_per_s": 34.2,
+          "connection_failures": 0,
+          "failure_examples": []
+        }
+      ],
+      "health_after": {
+        "uptime_seconds": 636,
+        "free_heap": 91663,
+        "minimum_free_heap": 24615,
+        "largest_free_block": 31744,
+        "psram_free": 5244112,
+        "requests": 6505,
+        "errors": 0,
+        "internal_min": 24615
+      }
+    }
+  },
+  "logged_out": 5,
+  "health_end": {
+    "uptime_seconds": 642,
+    "free_heap": 91471,
+    "minimum_free_heap": 24615,
+    "largest_free_block": 31744,
+    "psram_free": 5244128,
+    "requests": 6511,
+    "errors": 0,
+    "internal_min": 24615
+  }
+}

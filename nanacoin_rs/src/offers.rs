@@ -54,27 +54,65 @@ impl Offer {
         }
     }
     pub fn reversible(&self, now: u64) -> bool {
-        now >= MIN_CLOCK && matches!(self.phase, OfferPhase::Accepted(s) if now < s.settles_at)
+        #[cfg(feature = "cobol-core")]
+        {
+            crate::cobol::offer_projection(self, now, None)[9] != 0
+        }
+        #[cfg(not(feature = "cobol-core"))]
+        {
+            now >= MIN_CLOCK && matches!(self.phase, OfferPhase::Accepted(s) if now < s.settles_at)
+        }
     }
     pub fn status(&self, now: u64) -> &'static str {
-        match self.phase {
-            OfferPhase::Open => "OPEN",
-            OfferPhase::Accepted(s) if now >= s.settles_at => "SETTLED",
-            OfferPhase::Accepted(_) => "ACCEPTED",
-            OfferPhase::Declined => "DECLINED",
-            OfferPhase::Withdrawn => "WITHDRAWN",
-            OfferPhase::Reversed(_) => "REVERSED",
+        #[cfg(feature = "cobol-core")]
+        {
+            match crate::cobol::offer_projection(self, now, None)[8] {
+                0 => "OPEN",
+                1 => "ACCEPTED",
+                2 => "DECLINED",
+                3 => "WITHDRAWN",
+                4 => "REVERSED",
+                5 => "SETTLED",
+                _ => unreachable!("valid offer phase"),
+            }
+        }
+        #[cfg(not(feature = "cobol-core"))]
+        {
+            match self.phase {
+                OfferPhase::Open => "OPEN",
+                OfferPhase::Accepted(s) if now >= s.settles_at => "SETTLED",
+                OfferPhase::Accepted(_) => "ACCEPTED",
+                OfferPhase::Declined => "DECLINED",
+                OfferPhase::Withdrawn => "WITHDRAWN",
+                OfferPhase::Reversed(_) => "REVERSED",
+            }
         }
     }
     pub fn visible_to(&self, member: &Member) -> bool {
-        !member.disabled
-            && (member.role == Role::Nana || member.id == self.owner || member.id == self.offerer)
+        #[cfg(feature = "cobol-core")]
+        {
+            crate::cobol::offer_projection(self, 0, Some(member))[10] != 0
+        }
+        #[cfg(not(feature = "cobol-core"))]
+        {
+            !member.disabled
+                && (member.role == Role::Nana
+                    || member.id == self.owner
+                    || member.id == self.offerer)
+        }
     }
-    fn recyclable(&self, now: u64) -> bool {
-        match self.phase {
-            OfferPhase::Open => false,
-            OfferPhase::Accepted(s) => now >= s.settles_at,
-            _ => true,
+    pub(crate) fn recyclable(&self, now: u64) -> bool {
+        #[cfg(feature = "cobol-core")]
+        {
+            crate::cobol::offer_projection(self, now, None)[11] != 0
+        }
+        #[cfg(not(feature = "cobol-core"))]
+        {
+            match self.phase {
+                OfferPhase::Open => false,
+                OfferPhase::Accepted(s) => now >= s.settles_at,
+                _ => true,
+            }
         }
     }
 }
@@ -88,11 +126,25 @@ impl State {
     }
 
     pub(crate) fn listing_recyclable(&self, listing: &Listing, now: u64) -> bool {
-        listing.status != ListingStatus::Active
-            && !self.offers.iter().any(|o| {
-                o.listing == listing.id
-                    && matches!(o.phase, OfferPhase::Accepted(s) if now < s.settles_at)
-            })
+        #[cfg(feature = "cobol-core")]
+        {
+            crate::cobol::recyclable(
+                0,
+                listing.status == ListingStatus::Active,
+                self.offers
+                    .iter()
+                    .filter(|o| o.listing == listing.id)
+                    .any(|o| crate::cobol::offer_projection(o, now, None)[12] != 0),
+            )
+        }
+        #[cfg(not(feature = "cobol-core"))]
+        {
+            listing.status != ListingStatus::Active
+                && !self.offers.iter().any(|o| {
+                    o.listing == listing.id
+                        && matches!(o.phase, OfferPhase::Accepted(s) if now < s.settles_at)
+                })
+        }
     }
 
     pub(crate) fn validate_offer(
@@ -101,106 +153,121 @@ impl State {
         command: &Command,
         now: u64,
     ) -> Result<(), Error> {
-        if !(MIN_CLOCK..=MAX_SEQUENCE).contains(&now) {
-            return Err(Error::Unavailable);
+        #[cfg(feature = "cobol-core")]
+        {
+            self.offer_plan(actor, command, now).map(|_| ())
         }
-        match command {
-            Command::MakeOffer {
-                listing,
-                amount,
-                message,
-            } => {
-                if !(1..=MAX_AMOUNT).contains(amount) || message.chars().any(char::is_control) {
-                    return Err(Error::InvalidInput);
-                }
-                let l = self.listing(*listing)?;
-                if l.status != ListingStatus::Active {
-                    return Err(Error::ListingClosed);
-                }
-                if actor == l.owner {
-                    return Err(Error::SelfDeal);
-                }
-                if l.is_good_deed() && self.member(actor)?.kind == MemberKind::Bot {
-                    return Err(Error::BotGoodDeed);
-                }
-                if self.offers.is_full() && !self.offers.iter().any(|o| o.recyclable(now)) {
-                    return Err(Error::Capacity);
-                }
+        #[cfg(not(feature = "cobol-core"))]
+        {
+            if !(MIN_CLOCK..=MAX_SEQUENCE).contains(&now) {
+                return Err(Error::Unavailable);
             }
-            Command::AcceptOffer { offer } => {
-                let o = self.offer(*offer)?;
-                if actor != o.owner {
-                    return Err(Error::Forbidden);
+            match command {
+                Command::MakeOffer {
+                    listing,
+                    amount,
+                    message,
+                } => {
+                    if !(1..=MAX_AMOUNT).contains(amount) || message.chars().any(char::is_control) {
+                        return Err(Error::InvalidInput);
+                    }
+                    let l = self.listing(*listing)?;
+                    if l.status != ListingStatus::Active {
+                        return Err(Error::ListingClosed);
+                    }
+                    if actor == l.owner {
+                        return Err(Error::SelfDeal);
+                    }
+                    if l.is_good_deed() && self.member(actor)?.kind == MemberKind::Bot {
+                        return Err(Error::BotGoodDeed);
+                    }
+                    if self.offers.is_full() && !self.offers.iter().any(|o| o.recyclable(now)) {
+                        return Err(Error::Capacity);
+                    }
                 }
-                if o.phase != OfferPhase::Open {
-                    return Err(Error::OfferClosed);
+                Command::AcceptOffer { offer } => {
+                    let o = self.offer(*offer)?;
+                    if actor != o.owner {
+                        return Err(Error::Forbidden);
+                    }
+                    if o.phase != OfferPhase::Open {
+                        return Err(Error::OfferClosed);
+                    }
+                    let l = self.listing(o.listing)?;
+                    if l.status != ListingStatus::Active {
+                        return Err(Error::ListingClosed);
+                    }
+                    if self.member(o.offerer)?.disabled || self.member(o.owner)?.disabled {
+                        return Err(Error::Disabled);
+                    }
+                    let (payer, payee) = settlement_parties(l, o);
+                    if l.economic.kind == EconomicKind::Labor
+                        && self.member(payee)?.role == Role::Nana
+                    {
+                        return Err(Error::Forbidden);
+                    }
+                    self.validate_posting(payer, payee, o.amount, false)?;
+                    now.checked_add(self.offer_settles_after)
+                        .filter(|v| *v <= MAX_SEQUENCE)
+                        .ok_or(Error::Overflow)?;
                 }
-                let l = self.listing(o.listing)?;
-                if l.status != ListingStatus::Active {
-                    return Err(Error::ListingClosed);
+                Command::UnacceptOffer { offer, reason } => {
+                    let o = self.offer(*offer)?;
+                    if actor != o.owner && actor != o.offerer {
+                        self.admin(actor)?;
+                    }
+                    let OfferPhase::Accepted(s) = o.phase else {
+                        return Err(Error::OfferClosed);
+                    };
+                    if now >= s.settles_at {
+                        return Err(Error::OfferSettled);
+                    }
+                    if reason.chars().any(char::is_control) {
+                        return Err(Error::InvalidInput);
+                    }
+                    // An ordinary purchase cannot have replaced this sale: the listing is pinned.
+                    // A good deed's payout came from issuance and never closed its listing.
+                    if s.payer != MemberId(0)
+                        && self.listing(o.listing)?.status != ListingStatus::Sold
+                    {
+                        return Err(Error::Conflict);
+                    }
+                    self.correction_room(s.transaction)?;
+                    if self.ledger.refunded(s.transaction) != 0
+                        || self.ledger.reversed_by(s.transaction).is_some()
+                    {
+                        return Err(Error::Conflict);
+                    }
+                    self.validate_posting(s.payee, s.payer, o.amount, true)?;
                 }
-                if self.member(o.offerer)?.disabled || self.member(o.owner)?.disabled {
-                    return Err(Error::Disabled);
+                Command::DeclineOffer { offer } | Command::WithdrawOffer { offer } => {
+                    let o = self.offer(*offer)?;
+                    if o.phase != OfferPhase::Open {
+                        return Err(Error::OfferClosed);
+                    }
+                    let permitted = if matches!(command, Command::DeclineOffer { .. }) {
+                        o.owner
+                    } else {
+                        o.offerer
+                    };
+                    if actor != permitted {
+                        self.admin(actor)?;
+                    }
                 }
-                let (payer, payee) = settlement_parties(l, o);
-                if l.economic.kind == EconomicKind::Labor && self.member(payee)?.role == Role::Nana
-                {
-                    return Err(Error::Forbidden);
-                }
-                self.validate_posting(payer, payee, o.amount, false)?;
-                now.checked_add(self.offer_settles_after)
-                    .filter(|v| *v <= MAX_SEQUENCE)
-                    .ok_or(Error::Overflow)?;
+                _ => unreachable!("offer command dispatch"),
             }
-            Command::UnacceptOffer { offer, reason } => {
-                let o = self.offer(*offer)?;
-                if actor != o.owner && actor != o.offerer {
-                    self.admin(actor)?;
-                }
-                let OfferPhase::Accepted(s) = o.phase else {
-                    return Err(Error::OfferClosed);
-                };
-                if now >= s.settles_at {
-                    return Err(Error::OfferSettled);
-                }
-                if reason.chars().any(char::is_control) {
-                    return Err(Error::InvalidInput);
-                }
-                // An ordinary purchase cannot have replaced this sale: the listing is pinned.
-                // A good deed's payout came from issuance and never closed its listing.
-                if s.payer != MemberId(0) && self.listing(o.listing)?.status != ListingStatus::Sold
-                {
-                    return Err(Error::Conflict);
-                }
-                self.correction_room(s.transaction)?;
-                if self.ledger.refunded(s.transaction) != 0
-                    || self.ledger.reversed_by(s.transaction).is_some()
-                {
-                    return Err(Error::Conflict);
-                }
-                self.validate_posting(s.payee, s.payer, o.amount, true)?;
-            }
-            Command::DeclineOffer { offer } | Command::WithdrawOffer { offer } => {
-                let o = self.offer(*offer)?;
-                if o.phase != OfferPhase::Open {
-                    return Err(Error::OfferClosed);
-                }
-                let permitted = if matches!(command, Command::DeclineOffer { .. }) {
-                    o.owner
-                } else {
-                    o.offerer
-                };
-                if actor != permitted {
-                    self.admin(actor)?;
-                }
-            }
-            _ => unreachable!("offer command dispatch"),
+            Ok(())
         }
-        Ok(())
     }
 
     pub(crate) fn apply_offer(&mut self, event: &Event) {
         let now = event.timestamp;
+        #[cfg(feature = "cobol-core")]
+        let plan = self
+            .prepared
+            .offer
+            .take()
+            .expect("prepared offer transition");
         match &event.command {
             Command::MakeOffer {
                 listing,
@@ -209,6 +276,9 @@ impl State {
             } => {
                 let owner = self.listing(*listing).unwrap().owner;
                 if self.offers.is_full() {
+                    #[cfg(feature = "cobol-core")]
+                    let index = plan.recycle.expect("prepared offer recycling index");
+                    #[cfg(not(feature = "cobol-core"))]
                     let index = self
                         .offers
                         .iter()
@@ -231,14 +301,27 @@ impl State {
                         message: message.clone(),
                         created_at: now,
                         updated_at: now,
-                        phase: OfferPhase::Open,
+                        phase: {
+                            #[cfg(feature = "cobol-core")]
+                            {
+                                plan.phase(None)
+                            }
+                            #[cfg(not(feature = "cobol-core"))]
+                            {
+                                OfferPhase::Open
+                            }
+                        },
                     })
                     .unwrap();
             }
             Command::AcceptOffer { offer } => {
                 let o = self.offer(*offer).unwrap();
                 let l = self.listing(o.listing).unwrap();
+                #[cfg(feature = "cobol-core")]
+                let (payer, payee) = (plan.payer, plan.payee);
+                #[cfg(not(feature = "cobol-core"))]
                 let (payer, payee) = settlement_parties(l, o);
+                #[cfg(not(feature = "cobol-core"))]
                 let good_deed = l.is_good_deed();
                 let tx = Transaction {
                     meta: crate::ledger::TransactionMeta::default(),
@@ -259,15 +342,32 @@ impl State {
                 };
                 let listing_id = l.id;
                 let o = self.offers.iter_mut().find(|o| o.id == *offer).unwrap();
-                o.phase = OfferPhase::Accepted(Settlement {
+                let settlement = Settlement {
                     economic: tx.economic,
                     epoch: self.money_epoch,
                     original_amount: tx.amount,
                     transaction: event.sequence,
                     payer,
                     payee,
-                    settles_at: now + self.offer_settles_after,
-                });
+                    settles_at: {
+                        #[cfg(feature = "cobol-core")]
+                        {
+                            plan.settles_at
+                        }
+                        #[cfg(not(feature = "cobol-core"))]
+                        {
+                            now + self.offer_settles_after
+                        }
+                    },
+                };
+                #[cfg(feature = "cobol-core")]
+                {
+                    o.phase = plan.phase(Some(settlement));
+                }
+                #[cfg(not(feature = "cobol-core"))]
+                {
+                    o.phase = OfferPhase::Accepted(settlement);
+                }
                 o.updated_at = now;
                 let listing = self
                     .listings
@@ -275,7 +375,11 @@ impl State {
                     .find(|l| l.id == listing_id)
                     .unwrap();
                 listing.updated_at = now;
-                if !good_deed {
+                #[cfg(feature = "cobol-core")]
+                let mutate_listing = plan.mutate_listing;
+                #[cfg(not(feature = "cobol-core"))]
+                let mutate_listing = !good_deed;
+                if mutate_listing {
                     listing.status = ListingStatus::Sold;
                     listing.buyer = Some(payer);
                     listing.sold_tx = Some(event.sequence);
@@ -309,9 +413,21 @@ impl State {
                 let listing_id = o.listing;
 
                 self.mark_offer_reversed(s.transaction, now);
+                #[cfg(feature = "cobol-core")]
+                {
+                    self.offers
+                        .iter_mut()
+                        .find(|o| o.id == *offer)
+                        .unwrap()
+                        .phase = plan.phase(Some(s));
+                }
                 // A good deed retires its reward; its listing stayed open (or was
                 // since cancelled by Nana) and is left as it is.
-                if s.payer != MemberId(0) {
+                #[cfg(feature = "cobol-core")]
+                let mutate_listing = plan.mutate_listing;
+                #[cfg(not(feature = "cobol-core"))]
+                let mutate_listing = s.payer != MemberId(0);
+                if mutate_listing {
                     let listing = self
                         .listings
                         .iter_mut()
@@ -326,11 +442,18 @@ impl State {
             }
             Command::DeclineOffer { offer } | Command::WithdrawOffer { offer } => {
                 let o = self.offers.iter_mut().find(|o| o.id == *offer).unwrap();
-                o.phase = if matches!(event.command, Command::DeclineOffer { .. }) {
-                    OfferPhase::Declined
-                } else {
-                    OfferPhase::Withdrawn
-                };
+                #[cfg(feature = "cobol-core")]
+                {
+                    o.phase = plan.phase(None);
+                }
+                #[cfg(not(feature = "cobol-core"))]
+                {
+                    o.phase = if matches!(event.command, Command::DeclineOffer { .. }) {
+                        OfferPhase::Declined
+                    } else {
+                        OfferPhase::Withdrawn
+                    };
+                }
                 o.updated_at = now;
             }
             _ => unreachable!("validated offer command"),
@@ -338,11 +461,27 @@ impl State {
     }
 
     pub(crate) fn mark_offer_reversed(&mut self, transaction: u64, now: u64) {
-        for o in &mut self.offers {
-            if let OfferPhase::Accepted(s) = o.phase {
-                if s.transaction == transaction {
-                    o.phase = OfferPhase::Reversed(s);
-                    o.updated_at = now;
+        #[cfg(feature = "cobol-core")]
+        {
+            let _ = transaction;
+            for (index, offer) in self.offers.iter_mut().enumerate() {
+                if self.prepared.reversed_offers & (1 << index) != 0 {
+                    let OfferPhase::Accepted(s) = offer.phase else {
+                        unreachable!("prepared accepted offer link")
+                    };
+                    offer.phase = OfferPhase::Reversed(s);
+                    offer.updated_at = now;
+                }
+            }
+        }
+        #[cfg(not(feature = "cobol-core"))]
+        {
+            for o in &mut self.offers {
+                if let OfferPhase::Accepted(s) = o.phase {
+                    if s.transaction == transaction {
+                        o.phase = OfferPhase::Reversed(s);
+                        o.updated_at = now;
+                    }
                 }
             }
         }
@@ -350,7 +489,8 @@ impl State {
 }
 
 /// Who pays whom when an offer is accepted. Good deeds pay from issuance.
-fn settlement_parties(listing: &Listing, offer: &Offer) -> (MemberId, MemberId) {
+#[cfg(not(feature = "cobol-core"))]
+pub(crate) fn settlement_parties(listing: &Listing, offer: &Offer) -> (MemberId, MemberId) {
     match listing.side {
         _ if listing.is_good_deed() => (MemberId(0), offer.offerer),
         Side::Sell => (offer.offerer, offer.owner),

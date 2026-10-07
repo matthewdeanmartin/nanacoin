@@ -1,6 +1,79 @@
 # Deploy Rust NanaCoin and the Angular app to a bank
 
-## October 4, 2026: NanaCoin runs on miniframework (built, not deployed)
+## October 5, 2026: P4-WIFI6 first installation
+
+The owner supplied Meshnology ESP32-P4-WIFI6 / ESP32-C6-MINI-1 markings.
+Esptool identification on CH343 COM19 confirmed ESP32-P4 revision 1.3,
+MAC `e8:f6:0a:e3:6f:a2`, and 32 MiB flash. With the owner's explicit
+permission, the factory `phone_p4_function_ev_board` demo was erased and
+NanaCoin installed. No other board was flashed. No physical buttons were needed.
+
+The `p4` profile uses `nanacoin-p4.local`, Rust target
+`riscv32imafc-esp-espidf`, and full-size bank limits. The layout has an
+8 MiB application at `0x10000` and 16 MiB ledger at `0x810000`.
+Boot confirmed 32 MiB PSRAM. IDF 5.5.3 selects the supported 360 MHz setting
+for revision 1.3; 400 MHz on revisions below 3.0 requires separately qualified
+chips. The optional diagnostic LED is disabled.
+
+Wi-Fi uses pinned `esp_wifi_remote` 1.6.5 and `esp_hosted` 2.11.0 through SDIO
+slot 1: CLK18, CMD19, D0..D3 on 14..17, C6 EN54, matching the
+[P4-WIFI6 schematic](https://files.waveshare.com/wiki/ESP32-P4-WIFI6/ESP32-P4-WIFI6-datasheet.pdf).
+The existing C6 firmware is retained. It reports version `0.0.0`, causing an
+ESP-Hosted host/companion mismatch warning recommending a companion upgrade
+to avoid RPC timeouts. Association and strict network probes succeeded;
+a subsequent 35-second passive UART observation found no RPC timeout or
+disconnect warnings. This verifies present operation, not long-term firmware
+compatibility. No companion OTA was performed.
+
+The P4 acquired `192.168.1.164`; `nanacoin-p4.local` resolved to that address.
+The new TLS leaf is signed by the existing household CA; no new CA was created.
+The first live probe passed strict hostname/CA TLS, P4 identity, balanced ledger,
+all 75 exact bundled assets (identity/gzip/ETags), concurrent keep-alive,
+slow-reader checks, public notebook, health and matching `/ca`.
+The bank was unprovisioned, sequence 0, with zero users and transactions.
+The owner creates the new household through the UI; no data was migrated or seeded.
+
+Live health testing exposed missing RSSI samples being counted as Wi-Fi
+transitions. RSSI can be unavailable during station-lock contention. Incident
+connectivity now uses actual framework events, and a regression test alternates
+missing/present telemetry while checking real disconnect/reconnect events.
+It passed in default, S2 and P4 profiles; P4 strict lint passed.
+
+Final image: `C:/ncr-p4/riscv32imafc-esp-espidf/release/nanacoin-esp32.bin`,
+3,684,608 / 8,388,608 bytes, SHA-256
+`ceb5c8f13dfc2464fc465d0952256eb8c2f8964ce4f1052c3e3cf61e87c539dc`.
+The bootloader, table and initial provisioning command are in ignored
+`.local/p4-prepared.json`. The initial writer independently checked chip, MAC
+and the factory table, then erased only this P4 and hash-verified the
+bootloader at `0x2000`, table at `0x8000`, and application at `0x10000`.
+The health fix was installed with the app-only writer, with independent MAC
+and exact partition checks and a verified write hash. The final live probe
+passed again; the household remained empty and unprovisioned, with zero
+request errors after more than 300 requests. The final image uses 43.9% of
+its application partition.
+
+Pre-install validation passed: NanaCoin default/S2 checks and HTTP/restart smoke,
+P4 desktop tests and strict lint, ten offline deployment tests, certificate
+validation, release build, framework `make check`, Minicloud tests/HTTP/MQTT
+smoke, and mastomini tests/smoke/client/conformance. Mastomini's fingerprint
+check was rerun after framework sources stopped changing. Logs are `.local/p4-*`
+in the relevant repositories. Browser visual checks were not performed.
+
+## October 4, 2026: NanaCoin runs on miniframework (S3 deployed)
+
+**S3 deployed October 4, 2026** with `HTTP2=1` (HTTP, HTTPS/1.1 and
+HTTP/2; ALPN offers `h2`). COM9, MAC `ac:a7:04:2c:2c:04` confirmed by the
+uptime test, dry run clean, image 3,783,120 / 4,194,304 bytes, s3 partition
+layout verified, app-only write hash-verified. Strict probe passed at
+192.168.1.158 (balanced ledger, 75 exact assets). The Martin House survived:
+5 users, 17 transactions, sequence 74. Internal free heap after boot 89.9 KB
+(old firmware ~67 KB). Browser checks not performed. The transport baseline
+taken before the upgrade (`nanacoin_load/baselines/`) is for the
+`uv run ncbench --label s3-after --modes h1 h2` comparison, run with the
+board back in its usual spot. The S2 has not been flashed with it.
+
+The remainder of this section was written before the deployment.
+
 
 The HTTP/HTTPS server, static files, `/trust`, `/ca`, `/metrics` and the
 board runner (Wi-Fi, SNTP, mDNS, task placement) now come from

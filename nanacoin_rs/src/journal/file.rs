@@ -330,6 +330,12 @@ fn publish(from: &Path, to: &Path) -> std::io::Result<()> {
     }
     let from: Vec<u16> = from.as_os_str().encode_wide().chain(Some(0)).collect();
     let to: Vec<u16> = to.as_os_str().encode_wide().chain(Some(0)).collect();
+    if from[..from.len() - 1].contains(&0) || to[..to.len() - 1].contains(&0) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "path contains NUL",
+        ));
+    }
     // SAFETY: both paths are NUL-terminated UTF-16, live for the call. Replace
     // atomically on the same filesystem, with MOVEFILE_WRITE_THROUGH.
     if unsafe { MoveFileExW(from.as_ptr(), to.as_ptr(), 0x1 | 0x8) } == 0 {
@@ -338,3 +344,7 @@ fn publish(from: &Path, to: &Path) -> std::io::Result<()> {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/file_publication.rs"]
+mod hostile_publication;

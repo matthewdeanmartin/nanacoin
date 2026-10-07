@@ -120,7 +120,7 @@ impl<J: Journal> Service<J> {
                 Box::default()
             }
         };
-        let mut state = Box::new(State::default());
+        let mut state = State::boxed_default();
         let mut frame = [0; FRAME_SIZE];
         let mut records = 0;
         let mut keyed = VecDeque::with_capacity(MAX_RECORDS);
@@ -376,6 +376,9 @@ impl<J: Journal> Service<J> {
             .and_then(|s| s.strip_prefix('m'))
             .and_then(|s| s.parse::<u64>().ok())
             .unwrap_or(0);
+        #[cfg(feature = "cobol-core")]
+        crate::cobol::identity_query(&[5, (money_epoch == self.state.money_epoch).into()])?;
+        #[cfg(not(feature = "cobol-core"))]
         if money_epoch != self.state.money_epoch {
             return Err(Error::StaleRequest);
         }
@@ -430,6 +433,8 @@ impl<J: Journal> Service<J> {
             command,
         };
         let frame = encode(&event)?;
+        #[cfg(feature = "cobol-core")]
+        self.state.prepare_bank(&event)?;
         if self.journal.append(self.records, &frame).is_err() {
             self.storage_failed = true;
             return Err(Error::Storage);
@@ -514,7 +519,7 @@ impl<J: Journal> Service<J> {
             .state
             .lottos
             .iter()
-            .filter(|l| l.step < 19 && now >= l.due_at())
+            .filter(|l| l.ready(now))
             .map(|l| l.id)
             .collect();
         for id in ids {

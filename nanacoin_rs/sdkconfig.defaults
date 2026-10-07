@@ -39,3 +39,6 @@ CONFIG_ESP_CONSOLE_UART_DEFAULT=y
 CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=n
 # Keep boot/panic diagnostics visible on the deployment USB port as well.
 CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG=y
+# miniframework waits in 1 ms steps; at the default 100 Hz each is 10 ms
+# and sending is ~15x slower (the framework refuses to build below 1000).
+CONFIG_FREERTOS_HZ=1000

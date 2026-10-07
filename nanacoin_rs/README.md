@@ -48,6 +48,16 @@ the exact NVS key layout, start with [the Rust guide](../docs/rust/index.md).
 
 ## Build and check
 
+The independent [JSON conformance suite](../conformance/README.md) launches
+isolated Windows desktop banks and tests only their HTTP interfaces. It can
+also test alternative servers. The experimental [GnuCOBOL posting kernel](cobol/README.md)
+runs behind the same Rust transport and JSON API; build it and run the same
+contracts from the repository root with `python nanacoin_rs/cobol/build.py --check`.
+Run `python conformance/check.py --cobol` to test both builds and reopening
+current-schema restart fixtures with the other banking engine in both directions.
+The port notes include the phased plan for two deployable implementations.
+The default bank remains the Rust implementation.
+
 ```bash
 make check       # format, Clippy, Rust tests and real local HTTP smoke
 make help
@@ -216,6 +226,9 @@ payment. Ledger entries carry `lotto-` references and cannot be reversed outside
 the settlement model. Interest is classified as INTEREST, including issuance;
 principal is OTHER and does not count as production. A bad clock or accounting
 limit pauses settlement. No timer per draw or logged-in user is required.
+
+Principal settlement covers all 32 member slots. The cursor uses steps 1–32
+for principal, 33 for house interest, 34 for issuance and 35 for completion.
 
 There are 16 retained draws; only completed draws may be recycled. Pool plus
 interest is capped at the existing per-transfer limit. Currency reforms rescale
@@ -461,3 +474,55 @@ The local preview is left running at the URLs above; it starts with a fresh
 unprovisioned bank. If it has stopped overnight, use the launcher command above.
 Local browser screenshots are under .local/kitchen-preview/screenshots.
 No GitHub push or board flash has been performed.
+
+### Hostile Rust tests and remaining unsafe boundaries
+
+Run `make check` for formatting, strict lint, default and S2 tests, and the
+real HTTP/restart smoke. `make coverage` and `make coverage-s2` measure the
+shared desktop application, excluding test harness files and `build.rs`.
+They do not execute ESP-IDF code. New private unit tests live in `src/tests`
+so test code does not increase the reported application coverage.
+
+On October 5, 2026, application line coverage increased from 84.71%
+(8,569/10,116) to 87.67% (8,906/10,158); the final default and S2 profiles
+both report 87.67%. Loan-view coverage rose from 69.31% to 85.64%.
+
+The hostile suite checks checkpoint counts near integer limits, every binary
+frame bit and payload truncation, CRC-valid outbox trailing data, malformed
+JSON/Unicode, exact authentication capacity/expiry, authorization, paging,
+small response buffers, screen retry/expiry races, and generated payment
+sequences against an independent balance model. Storage failures are injected
+before and after durable publication, including lost acknowledgements and
+checkpoint reclamation; reopen/replay must preserve accounting and retries
+must not pay twice. These tests exposed and fixed checkpoint count overflow,
+outbox trailing-data acceptance, and incomplete HTTP replies being accepted
+as successful screen delivery.
+
+Firmware now uses safe owned APIs for temperature, Wi-Fi/IP sampling, mDNS,
+reset reasons, uptime and checkpoint writes. Framework readers share existing
+owners; Wi-Fi sampling uses `try_lock` to avoid blocking behind a reconnect.
+Advertise extra mDNS services before calling `Board::resolver()`.
+
+The remaining NanaCoin unsafe operations are explicit system boundaries:
+
+| Location | Why retained and contract |
+| --- | --- |
+| `src/bin/esp32/diagnostics.rs` | The pinned svc/HAL has no safe equivalents for full heap/NVS statistics, task count/high-water mark, CPU frequency, chip/flash/application metadata and partition enumeration. Outputs are initialized local records; static descriptions and fixed labels are copied within bounds; partition entries are consumed before advancing and iterators released on truncation. Null selects the current task/default flash as specified by IDF. |
+| `src/bin/esp32/incidents.rs` | Internal-heap free/largest-block queries have no safe equivalent in the pinned wrappers. They read SDK allocator metadata; they do not own or manipulate allocations. |
+| `src/journal/file.rs` (Windows) | `std::fs::rename` cannot request `MOVEFILE_WRITE_THROUGH`. The existing publication primitive uses `MoveFileExW` with replacement/write-through flags; both UTF-16 buffers remain alive and interior NULs are rejected before calling Windows. Tests cover Unicode paths, replacement, errors and NUL rejection. |
+| `tests/allocation.rs` | `GlobalAlloc` is an unsafe trait with unsafe allocation/deallocation methods. The test-only counter forwards the original pointer/layout to `System`; replacing it with a safe helper would stop measuring ordinary allocations. |
+
+Moving these calls into an unchecked wrapper would not remove their safety
+obligations. The framework's separate SDK/TLS boundary audit is recorded in
+`../microcontroller/miniframework/docs/RECIPES.md` (relative to the NanaCoin
+repository root). Its portable crate forbids unsafe Rust; its pinned svc lacks
+asynchronous TLS server negotiation, so the safe blocking API cannot preserve
+the framework's bounded concurrent handshake behavior.
+
+Checkpoint rows now commit through safe `EspNvs` operations before publishing
+the new head. This preserves publication order but increases commit frequency;
+real S2 flash latency, heap use and power-cut behavior still need hardware
+measurement. Firmware build checks do not replace those measurements.
+The audited S2 image is 2,424,368/2,490,368 bytes (66,000 bytes remain);
+S3 is 3,775,488/4,194,304 bytes. These sizes include the current UI and board
+configuration and should be rechecked when either changes.

@@ -9,7 +9,7 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const input = resolve(root, '../nanacoin_ui/dist/nanacoin-web/browser');
 // Each board embeds its own bundle; never let one board's assets reach the other.
 const board = process.env.NANACOIN_BOARD || 's3';
-if (!['s3', 's2'].includes(board)) throw new Error(`Unknown NANACOIN_BOARD ${board}`);
+if (!['s3', 's2', 'p4'].includes(board)) throw new Error(`Unknown NANACOIN_BOARD ${board}`);
 // The S2's 4 MiB flash holds only the gzip copy; the S3 keeps identity + gzip.
 const gzipOnly = board === 's2';
 const output = resolve(root, board === 's3' ? '.embuild/web' : `.embuild/web-${board}`);

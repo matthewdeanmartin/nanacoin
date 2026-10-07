@@ -128,22 +128,27 @@ pub enum Action {
         equipped: bool,
     },
 }
+#[cfg(not(feature = "cobol-core"))]
 fn positive(n: i64) -> bool {
     (1..=MAX_AMOUNT).contains(&n)
 }
+#[cfg(not(feature = "cobol-core"))]
 fn valid_asset(title: &str, license: &str, hash: &str, url: &str) -> bool {
-    !title.trim().is_empty()
-        && !license.trim().is_empty()
-        && hash.len() == 64
-        && hash.bytes().all(|c| c.is_ascii_hexdigit())
-        && url.strip_prefix("https://").is_some_and(|s| {
-            !s.is_empty() && !s.starts_with('/') && !s.starts_with('?') && !s.starts_with('#')
-        })
-        && url.bytes().all(|c| c.is_ascii_graphic())
-        && !url.contains('@')
+    #[cfg(not(feature = "cobol-core"))]
+    {
+        !title.trim().is_empty()
+            && !license.trim().is_empty()
+            && hash.len() == 64
+            && hash.bytes().all(|c| c.is_ascii_hexdigit())
+            && url.strip_prefix("https://").is_some_and(|s| {
+                !s.is_empty() && !s.starts_with('/') && !s.starts_with('?') && !s.starts_with('#')
+            })
+            && url.bytes().all(|c| c.is_ascii_graphic())
+            && !url.contains('@')
+    }
 }
 impl State {
-    pub(crate) fn commerce_refund(&mut self, original: &Transaction, current_amount: i64) {
+    pub(crate) fn commerce_refund(&mut self, original: &Transaction, _current_amount: i64) {
         if let Some(id) = original.meta.gift_request {
             let r = self
                 .commerce
@@ -151,10 +156,23 @@ impl State {
                 .iter_mut()
                 .find(|r| r.id == id)
                 .expect("retained gift request");
-            r.received = r
-                .received
-                .checked_sub(current_amount)
-                .expect("validated gift refund");
+            #[cfg(feature = "cobol-core")]
+            {
+                let (request, received) = self
+                    .prepared
+                    .gift_refund
+                    .take()
+                    .expect("prepared gift refund");
+                assert_eq!(request, id, "prepared gift refund request");
+                r.received = received;
+            }
+            #[cfg(not(feature = "cobol-core"))]
+            {
+                r.received = r
+                    .received
+                    .checked_sub(_current_amount)
+                    .expect("validated gift refund");
+            }
         }
     }
     pub fn gift_request(&self, id: u64) -> Result<&GiftRequest, Error> {
@@ -181,6 +199,21 @@ impl State {
             return Err(Error::Disabled);
         }
         match action {
+            #[cfg(feature = "cobol-core")]
+            Action::MintArt { .. }
+            | Action::BuyArt { .. }
+            | Action::ListArt { .. }
+            | Action::GiftArt { .. }
+            | Action::EquipArt { .. } => {
+                self.art_plan(actor, action, self.sequence)?;
+            }
+            #[cfg(feature = "cobol-core")]
+            Action::CreateRequest { .. }
+            | Action::CloseRequest { .. }
+            | Action::Contribute { .. } => {
+                self.gift_plan(actor, action, now)?;
+            }
+            #[cfg(not(feature = "cobol-core"))]
             Action::CreateRequest {
                 title,
                 target,
@@ -199,6 +232,7 @@ impl State {
                     return Err(Error::InvalidInput);
                 }
             }
+            #[cfg(not(feature = "cobol-core"))]
             Action::CloseRequest { request } => {
                 let r = self.gift_request(*request)?;
                 if r.owner != actor {
@@ -208,6 +242,7 @@ impl State {
                     return Err(Error::Conflict);
                 }
             }
+            #[cfg(not(feature = "cobol-core"))]
             Action::Contribute {
                 request, amount, ..
             } => {
@@ -224,6 +259,7 @@ impl State {
                     .filter(|v| *v <= MAX_SEQUENCE as i64)
                     .ok_or(Error::Overflow)?;
             }
+            #[cfg(not(feature = "cobol-core"))]
             Action::MintArt {
                 title,
                 license,
@@ -237,6 +273,7 @@ impl State {
                     return Err(Error::InvalidInput);
                 }
             }
+            #[cfg(not(feature = "cobol-core"))]
             Action::BuyArt {
                 art,
                 expected_owner,
@@ -252,6 +289,7 @@ impl State {
                 }
                 self.validate_posting(actor, a.owner, *expected_price, false)?;
             }
+            #[cfg(not(feature = "cobol-core"))]
             Action::ListArt { art, price } => {
                 if self.artwork(*art)?.owner != actor {
                     return Err(Error::Forbidden);
@@ -260,6 +298,7 @@ impl State {
                     return Err(Error::InvalidInput);
                 }
             }
+            #[cfg(not(feature = "cobol-core"))]
             Action::GiftArt { art, to } => {
                 if self.artwork(*art)?.owner != actor {
                     return Err(Error::Forbidden);
@@ -271,6 +310,7 @@ impl State {
                     return Err(Error::Disabled);
                 }
             }
+            #[cfg(not(feature = "cobol-core"))]
             Action::EquipArt { art, .. } => {
                 if self.artwork(*art)?.owner != actor {
                     return Err(Error::Forbidden);
@@ -280,6 +320,10 @@ impl State {
         Ok(())
     }
     pub(crate) fn apply_commerce(&mut self, event: &Event, action: &Action) {
+        #[cfg(feature = "cobol-core")]
+        let gift = self.prepared.gift.take();
+        #[cfg(feature = "cobol-core")]
+        let art_plan = self.prepared.art.take();
         match action {
             Action::CreateRequest {
                 title,
@@ -288,22 +332,57 @@ impl State {
                 deadline,
             } => self.commerce.requests.push(GiftRequest {
                 id: event.sequence,
-                owner: event.actor,
+                owner: {
+                    #[cfg(feature = "cobol-core")]
+                    {
+                        gift.as_ref().expect("prepared request").owner
+                    }
+                    #[cfg(not(feature = "cobol-core"))]
+                    {
+                        event.actor
+                    }
+                },
                 title: title.clone(),
                 description: description.clone(),
                 target: *target,
-                received: 0,
+                received: {
+                    #[cfg(feature = "cobol-core")]
+                    {
+                        gift.as_ref().expect("prepared request").received
+                    }
+                    #[cfg(not(feature = "cobol-core"))]
+                    {
+                        0
+                    }
+                },
                 deadline: *deadline,
-                closed: false,
+                closed: {
+                    #[cfg(feature = "cobol-core")]
+                    {
+                        gift.as_ref().expect("prepared request").closed
+                    }
+                    #[cfg(not(feature = "cobol-core"))]
+                    {
+                        false
+                    }
+                },
                 created_at: event.timestamp,
             }),
             Action::CloseRequest { request } => {
-                self.commerce
+                let r = self
+                    .commerce
                     .requests
                     .iter_mut()
                     .find(|r| r.id == *request)
-                    .unwrap()
-                    .closed = true
+                    .unwrap();
+                #[cfg(feature = "cobol-core")]
+                {
+                    r.closed = gift.as_ref().expect("prepared closure").closed;
+                }
+                #[cfg(not(feature = "cobol-core"))]
+                {
+                    r.closed = true;
+                }
             }
             Action::Contribute {
                 request,
@@ -316,8 +395,17 @@ impl State {
                     .iter_mut()
                     .find(|r| r.id == *request)
                     .unwrap();
-                r.received += amount;
-                let to = r.owner;
+                #[cfg(feature = "cobol-core")]
+                let to = {
+                    let p = gift.as_ref().expect("prepared contribution");
+                    r.received = p.received;
+                    p.owner
+                };
+                #[cfg(not(feature = "cobol-core"))]
+                let to = {
+                    r.received += amount;
+                    r.owner
+                };
                 self.commerce_posting(
                     event,
                     to,
@@ -336,29 +424,70 @@ impl State {
             } => self.commerce.artworks.push(Artwork {
                 id: event.sequence,
                 creator: event.actor,
-                owner: event.actor,
+                owner: {
+                    #[cfg(feature = "cobol-core")]
+                    {
+                        art_plan.as_ref().expect("prepared mint").owner
+                    }
+                    #[cfg(not(feature = "cobol-core"))]
+                    {
+                        event.actor
+                    }
+                },
                 title: title.clone(),
                 license: license.clone(),
                 sha256: sha256.clone(),
                 locator: locator.clone(),
-                price: None,
-                equipped: false,
-                revision: event.sequence,
+                price: {
+                    #[cfg(feature = "cobol-core")]
+                    {
+                        art_plan.as_ref().expect("prepared mint").price
+                    }
+                    #[cfg(not(feature = "cobol-core"))]
+                    {
+                        None
+                    }
+                },
+                equipped: {
+                    #[cfg(feature = "cobol-core")]
+                    {
+                        art_plan.as_ref().expect("prepared mint").equipped
+                    }
+                    #[cfg(not(feature = "cobol-core"))]
+                    {
+                        false
+                    }
+                },
+                revision: {
+                    #[cfg(feature = "cobol-core")]
+                    {
+                        art_plan.as_ref().expect("prepared mint").revision
+                    }
+                    #[cfg(not(feature = "cobol-core"))]
+                    {
+                        event.sequence
+                    }
+                },
                 created_at: event.timestamp,
             }),
-            Action::ListArt { art, price } => {
+            Action::ListArt { art, price: _price } => {
                 let a = self
                     .commerce
                     .artworks
                     .iter_mut()
                     .find(|a| a.id == *art)
                     .unwrap();
-                a.price = *price;
-                a.revision = event.sequence;
+                #[cfg(feature = "cobol-core")]
+                art_plan.as_ref().expect("prepared art listing").install(a);
+                #[cfg(not(feature = "cobol-core"))]
+                {
+                    a.price = *_price;
+                    a.revision = event.sequence;
+                }
             }
             Action::BuyArt {
                 art,
-                expected_price,
+                expected_price: _expected_price,
                 ..
             } => {
                 let a = self
@@ -367,47 +496,84 @@ impl State {
                     .iter_mut()
                     .find(|a| a.id == *art)
                     .unwrap();
-                let seller = a.owner;
-                a.owner = event.actor;
-                a.price = None;
-                a.equipped = false;
-                a.revision = event.sequence;
+                #[cfg(feature = "cobol-core")]
+                let (seller, amount) = {
+                    let p = art_plan.as_ref().expect("prepared art purchase");
+                    p.install(a);
+                    (p.seller, p.amount)
+                };
+                #[cfg(not(feature = "cobol-core"))]
+                let (seller, amount) = {
+                    let seller = a.owner;
+                    a.owner = event.actor;
+                    a.price = None;
+                    a.equipped = false;
+                    a.revision = event.sequence;
+                    (seller, *_expected_price)
+                };
                 self.commerce_posting(
                     event,
                     seller,
-                    *expected_price,
+                    amount,
                     "Digital art purchase",
                     EconomicKind::Good,
                     None,
                     Some(*art),
                 );
             }
-            Action::GiftArt { art, to } => {
+            Action::GiftArt { art, to: _to } => {
                 let a = self
                     .commerce
                     .artworks
                     .iter_mut()
                     .find(|a| a.id == *art)
                     .unwrap();
-                a.owner = *to;
-                a.price = None;
-                a.equipped = false;
-                a.revision = event.sequence;
+                #[cfg(feature = "cobol-core")]
+                art_plan.as_ref().expect("prepared art gift").install(a);
+                #[cfg(not(feature = "cobol-core"))]
+                {
+                    a.owner = *_to;
+                    a.price = None;
+                    a.equipped = false;
+                    a.revision = event.sequence;
+                }
             }
-            Action::EquipArt { art, equipped } => {
-                if *equipped {
-                    for a in &mut self.commerce.artworks {
-                        if a.owner == event.actor {
+            Action::EquipArt {
+                art,
+                equipped: _equipped,
+            } => {
+                #[cfg(feature = "cobol-core")]
+                {
+                    let p = art_plan.as_ref().expect("prepared equipment");
+                    for (index, a) in self.commerce.artworks.iter_mut().enumerate() {
+                        if p.clear_equipment & (1u64 << index) != 0 {
                             a.equipped = false;
                         }
                     }
+                    p.install(
+                        self.commerce
+                            .artworks
+                            .iter_mut()
+                            .find(|a| a.id == *art)
+                            .unwrap(),
+                    );
                 }
-                self.commerce
-                    .artworks
-                    .iter_mut()
-                    .find(|a| a.id == *art)
-                    .unwrap()
-                    .equipped = *equipped;
+                #[cfg(not(feature = "cobol-core"))]
+                {
+                    if *_equipped {
+                        for a in &mut self.commerce.artworks {
+                            if a.owner == event.actor {
+                                a.equipped = false;
+                            }
+                        }
+                    }
+                    self.commerce
+                        .artworks
+                        .iter_mut()
+                        .find(|a| a.id == *art)
+                        .unwrap()
+                        .equipped = *_equipped;
+                }
             }
         }
     }
@@ -448,38 +614,43 @@ impl State {
         });
     }
     pub(crate) fn check_commerce(&self) -> Result<(), Error> {
-        if self.commerce.requests.len() > REQUESTS || self.commerce.artworks.len() > ARTWORKS {
-            return Err(Error::CorruptJournal);
-        }
-        for (i, r) in self.commerce.requests.iter().enumerate() {
-            self.member(r.owner)?;
-            if r.id == 0
-                || r.id > self.sequence
-                || r.received < 0
-                || r.received > MAX_SEQUENCE as i64
-                || r.target.is_some_and(|v| !positive(v))
-                || r.title.trim().is_empty()
-                || self.commerce.requests[..i].iter().any(|p| p.id == r.id)
-            {
+        #[cfg(feature = "cobol-core")]
+        return self.bank_commerce_invariants();
+        #[cfg(not(feature = "cobol-core"))]
+        {
+            if self.commerce.requests.len() > REQUESTS || self.commerce.artworks.len() > ARTWORKS {
                 return Err(Error::CorruptJournal);
             }
-        }
-        for (i, a) in self.commerce.artworks.iter().enumerate() {
-            self.member(a.owner)?;
-            self.member(a.creator)?;
-            if a.id == 0
-                || a.id > self.sequence
-                || a.revision < a.id
-                || a.revision > self.sequence
-                || a.price.is_some_and(|v| !positive(v))
-                || !valid_asset(&a.title, &a.license, &a.sha256, &a.locator)
-                || self.commerce.artworks[..i]
-                    .iter()
-                    .any(|p| p.id == a.id || (p.owner == a.owner && p.equipped && a.equipped))
-            {
-                return Err(Error::CorruptJournal);
+            for (i, r) in self.commerce.requests.iter().enumerate() {
+                self.member(r.owner)?;
+                if r.id == 0
+                    || r.id > self.sequence
+                    || r.received < 0
+                    || r.received > MAX_SEQUENCE as i64
+                    || r.target.is_some_and(|v| !positive(v))
+                    || r.title.trim().is_empty()
+                    || self.commerce.requests[..i].iter().any(|p| p.id == r.id)
+                {
+                    return Err(Error::CorruptJournal);
+                }
             }
+            for (i, a) in self.commerce.artworks.iter().enumerate() {
+                self.member(a.owner)?;
+                self.member(a.creator)?;
+                if a.id == 0
+                    || a.id > self.sequence
+                    || a.revision < a.id
+                    || a.revision > self.sequence
+                    || a.price.is_some_and(|v| !positive(v))
+                    || !valid_asset(&a.title, &a.license, &a.sha256, &a.locator)
+                    || self.commerce.artworks[..i]
+                        .iter()
+                        .any(|p| p.id == a.id || (p.owner == a.owner && p.equipped && a.equipped))
+                {
+                    return Err(Error::CorruptJournal);
+                }
+            }
+            Ok(())
         }
-        Ok(())
     }
 }

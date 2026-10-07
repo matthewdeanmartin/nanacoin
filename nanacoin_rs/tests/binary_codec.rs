@@ -124,3 +124,29 @@ fn binary_frame_rejects_truncated_serialization_even_with_valid_crc() {
     resign(&mut frame);
     assert!(matches!(decode(&frame), Err(Error::CorruptJournal)));
 }
+
+#[test]
+fn every_frame_bit_and_every_crc_valid_payload_truncation_is_rejected() {
+    let original = encode(&event(1, Some([7; 32]))).unwrap();
+    for byte in 0..FRAME_SIZE {
+        for bit in 0..8 {
+            let mut frame = original;
+            frame[byte] ^= 1 << bit;
+            assert!(
+                matches!(decode(&frame), Err(Error::CorruptJournal)),
+                "byte {byte} bit {bit}"
+            );
+        }
+    }
+    let len = u32::from_le_bytes(original[4..8].try_into().unwrap()) as usize;
+    for end in 1..len {
+        let mut frame = original;
+        frame[4..8].copy_from_slice(&(end as u32).to_le_bytes());
+        frame[12 + end..].fill(0);
+        resign(&mut frame);
+        assert!(
+            matches!(decode(&frame), Err(Error::CorruptJournal)),
+            "payload truncation {end}"
+        );
+    }
+}

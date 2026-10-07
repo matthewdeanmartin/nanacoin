@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-# Usage: bash scripts/build-esp32.sh s3|s2 [cargo args...]
+# Usage: bash scripts/build-esp32.sh s3|s2|p4 [cargo args...]
 # There is no default board: each bank has its own target, sdkconfig,
 # partitions, certificate, web bundle and Cargo target directory.
-[[ ${1:-} == s3 || ${1:-} == s2 ]] || { echo 'Usage: bash scripts/build-esp32.sh s3|s2' >&2; exit 2; }
+[[ ${1:-} == s3 || ${1:-} == s2 || ${1:-} == p4 ]] || { echo 'Usage: bash scripts/build-esp32.sh s3|s2|p4' >&2; exit 2; }
 board=$1
 shift
 field() { python scripts/boards.py "$board" "$1"; }
@@ -19,6 +19,10 @@ if [[ $board == s2 ]]; then
   # The S2 Mini has one plain LED on GPIO15, not a WS2812 pixel; never
   # inherit the S3's GPIO48 setting.
   export NANACOIN_STATUS_LED_PIN=${NANACOIN_S2_STATUS_LED_PIN:-15}
+fi
+if [[ $board == p4 ]]; then
+  features=esp32,board-p4
+  export NANACOIN_STATUS_LED_PIN=off
 fi
 echo "Building NanaCoin firmware for board $board ($(field name)) at $(field hostname)"
 # Credentials may come from the environment or, failing that, from a
@@ -49,7 +53,7 @@ if [[ -d /c/Espressif/frameworks/esp-idf-v5.5.3 ]]; then
   export ESP_IDF_TOOLS_INSTALL_DIR=fromenv
   export IDF_PYTHON_ENV_PATH="C:/Espressif/python_env/idf5.5_py3.11_env"
   export ESP_ROM_ELF_DIR="C:/Espressif/tools/esp-rom-elfs/20241011"
-  export PATH="/c/Espressif/frameworks/esp-idf-v5.5.3/tools:/c/Espressif/python_env/idf5.5_py3.11_env/Scripts:/c/Espressif/tools/cmake/3.30.2/bin:/c/Espressif/tools/ninja/1.12.1:/c/Espressif/tools/xtensa-esp-elf/esp-14.2.0_20251107/xtensa-esp-elf/bin:$PATH"
+  export PATH="/c/Espressif/frameworks/esp-idf-v5.5.3/tools:/c/Espressif/python_env/idf5.5_py3.11_env/Scripts:/c/Espressif/tools/cmake/3.30.2/bin:/c/Espressif/tools/ninja/1.12.1:/c/Espressif/tools/riscv32-esp-elf/esp-14.2.0_20251107/riscv32-esp-elf/bin:/c/Espressif/tools/xtensa-esp-elf/esp-14.2.0_20251107/xtensa-esp-elf/bin:$PATH"
   export LIBCLANG_PATH="$(cygpath -m "$USERPROFILE")/.rustup/toolchains/esp/xtensa-esp32-elf-clang/esp-clang/bin/libclang.dll"
   # Keep the compiler selected by this ESP-IDF installation ahead of Rustup's
   # bundled GCC (which may be newer than the version this IDF release accepts).

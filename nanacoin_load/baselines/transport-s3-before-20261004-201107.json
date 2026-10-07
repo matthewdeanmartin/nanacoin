@@ -1,0 +1,293 @@
+{
+  "label": "s3-before",
+  "started": "2026-10-04T20:07:56",
+  "target": "nanacoin.local",
+  "address": "192.168.1.158",
+  "scheme": "https",
+  "settings": {
+    "repeats": 2,
+    "levels": [
+      1,
+      3,
+      5
+    ],
+    "duration": 30.0,
+    "think": 0.5,
+    "page_connections": 6,
+    "warm_connections": 2
+  },
+  "health_before": {
+    "uptime_seconds": 109506,
+    "free_heap": 67711,
+    "minimum_free_heap": 27759,
+    "largest_free_block": 31744,
+    "psram_free": 5305060,
+    "requests": 6597,
+    "errors": 3,
+    "internal_min": 27759
+  },
+  "site_files": [
+    "/",
+    "/styles-LNRAF7SX.css",
+    "/chunk-DmkRSN25.js",
+    "/chunk-0UdJ4Iuy.js",
+    "/chunk-Csz1ktBt.js",
+    "/chunk-C08Umtjb.js",
+    "/main-GJSYM474.js"
+  ],
+  "reads_per_member": {
+    "nana": 13,
+    "matt": 11,
+    "tasi": 11,
+    "tano": 11,
+    "pia": 11
+  },
+  "modes": {
+    "h1": {
+      "cold": {
+        "views": [
+          {
+            "member": "nana",
+            "ms": 6409.2076000524685,
+            "connections": 6,
+            "setup_ms": [
+              952,
+              1077,
+              990,
+              1105,
+              992,
+              1035
+            ],
+            "bytes": 551848,
+            "statuses": [
+              200
+            ]
+          },
+          {
+            "member": "matt",
+            "ms": 6419.77409995161,
+            "connections": 6,
+            "setup_ms": [
+              989,
+              1077,
+              989,
+              1087,
+              991,
+              990
+            ],
+            "bytes": 551677,
+            "statuses": [
+              200
+            ]
+          },
+          {
+            "member": "tasi",
+            "ms": 6440.9406000049785,
+            "connections": 6,
+            "setup_ms": [
+              939,
+              1155,
+              1017,
+              1074,
+              1009,
+              966
+            ],
+            "bytes": 551320,
+            "statuses": [
+              200
+            ]
+          },
+          {
+            "member": "tano",
+            "ms": 6925.710299983621,
+            "connections": 6,
+            "setup_ms": [
+              981,
+              1073,
+              963,
+              1089,
+              1150,
+              1084
+            ],
+            "bytes": 550965,
+            "statuses": [
+              200
+            ]
+          },
+          {
+            "member": "pia",
+            "ms": 6480.804800055921,
+            "connections": 6,
+            "setup_ms": [
+              944,
+              1141,
+              993,
+              1083,
+              1056,
+              981
+            ],
+            "bytes": 551318,
+            "statuses": [
+              200
+            ]
+          },
+          {
+            "member": "nana",
+            "ms": 6567.915399908088,
+            "connections": 6,
+            "setup_ms": [
+              1000,
+              1207,
+              975,
+              1107,
+              1001,
+              1010
+            ],
+            "bytes": 551848,
+            "statuses": [
+              200
+            ]
+          },
+          {
+            "member": "matt",
+            "ms": 6480.657500098459,
+            "connections": 6,
+            "setup_ms": [
+              988,
+              1134,
+              1000,
+              1089,
+              1012,
+              980
+            ],
+            "bytes": 551677,
+            "statuses": [
+              200
+            ]
+          },
+          {
+            "member": "tasi",
+            "ms": 6296.388500020839,
+            "connections": 6,
+            "setup_ms": [
+              935,
+              1064,
+              967,
+              1064,
+              994,
+              1019
+            ],
+            "bytes": 551320,
+            "statuses": [
+              200
+            ]
+          },
+          {
+            "member": "tano",
+            "ms": 6418.927200022154,
+            "connections": 6,
+            "setup_ms": [
+              929,
+              1124,
+              1021,
+              1094,
+              962,
+              990
+            ],
+            "bytes": 550965,
+            "statuses": [
+              200
+            ]
+          },
+          {
+            "member": "pia",
+            "ms": 6443.760199937969,
+            "connections": 6,
+            "setup_ms": [
+              952,
+              1104,
+              1029,
+              1068,
+              975,
+              1028
+            ],
+            "bytes": 551318,
+            "statuses": [
+              200
+            ]
+          }
+        ],
+        "page_ms_median": 6442,
+        "page_ms_p95": 6926,
+        "setup_ms_median": 1011,
+        "failed_views": 0
+      },
+      "warm": [
+        {
+          "requests": 338,
+          "errors": 0,
+          "non_200": 0,
+          "p50_ms": 41.2,
+          "p95_ms": 237.9,
+          "p99_ms": 533.1,
+          "level": 1,
+          "requests_per_s": 11.1,
+          "connection_failures": 0,
+          "failure_examples": []
+        },
+        {
+          "requests": 724,
+          "errors": 0,
+          "non_200": 0,
+          "p50_ms": 49.2,
+          "p95_ms": 388.3,
+          "p99_ms": 458.9,
+          "level": 3,
+          "requests_per_s": 23.5,
+          "connection_failures": 0,
+          "failure_examples": []
+        },
+        {
+          "requests": 325,
+          "errors": 0,
+          "non_200": 0,
+          "p50_ms": 58.1,
+          "p95_ms": 375.3,
+          "p99_ms": 578.6,
+          "level": 5,
+          "requests_per_s": 9.2,
+          "connection_failures": 7,
+          "failure_examples": [
+            "ConnectionResetError: RemoteDisconnected: Remote end closed connection without response",
+            "ConnectionResetError: RemoteDisconnected: Remote end closed connection without response; ConnectionResetError: [WinError 10054] An existing connection was forcibly closed by the remote host",
+            "ConnectionResetError: RemoteDisconnected: Remote end closed connection without response; RemoteDisconnected: Remote end closed connection without response"
+          ]
+        }
+      ],
+      "health_after": {
+        "uptime_seconds": 109689,
+        "free_heap": 67267,
+        "minimum_free_heap": 19523,
+        "largest_free_block": 31744,
+        "psram_free": 5260264,
+        "requests": 8200,
+        "errors": 3,
+        "internal_min": 19523
+      }
+    },
+    "h2": {
+      "skipped": "the bank chose None, not h2"
+    }
+  },
+  "logged_out": 5,
+  "health_end": {
+    "uptime_seconds": 109695,
+    "free_heap": 67091,
+    "minimum_free_heap": 19523,
+    "largest_free_block": 31744,
+    "psram_free": 5263840,
+    "requests": 8206,
+    "errors": 3,
+    "internal_min": 19523
+  }
+}

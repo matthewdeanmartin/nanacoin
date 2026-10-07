@@ -1,5 +1,7 @@
 //! Bounded quote book. One durable command commits both currencies atomically.
-use crate::{domain::*, journal::MAX_RECORDS, offers::MIN_CLOCK};
+#[cfg(not(feature = "cobol-core"))]
+use crate::offers::MIN_CLOCK;
+use crate::{domain::*, journal::MAX_RECORDS};
 use serde::{Deserialize, Serialize};
 
 pub const QUOTES: usize = 16;
@@ -35,14 +37,30 @@ pub struct Quote {
 }
 impl Quote {
     pub fn live(&self, now: u64) -> bool {
-        self.status == QuoteStatus::Open
-            && (MIN_CLOCK..=MAX_SEQUENCE).contains(&now)
-            && (self.expires_at == 0 || now < self.expires_at)
+        #[cfg(feature = "cobol-core")]
+        {
+            crate::cobol::quote_projection(self, now, MemberId(0))[6] == 1
+        }
+        #[cfg(not(feature = "cobol-core"))]
+        {
+            self.status == QuoteStatus::Open
+                && (MIN_CLOCK..=MAX_SEQUENCE).contains(&now)
+                && (self.expires_at == 0 || now < self.expires_at)
+        }
     }
     pub fn cents(&self) -> i64 {
-        (self.coins as i128 * self.cents_per_coin as i128 / self.nc_scale as i128) as i64
+        #[cfg(feature = "cobol-core")]
+        {
+            crate::cobol::exchange_cents(self.coins, self.cents_per_coin, self.nc_scale)
+                .expect("validated exchange arithmetic")
+        }
+        #[cfg(not(feature = "cobol-core"))]
+        {
+            (self.coins as i128 * self.cents_per_coin as i128 / self.nc_scale as i128) as i64
+        }
     }
-    fn parties(&self, taker: MemberId) -> (MemberId, MemberId) {
+    #[cfg(not(feature = "cobol-core"))]
+    pub(crate) fn parties(&self, taker: MemberId) -> (MemberId, MemberId) {
         match self.side {
             QuoteSide::ASK => (self.maker, taker),
             QuoteSide::BID => (taker, self.maker),
@@ -64,32 +82,41 @@ impl State {
         correction: bool,
         usd: bool,
     ) -> Result<(), Error> {
-        if !usd {
-            return self.validate_posting(from, to, amount, correction);
+        #[cfg(feature = "cobol-core")]
+        {
+            self.account_posting(from, to, amount, correction, usd)
         }
-        if from == to || !(1..=MAX_AMOUNT).contains(&amount) {
-            return Err(Error::InvalidInput);
-        }
-        let balance = |id| {
-            if id == MemberId(0) {
-                Ok(self.usd_issuance_balance)
-            } else {
-                let m = self.member(id)?;
-                if !correction && m.disabled {
-                    return Err(Error::Disabled);
-                }
-                Ok(m.usd_cents)
+        #[cfg(not(feature = "cobol-core"))]
+        {
+            if !usd {
+                return self.validate_posting(from, to, amount, correction);
             }
-        };
-        let debit = balance(from)?.checked_sub(amount).ok_or(Error::Overflow)?;
-        let credit = balance(to)?.checked_add(amount).ok_or(Error::Overflow)?;
-        if debit.unsigned_abs() > MAX_SEQUENCE || credit.unsigned_abs() > MAX_SEQUENCE {
-            return Err(Error::Overflow);
+            if from == to || !(1..=MAX_AMOUNT).contains(&amount) {
+                return Err(Error::InvalidInput);
+            }
+            let balance = |id| {
+                if id == MemberId(0) {
+                    Ok(self.usd_issuance_balance)
+                } else {
+                    let m = self.member(id)?;
+                    if !correction && m.disabled {
+                        return Err(Error::Disabled);
+                    }
+                    Ok(m.usd_cents)
+                }
+            };
+            {
+                let debit = balance(from)?.checked_sub(amount).ok_or(Error::Overflow)?;
+                let credit = balance(to)?.checked_add(amount).ok_or(Error::Overflow)?;
+                if debit.unsigned_abs() > MAX_SEQUENCE || credit.unsigned_abs() > MAX_SEQUENCE {
+                    return Err(Error::Overflow);
+                }
+                if !correction && from != MemberId(0) && debit < 0 {
+                    return Err(Error::InsufficientFunds);
+                }
+                Ok(())
+            }
         }
-        if !correction && from != MemberId(0) && debit < 0 {
-            return Err(Error::InsufficientFunds);
-        }
-        Ok(())
     }
     pub(crate) fn validate_forex(
         &self,
@@ -98,10 +125,15 @@ impl State {
         now: u64,
     ) -> Result<(), Error> {
         match command {
+            #[cfg(feature = "cobol-core")]
+            Command::PostQuote { .. } | Command::TakeQuote { .. } | Command::CancelQuote { .. } => {
+                self.quote_plan(actor, command, now)?;
+            }
             Command::IssueUsd { to, cents, .. } => {
                 self.admin(actor)?;
                 self.validate_currency_posting(MemberId(0), *to, *cents, false, true)?;
             }
+            #[cfg(not(feature = "cobol-core"))]
             Command::PostQuote {
                 cents_per_coin,
                 coins,
@@ -134,6 +166,7 @@ impl State {
                     return Err(Error::Capacity);
                 }
             }
+            #[cfg(not(feature = "cobol-core"))]
             Command::TakeQuote { quote } => {
                 if !(MIN_CLOCK..=MAX_SEQUENCE).contains(&now) {
                     return Err(Error::Unavailable);
@@ -149,6 +182,7 @@ impl State {
                 self.validate_currency_posting(seller, buyer, q.coins, false, false)?;
                 self.validate_currency_posting(buyer, seller, q.cents(), false, true)?;
             }
+            #[cfg(not(feature = "cobol-core"))]
             Command::CancelQuote { quote } => {
                 let q = self.quote(*quote)?;
                 if q.maker != actor {
@@ -163,6 +197,8 @@ impl State {
         Ok(())
     }
     pub(crate) fn apply_forex(&mut self, event: &Event) {
+        #[cfg(feature = "cobol-core")]
+        let plan = self.prepared.quote.take();
         match &event.command {
             Command::IssueUsd { to, cents, memo } => self.record_transaction(Transaction {
                 meta: crate::ledger::TransactionMeta::default(),
@@ -188,6 +224,13 @@ impl State {
                 expires_at,
             } => {
                 if self.quotes.is_full() {
+                    #[cfg(feature = "cobol-core")]
+                    let i = plan
+                        .as_ref()
+                        .expect("prepared quote")
+                        .recycle
+                        .expect("prepared quote recycling");
+                    #[cfg(not(feature = "cobol-core"))]
                     let i = self
                         .quotes
                         .iter()
@@ -209,7 +252,16 @@ impl State {
                         expires_at: *expires_at,
                         created_at: event.timestamp,
                         updated_at: event.timestamp,
-                        status: QuoteStatus::Open,
+                        status: {
+                            #[cfg(feature = "cobol-core")]
+                            {
+                                plan.as_ref().expect("prepared quote").status
+                            }
+                            #[cfg(not(feature = "cobol-core"))]
+                            {
+                                QuoteStatus::Open
+                            }
+                        },
                         taker: None,
                         coin_tx: None,
                         cash_tx: None,
@@ -218,13 +270,33 @@ impl State {
             }
             Command::CancelQuote { quote } => {
                 let q = self.quotes.iter_mut().find(|q| q.id == *quote).unwrap();
-                q.status = QuoteStatus::Cancelled;
+                #[cfg(feature = "cobol-core")]
+                {
+                    q.status = plan.as_ref().expect("prepared cancellation").status;
+                }
+                #[cfg(not(feature = "cobol-core"))]
+                {
+                    q.status = QuoteStatus::Cancelled;
+                }
                 q.updated_at = event.timestamp;
             }
             Command::TakeQuote { quote } => {
+                #[cfg(feature = "cobol-core")]
+                let cash_amount = self.prepared_amount(1);
                 let q = self.quotes.iter_mut().find(|q| q.id == *quote).unwrap();
-                let (seller, buyer) = q.parties(event.actor);
-                q.status = QuoteStatus::Filled;
+                #[cfg(not(feature = "cobol-core"))]
+                let cash_amount = q.cents();
+                #[cfg(feature = "cobol-core")]
+                let (seller, buyer) = {
+                    let p = plan.as_ref().expect("prepared exchange");
+                    q.status = p.status;
+                    (p.seller, p.buyer)
+                };
+                #[cfg(not(feature = "cobol-core"))]
+                let (seller, buyer) = {
+                    q.status = QuoteStatus::Filled;
+                    q.parties(event.actor)
+                };
                 q.taker = Some(event.actor);
                 q.updated_at = event.timestamp;
                 q.coin_tx = Some(event.sequence);
@@ -253,7 +325,7 @@ impl State {
                     id: q.cash_tx.unwrap(),
                     from: buyer,
                     to: seller,
-                    amount: q.cents(),
+                    amount: cash_amount,
                     usd: true,
                     ..coin.clone()
                 };

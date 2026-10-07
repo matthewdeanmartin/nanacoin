@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Usage: bash scripts/dev-certs.sh [s3|s2]   (s3 when omitted)
+# Usage: bash scripts/dev-certs.sh [s3|s2|p4]   (s3 when omitted)
 # One household CA signs a separate server leaf per bank:
 #   s3: certs/nanacoin-ca-signed.{crt,key}     for nanacoin.local
 #   s2: certs/nanacoin-s2-ca-signed.{crt,key}  for nanacoin-s2.local
@@ -14,7 +14,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 board=${1:-s3}
-[[ $board == s3 || $board == s2 ]] || { echo 'Usage: bash scripts/dev-certs.sh [s3|s2]' >&2; exit 2; }
+[[ $board == s3 || $board == s2 || $board == p4 ]] || { echo 'Usage: bash scripts/dev-certs.sh [s3|s2|p4]' >&2; exit 2; }
 umask 077
 mkdir -p certs
 ca=certs/home-ca.crt
@@ -84,21 +84,21 @@ if [[ $board == s3 ]]; then
     cp "$root_cert" "$ca"
   fi
 else
-  leaf=certs/nanacoin-s2-ca-signed.crt
-  key=certs/nanacoin-s2-ca-signed.key
+  leaf=certs/nanacoin-$board-ca-signed.crt
+  key=certs/nanacoin-$board-ca-signed.key
   if [[ -e $leaf || -e $key ]]; then
-    [[ -f $leaf && -f $key ]] || { echo 'Incomplete S2 certificate pair; refusing to replace it.' >&2; exit 1; }
+    [[ -f $leaf && -f $key ]] || { echo 'Incomplete bank certificate pair; refusing to replace it.' >&2; exit 1; }
   else
     # Never mint a second CA for the second bank.
     [[ -f $ca && -f $root_key && -f $root_cert ]] || {
-      echo "The S2 leaf must be signed by the existing household CA, but certs/home-ca.crt or $ca_dir is missing." >&2
-      echo 'Restore the household CA; do not generate a new one for the S2.' >&2
+      echo "The additional bank leaf must be signed by the existing household CA, but certs/home-ca.crt or $ca_dir is missing." >&2
+      echo 'Restore the household CA; do not generate a new one for another bank.' >&2
       exit 1
     }
     cmp -s "$ca" "$root_cert" || { echo "certs/home-ca.crt does not match $root_cert; refusing to sign." >&2; exit 1; }
     command -v openssl >/dev/null || { echo 'Install OpenSSL first.' >&2; exit 1; }
-    sign_leaf nanacoin-s2.local "$leaf" "$key"
-    echo 'Signed a new nanacoin-s2.local leaf with the existing household CA.'
+    sign_leaf "nanacoin-$board.local" "$leaf" "$key"
+    echo "Signed a new nanacoin-$board.local leaf with the existing household CA."
   fi
 fi
 bash scripts/test-certs.sh "$board"

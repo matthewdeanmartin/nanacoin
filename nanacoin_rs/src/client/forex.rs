@@ -1,5 +1,7 @@
 use super::*;
-use crate::forex::{Quote, QuoteSide, QuoteStatus};
+#[cfg(not(feature = "cobol-core"))]
+use crate::forex::QuoteStatus;
+use crate::forex::{Quote, QuoteSide};
 
 #[derive(Serialize)]
 struct QuoteView<'a> {
@@ -33,11 +35,22 @@ fn view<'a>(state: &'a State, q: &'a Quote, now: u64) -> QuoteView<'a> {
         cents_per_coin: q.cents_per_coin,
         coins: q.coins,
         cents: q.cents(),
-        status: match q.status {
-            QuoteStatus::Filled => "FILLED",
-            QuoteStatus::Cancelled => "CANCELLED",
-            QuoteStatus::Open if now != 0 && q.expires_at != 0 && now >= q.expires_at => "EXPIRED",
-            QuoteStatus::Open => "OPEN",
+        status: {
+            #[cfg(feature = "cobol-core")]
+            {
+                crate::cobol::quote_view_status(q, now)
+            }
+            #[cfg(not(feature = "cobol-core"))]
+            {
+                match q.status {
+                    QuoteStatus::Filled => "FILLED",
+                    QuoteStatus::Cancelled => "CANCELLED",
+                    QuoteStatus::Open if now != 0 && q.expires_at != 0 && now >= q.expires_at => {
+                        "EXPIRED"
+                    }
+                    QuoteStatus::Open => "OPEN",
+                }
+            }
         },
         created_at: q.created_at,
         updated_at: q.updated_at,
@@ -97,8 +110,12 @@ pub(super) fn route<J: Journal>(
         if path == "/api/v1/quotes" {
             if method == "GET" {
                 // Sort a bounded array of references; reading the book allocates nothing.
+                #[cfg(feature = "cobol-core")]
+                let sorted = crate::cobol::quote_order(&s.state)?;
+                #[cfg(not(feature = "cobol-core"))]
                 let mut sorted: heapless::Vec<&Quote, { crate::forex::QUOTES }> =
                     s.state.quotes.iter().collect();
+                #[cfg(not(feature = "cobol-core"))]
                 sorted.sort_unstable_by_key(|q| {
                     (
                         if q.side == QuoteSide::ASK { 0 } else { 1 },

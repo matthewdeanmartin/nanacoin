@@ -6,7 +6,10 @@
 //! application and features with smaller retention and connection bounds for
 //! 2 MiB PSRAM, 4 MiB flash and one core. The S3 never uses these smaller bounds.
 
-#[cfg(not(feature = "board-s2"))]
+#[cfg(all(feature = "board-s2", feature = "board-p4"))]
+compile_error!("select only one NanaCoin board profile");
+
+#[cfg(not(any(feature = "board-s2", feature = "board-p4")))]
 mod profile {
     pub const ID: &str = "s3";
     pub const MARKER: &str = "NANACOIN-BOARD:s3:nanacoin.local;";
@@ -46,6 +49,27 @@ mod profile {
     pub const ARCHIVE_SLOTS: usize = 128;
     pub const ARCHIVE_RETAIN_PAGES: u64 = 96;
     pub const RESPONSE_LIMIT: usize = 192 * 1024;
+}
+
+#[cfg(feature = "board-p4")]
+mod profile {
+    pub const ID: &str = "p4";
+    pub const MARKER: &str = "NANACOIN-BOARD:p4:nanacoin-p4.local;";
+    pub const HOSTNAME: &str = "nanacoin-p4";
+    pub const FQDN: &str = "nanacoin-p4.local";
+    pub const HTTPS_ORIGIN: &str = "https://nanacoin-p4.local";
+    pub const HTTP_ORIGIN: &str = "http://nanacoin-p4.local";
+    pub const DEFAULT_ORIGINS: &str =
+        "http://localhost:4200,http://127.0.0.1:4200,http://nanacoin-p4.local,https://nanacoin-p4.local";
+    pub const PLATFORM: &str = "ESP32-P4 / Rust";
+    pub const HISTORY: usize = 3000;
+    pub const MAX_RECORDS: usize = 4096;
+    pub const CORRECTIONS: usize = 4096;
+    pub const AUDIT_CACHE: usize = 1024;
+    pub const FULFILLMENTS: usize = 128;
+    pub const ARCHIVE_SLOTS: usize = 1024;
+    pub const ARCHIVE_RETAIN_PAGES: u64 = 768;
+    pub const RESPONSE_LIMIT: usize = 512 * 1024;
 }
 
 pub use profile::*;

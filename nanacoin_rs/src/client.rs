@@ -67,19 +67,30 @@ fn quantity_milli(value: &str) -> Result<u32, Error> {
     } else {
         fraction.parse().map_err(|_| Error::InvalidInput)?
     };
-    let scale = match fraction_len {
-        0 => 1000,
-        1 => 100,
-        2 => 10,
-        3 => 1,
-        _ => return Err(Error::InvalidInput),
-    };
-    whole
-        .checked_mul(1000)
-        .and_then(|n| n.checked_add(fraction * scale))
-        .filter(|n| (1..=1_000_000_000).contains(n))
-        .ok_or(Error::InvalidInput)
+    #[cfg(feature = "cobol-core")]
+    {
+        crate::cobol::wire_quantity(whole, fraction, fraction_len)
+    }
+    #[cfg(not(feature = "cobol-core"))]
+    {
+        let scale = match fraction_len {
+            0 => 1000,
+            1 => 100,
+            2 => 10,
+            3 => 1,
+            _ => return Err(Error::InvalidInput),
+        };
+        whole
+            .checked_mul(1000)
+            .and_then(|n| n.checked_add(fraction * scale))
+            .filter(|n| (1..=1_000_000_000).contains(n))
+            .ok_or(Error::InvalidInput)
+    }
 }
+
+#[cfg(test)]
+#[path = "tests/client.rs"]
+mod hostile_numbers;
 
 #[derive(Serialize)]
 pub(crate) struct User<'a> {
@@ -167,6 +178,76 @@ struct TransactionView<'a> {
     unit: Unit,
     postings: [Posting<'a>; 2],
 }
+fn circulation(state: &State) -> i64 {
+    money_debit(state.issuance_balance)
+}
+
+fn money_debit(amount: i64) -> i64 {
+    #[cfg(feature = "cobol-core")]
+    {
+        crate::cobol::ledger_debit(amount)
+    }
+    #[cfg(not(feature = "cobol-core"))]
+    {
+        -amount
+    }
+}
+
+fn public_money(tx: &Transaction) -> bool {
+    #[cfg(feature = "cobol-core")]
+    {
+        crate::cobol::ledger_transaction(tx)[20] != 0
+    }
+    #[cfg(not(feature = "cobol-core"))]
+    {
+        tx.amount != 0
+    }
+}
+
+fn transaction_kind(tx: &Transaction) -> &'static str {
+    #[cfg(feature = "cobol-core")]
+    {
+        [
+            "MESSAGE", "REVERSAL", "ISSUE", "PURCHASE", "RETIRE", "TRANSFER",
+        ][crate::cobol::ledger_transaction(tx)[16] as usize]
+    }
+    #[cfg(not(feature = "cobol-core"))]
+    {
+        if tx.amount == 0 {
+            "MESSAGE"
+        } else if tx.reverses.is_some() {
+            "REVERSAL"
+        } else if tx.from == MemberId(0) {
+            "ISSUE"
+        } else if tx.listing.is_some() {
+            "PURCHASE"
+        } else if tx.to == MemberId(0) {
+            "RETIRE"
+        } else {
+            "TRANSFER"
+        }
+    }
+}
+
+fn transaction_reference(tx: &Transaction) -> Option<Id> {
+    #[cfg(feature = "cobol-core")]
+    {
+        match crate::cobol::ledger_transaction(tx)[17] {
+            1 => tx.loan.map(|l| id("loan-", l)),
+            2 => tx.lotto.map(|l| id("lotto-", l)),
+            3 => tx.quote.map(|q| id("quote-", q)),
+            _ => None,
+        }
+    }
+    #[cfg(not(feature = "cobol-core"))]
+    {
+        tx.loan
+            .map(|l| id("loan-", l))
+            .or_else(|| tx.lotto.map(|l| id("lotto-", l)))
+            .or_else(|| tx.quote.map(|q| id("quote-", q)))
+    }
+}
+
 fn transaction<'a>(state: &'a State, tx: &'a Transaction) -> TransactionView<'a> {
     let name = |member| {
         if member == crate::lotto::ESCROW {
@@ -185,7 +266,7 @@ fn transaction<'a>(state: &'a State, tx: &'a Transaction) -> TransactionView<'a>
                 Posting {
                     account: currency_account(tx.from, tx.usd),
                     name: name(tx.from),
-                    amount: -amount,
+                    amount: money_debit(amount),
                 },
                 Posting {
                     account: currency_account(tx.to, tx.usd),
@@ -201,30 +282,13 @@ fn transaction<'a>(state: &'a State, tx: &'a Transaction) -> TransactionView<'a>
             .find(|f| f.transaction == tx.id)
             .map(|f| fulfillment::view(state, f)),
         id: id("tx-", tx.id),
-        kind: if tx.amount == 0 {
-            "MESSAGE"
-        } else if tx.reverses.is_some() {
-            "REVERSAL"
-        } else if tx.from == MemberId(0) {
-            // Includes good-deed rewards, which settle a listing with new money.
-            "ISSUE"
-        } else if tx.listing.is_some() {
-            "PURCHASE"
-        } else if tx.to == MemberId(0) {
-            "RETIRE"
-        } else {
-            "TRANSFER"
-        },
+        kind: transaction_kind(tx),
         created_at: tx.created_at,
         actor: id("user-", tx.actor.0 as u64),
         description: &tx.memo,
         reverses: tx.reverses.map(|n| id("tx-", n)),
         reversed_by: state.ledger.reversed_by(tx.id).map(|n| id("tx-", n)),
-        reference: tx
-            .loan
-            .map(|l| id("loan-", l))
-            .or_else(|| tx.lotto.map(|l| id("lotto-", l)))
-            .or_else(|| tx.quote.map(|q| id("quote-", q))),
+        reference: transaction_reference(tx),
         economic_kind: tx.economic.kind,
         thing: (tx.economic.thing != 0).then(|| id("thing-", tx.economic.thing)),
         thing_name: state
@@ -238,7 +302,7 @@ fn transaction<'a>(state: &'a State, tx: &'a Transaction) -> TransactionView<'a>
             Posting {
                 account: currency_account(tx.from, tx.usd),
                 name: name(tx.from),
-                amount: -tx.amount,
+                amount: money_debit(tx.amount),
             },
             Posting {
                 account: currency_account(tx.to, tx.usd),
@@ -351,6 +415,7 @@ pub(crate) fn status(
         household: &'a str,
         currency: &'a str,
         users: usize,
+        member_capacity: usize,
         transactions: u64,
         retained_transactions: usize,
         transaction_capacity: usize,
@@ -380,16 +445,26 @@ pub(crate) fn status(
             },
             currency: &state.currency,
             users: state.members.len(),
+            member_capacity: crate::domain::MEMBERS,
             transactions: state.transactions,
             retained_transactions: state.history.len(),
             transaction_capacity: HISTORY,
             oldest_transaction: state.history.front().map(|t| t.id).unwrap_or(0),
-            active_listings: state
-                .listings
-                .iter()
-                .filter(|l| l.status == ListingStatus::Active)
-                .count(),
-            circulation: -state.issuance_balance,
+            active_listings: {
+                #[cfg(feature = "cobol-core")]
+                {
+                    state.active_listing_count()?
+                }
+                #[cfg(not(feature = "cobol-core"))]
+                {
+                    state
+                        .listings
+                        .iter()
+                        .filter(|l| l.status == ListingStatus::Active)
+                        .count()
+                }
+            },
+            circulation: circulation(state),
             journal_used: (records * FRAME_SIZE) as u64,
             journal_capacity: if checkpoint_supported {
                 crate::board::CHECKPOINT_AFTER * FRAME_SIZE
@@ -474,6 +549,18 @@ pub(crate) fn route<J: Journal>(
         })
         .min(100);
     if path == "/api/v1/admin/config" {
+        #[cfg(feature = "cobol-core")]
+        crate::cobol::policy(
+            49,
+            &[
+                3,
+                (s.state.member(actor)?.role == Role::Nana).into(),
+                0,
+                0,
+                0,
+            ],
+        )?;
+        #[cfg(not(feature = "cobol-core"))]
         if s.state.member(actor)?.role != Role::Nana {
             return Err(Error::Forbidden);
         }
@@ -541,6 +628,7 @@ pub(crate) fn route<J: Journal>(
                 .split('&')
                 .find_map(|p| p.strip_prefix("status="))
                 .filter(|s| !s.is_empty());
+            #[cfg(not(feature = "cobol-core"))]
             if wanted.is_some_and(|s| !["ACTIVE", "SOLD", "CANCELLED"].contains(&s)) {
                 return Err(Error::InvalidInput);
             }
@@ -569,6 +657,18 @@ pub(crate) fn route<J: Journal>(
             .and_then(|p| p.strip_suffix("/transactions"))
         {
             let (member, usd) = parse_account(account_id)?;
+            #[cfg(feature = "cobol-core")]
+            crate::cobol::policy(
+                62,
+                &[
+                    6,
+                    is_admin.into(),
+                    actor.0.into(),
+                    member.0.into(),
+                    s.state.member(actor)?.disabled.into(),
+                ],
+            )?;
+            #[cfg(not(feature = "cobol-core"))]
             if !is_admin && actor != member && s.state.member(actor)?.disabled {
                 return Err(Error::Forbidden);
             }
@@ -587,8 +687,26 @@ pub(crate) fn route<J: Journal>(
                             .history
                             .iter()
                             .rev()
-                            .filter(|t| t.usd == usd && (t.from == member || t.to == member))
-                            .filter(|t| t.amount != 0 || t.from == actor || t.to == actor)
+                            .filter(|t| {
+                                #[cfg(feature = "cobol-core")]
+                                {
+                                    crate::cobol::market_view(&[
+                                        10,
+                                        t.usd.into(),
+                                        usd.into(),
+                                        t.from.0.into(),
+                                        t.to.0.into(),
+                                        member.0.into(),
+                                    ])
+                                    .expect("valid account row ABI")[16]
+                                        != 0
+                                }
+                                #[cfg(not(feature = "cobol-core"))]
+                                {
+                                    t.usd == usd && (t.from == member || t.to == member)
+                                }
+                            })
+                            .filter(|t| private_transaction_visible(t, actor))
                             .take(limit)
                             .map(|t| transaction(&s.state, t)),
                     ),
@@ -601,7 +719,7 @@ pub(crate) fn route<J: Journal>(
             s.state
                 .history
                 .iter()
-                .find(|t| t.id == tx_id && (t.amount != 0 || t.from == actor || t.to == actor))
+                .find(|t| t.id == tx_id && private_transaction_visible(t, actor))
                 .ok_or(Error::NotFound)?;
             return transaction_response(&s.state, tx_id, output);
         }
@@ -615,6 +733,18 @@ pub(crate) fn route<J: Journal>(
         }
         if let Some(value) = path.strip_prefix("/api/v1/accounts/") {
             let (member, usd) = parse_account(value)?;
+            #[cfg(feature = "cobol-core")]
+            crate::cobol::policy(
+                62,
+                &[
+                    6,
+                    is_admin.into(),
+                    actor.0.into(),
+                    member.0.into(),
+                    s.state.member(actor)?.disabled.into(),
+                ],
+            )?;
+            #[cfg(not(feature = "cobol-core"))]
             if !is_admin && actor != member && s.state.member(actor)?.disabled {
                 return Err(Error::Forbidden);
             }
@@ -626,22 +756,62 @@ pub(crate) fn route<J: Journal>(
                 status: &'static str,
                 balance: i64,
             }
+            #[cfg(feature = "cobol-core")]
+            let plan = s.state.account_view_plan(member, usd)?;
+            #[cfg(feature = "cobol-core")]
+            let m = s.state.member(member).ok();
+            #[cfg(not(feature = "cobol-core"))]
             let m = if member == MemberId(0) {
                 None
             } else {
                 Some(s.state.member(member)?)
             };
+            #[cfg(feature = "cobol-core")]
+            let disabled = plan[18] != 0;
+            #[cfg(not(feature = "cobol-core"))]
+            let disabled = m.is_some_and(|m| m.disabled);
             return serialize(
                 &Account {
                     id: currency_account(member, usd),
-                    user_id: m.map(|m| id("user-", m.id.0 as u64)).unwrap_or_default(),
-                    name: m.map(|m| m.name.as_str()).unwrap_or("Issuance"),
-                    status: if m.is_some_and(|m| m.disabled) {
-                        "DISABLED"
-                    } else {
-                        "ACTIVE"
+                    user_id: {
+                        #[cfg(feature = "cobol-core")]
+                        {
+                            if plan[17] != 0 {
+                                Id::new()
+                            } else {
+                                id("user-", m.expect("selected member").id.0 as u64)
+                            }
+                        }
+                        #[cfg(not(feature = "cobol-core"))]
+                        {
+                            m.map(|m| id("user-", m.id.0 as u64)).unwrap_or_default()
+                        }
                     },
-                    balance: account_balance(&s.state, member, usd)?,
+                    name: {
+                        #[cfg(feature = "cobol-core")]
+                        {
+                            if plan[17] != 0 {
+                                "Issuance"
+                            } else {
+                                m.expect("selected member").name.as_str()
+                            }
+                        }
+                        #[cfg(not(feature = "cobol-core"))]
+                        {
+                            m.map(|m| m.name.as_str()).unwrap_or("Issuance")
+                        }
+                    },
+                    status: if disabled { "DISABLED" } else { "ACTIVE" },
+                    balance: {
+                        #[cfg(feature = "cobol-core")]
+                        {
+                            plan[16]
+                        }
+                        #[cfg(not(feature = "cobol-core"))]
+                        {
+                            account_balance(&s.state, member, usd)?
+                        }
+                    },
                 },
                 output,
             );
@@ -701,6 +871,18 @@ pub(crate) fn route<J: Journal>(
                 _ => Err(Error::InvalidInput),
             })
             .transpose()?;
+        #[cfg(feature = "cobol-core")]
+        crate::cobol::policy(
+            49,
+            &[
+                3,
+                (s.state.member(actor)?.role == Role::Nana).into(),
+                (member == actor).into(),
+                req.role.is_some().into(),
+                disabled.is_some().into(),
+            ],
+        )?;
+        #[cfg(not(feature = "cobol-core"))]
         if s.state.member(actor)?.role != Role::Nana
             && (member != actor || req.role.is_some() || disabled.is_some())
         {
@@ -979,16 +1161,26 @@ pub(crate) fn listings_query(
     struct Response<T> {
         listings: T,
     }
+    #[cfg(feature = "cobol-core")]
+    let sorted: heapless::Vec<&Listing, LISTINGS> = state
+        .listing_view_indices(wanted)?
+        .iter()
+        .map(|&index| &state.listings[index])
+        .collect();
+    #[cfg(not(feature = "cobol-core"))]
     let mut sorted: heapless::Vec<&Listing, LISTINGS> = state.listings.iter().collect();
+    #[cfg(not(feature = "cobol-core"))]
     sorted.sort_unstable_by_key(|l| (core::cmp::Reverse(l.created_at), l.id));
+    #[cfg(feature = "cobol-core")]
+    let rows = sorted.iter().map(|l| listing(state, l));
+    #[cfg(not(feature = "cobol-core"))]
+    let rows = sorted
+        .iter()
+        .map(|l| listing(state, l))
+        .filter(|l| wanted.is_none_or(|w| l.status == w));
     serialize(
         &Response {
-            listings: Rows(
-                sorted
-                    .iter()
-                    .map(|l| listing(state, l))
-                    .filter(|l| wanted.is_none_or(|w| l.status == w)),
-            ),
+            listings: Rows(rows),
         },
         output,
     )
@@ -1013,11 +1205,11 @@ pub(crate) fn public_ledger(
                     .history
                     .iter()
                     .rev()
-                    .filter(|t| t.amount != 0)
+                    .filter(|t| public_money(t))
                     .take(limit)
                     .map(|t| transaction(state, t)),
             ),
-            circulation: -state.issuance_balance,
+            circulation: circulation(state),
         },
         output,
     )
@@ -1032,7 +1224,7 @@ pub(crate) fn public_transaction(
     if !state
         .history
         .iter()
-        .any(|t| t.id == sequence && t.amount != 0)
+        .any(|t| t.id == sequence && public_money(t))
     {
         return Err(Error::NotFound);
     }
@@ -1077,16 +1269,42 @@ fn parse_account(value: &str) -> Result<(MemberId, bool), Error> {
         .unwrap_or((value, false));
     Ok((member_id(value, "account-")?, usd))
 }
+fn private_transaction_visible(tx: &Transaction, actor: MemberId) -> bool {
+    #[cfg(feature = "cobol-core")]
+    {
+        crate::cobol::market_view(&[
+            9,
+            tx.amount,
+            actor.0.into(),
+            tx.from.0.into(),
+            tx.to.0.into(),
+        ])
+        .expect("valid transaction visibility ABI")[16]
+            != 0
+    }
+    #[cfg(not(feature = "cobol-core"))]
+    {
+        tx.amount != 0 || tx.from == actor || tx.to == actor
+    }
+}
+
 fn account_balance(state: &State, member: MemberId, usd: bool) -> Result<i64, Error> {
-    if member == MemberId(0) {
-        Ok(if usd {
-            state.usd_issuance_balance
+    #[cfg(feature = "cobol-core")]
+    {
+        Ok(state.account_view_plan(member, usd)?[16])
+    }
+    #[cfg(not(feature = "cobol-core"))]
+    {
+        if member == MemberId(0) {
+            Ok(if usd {
+                state.usd_issuance_balance
+            } else {
+                state.issuance_balance
+            })
         } else {
-            state.issuance_balance
-        })
-    } else {
-        let m = state.member(member)?;
-        Ok(if usd { m.usd_cents } else { m.balance })
+            let m = state.member(member)?;
+            Ok(if usd { m.usd_cents } else { m.balance })
+        }
     }
 }
 

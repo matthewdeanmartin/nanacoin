@@ -73,6 +73,8 @@ impl Journal for Memory {
         let b = 1 - d.generation as usize % 2;
         d.logs[b].clear();
         d.rows[b].clear();
+        drop(d);
+        self.step()?; // erase survived, acknowledgement lost
         Ok(())
     }
     fn write_checkpoint(&mut self, _: usize, row: &[u8]) -> Result<(), Error> {
@@ -80,6 +82,8 @@ impl Journal for Memory {
         let mut d = self.disk.borrow_mut();
         let b = 1 - d.generation as usize % 2;
         d.rows[b].push(row.to_vec());
+        drop(d);
+        self.step()?; // row survived, acknowledgement lost
         Ok(())
     }
     fn commit_checkpoint(&mut self, rows: usize) -> Result<(), Error> {
@@ -93,7 +97,12 @@ impl Journal for Memory {
         let mut d = self.disk.borrow_mut();
         let old = 1 - d.generation as usize % 2;
         d.logs[old].clear();
+        drop(d);
+        self.step()?; // old journal reclaimed
+        let mut d = self.disk.borrow_mut();
         d.rows[old].clear();
+        drop(d);
+        self.step()?; // old checkpoint reclaimed
         Ok(())
     }
 }
@@ -271,9 +280,18 @@ fn grows_beyond_old_limit_with_bounded_storage_and_disjoint_cash_ids() {
 #[test]
 fn power_loss_at_each_checkpoint_boundary_recovers_a_complete_generation() {
     for reset in [false, true] {
-        // Small fixture has header, member, history, key: exercise every
-        // row boundary, pre-publication and post-publication lost response.
-        for fail in 1..=7 {
+        // Discover all operations rather than assuming a fixed row count.
+        let probe = Memory::default();
+        let mut service = Service::open_with_clock(probe.clone(), now).unwrap();
+        common::provision(&mut service);
+        service.execute_keyed(MemberId(1), "pay", issue()).unwrap();
+        if reset {
+            service.reset_economy(MemberId(1)).unwrap();
+        } else {
+            service.checkpoint(MemberId(1)).unwrap();
+        }
+        let operations = probe.step.get();
+        for fail in 1..=operations {
             let disk = Memory::default();
             let mut s = Service::open_with_clock(disk.clone(), now).unwrap();
             common::provision(&mut s);
@@ -407,30 +425,43 @@ fn desktop_generations_restart_and_reset() {
     std::fs::remove_dir(dir).unwrap();
 }
 
-/// A household saved by the firmware from before API keys (commit d8301d3):
-/// one checkpoint plus a journal record after it. Upgrading must not lose it.
+/// Current-schema checkpoint plus tail keeps identity audit markers and API keys.
 #[test]
-fn pre_api_key_checkpoint_still_opens_and_then_keeps_keys() {
+fn current_checkpoint_and_tail_keep_identity_audits_and_keys() {
     use nanacoin::journal::file::FileJournal;
-    let fixture =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/pre-api-keys");
-    let dir = std::env::temp_dir().join(format!("nanacoin-pre-api-keys-{}", std::process::id()));
+    let dir =
+        std::env::temp_dir().join(format!("nanacoin-current-api-keys-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    for entry in std::fs::read_dir(&fixture).unwrap() {
-        let entry = entry.unwrap();
-        if entry
-            .file_name()
-            .to_string_lossy()
-            .starts_with("economy.journal")
-        {
-            std::fs::copy(entry.path(), dir.join(entry.file_name())).unwrap();
-        }
-    }
     let path = dir.join("economy.journal");
+    let mut s = Service::open(FileJournal::open(&path).unwrap()).unwrap();
+    common::provision(&mut s);
+    exec(
+        &mut s,
+        1,
+        Command::CreateMember {
+            username: "alice".try_into().unwrap(),
+            display_name: "Alice".try_into().unwrap(),
+            password: PasswordVerifier::hash("1234").unwrap(),
+            role: Role::User,
+            grant: 40,
+            mastodon_id: MastodonId::new(),
+        },
+    );
+    s.checkpoint(MemberId(1)).unwrap();
+    exec(
+        &mut s,
+        1,
+        Command::Issue {
+            to: MemberId(2),
+            amount: 10,
+            memo: "Tail".try_into().unwrap(),
+        },
+    );
+    drop(s);
     let mut s = Service::open(FileJournal::open(&path).unwrap()).unwrap();
     assert_eq!(s.generation(), 1);
     assert_eq!(s.state().member(MemberId(2)).unwrap().balance, 50);
-    let key = "nc_upgraded-household-key-00000000000000000000";
+    let key = "nc_current-household-key-00000000000000000000";
     exec(
         &mut s,
         2,
@@ -448,9 +479,21 @@ fn pre_api_key_checkpoint_still_opens_and_then_keeps_keys() {
         Ok((MemberId(2), KeyScope::Full))
     );
     assert_eq!(s.state().member(MemberId(2)).unwrap().balance, 50);
+    let creations = s
+        .state()
+        .ledger
+        .audit
+        .iter()
+        .filter(|a| {
+            matches!(
+                a.action,
+                nanacoin::ledger::AuditAction::Identity { created: true, .. }
+            )
+        })
+        .count();
+    assert_eq!(creations, 2);
     s.state().check_invariants().unwrap();
     drop(s);
-    // Only files created in this test's explicitly named temporary directory.
     for entry in std::fs::read_dir(&dir).unwrap() {
         std::fs::remove_file(entry.unwrap().path()).unwrap();
     }

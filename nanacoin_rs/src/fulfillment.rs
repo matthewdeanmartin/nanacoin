@@ -46,10 +46,12 @@ pub struct Fulfillment {
     pub updates: heapless::Vec<Update, 4>,
 }
 impl State {
+    #[cfg(not(feature = "cobol-core"))]
     pub(crate) fn creates_fulfillment(&self, c: &Command) -> bool {
         matches!(c, Command::Buy { .. } | Command::AcceptOffer { .. })
             || matches!(c, Command::ClassifiedTransfer { economic, amount, .. } if *amount > 0 && matches!(economic.kind, EconomicKind::Labor | EconomicKind::Good))
     }
+    #[cfg(not(feature = "cobol-core"))]
     pub(crate) fn fulfillment_room(&self) -> bool {
         self.fulfillments.len() < CAPACITY
             || self.fulfillments.iter().any(|f| {
@@ -69,33 +71,40 @@ impl State {
             .iter()
             .find(|f| f.transaction == transaction)
             .ok_or(Error::NotFound)?;
-        if reason.chars().any(char::is_control) {
-            return Err(Error::InvalidInput);
+        #[cfg(feature = "cobol-core")]
+        {
+            crate::cobol::fulfillment(f, actor, action, reason).map(|_| ())
         }
-        let allowed = match action {
-            Action::Complete => actor == f.provider || actor == f.recipient,
-            _ => actor == f.recipient,
-        };
-        if !allowed {
-            return Err(Error::Forbidden);
+        #[cfg(not(feature = "cobol-core"))]
+        {
+            if reason.chars().any(char::is_control) {
+                return Err(Error::InvalidInput);
+            }
+            let allowed = match action {
+                Action::Complete => actor == f.provider || actor == f.recipient,
+                _ => actor == f.recipient,
+            };
+            if !allowed {
+                return Err(Error::Forbidden);
+            }
+            let valid = match action {
+                Action::Complete => f.status == Status::Todo,
+                Action::Dispute => matches!(f.status, Status::Todo | Status::Done),
+                Action::WithdrawDispute => f.status == Status::Disputed,
+            };
+            if !valid {
+                return Err(Error::Conflict);
+            }
+            if action == Action::Dispute && reason.trim().is_empty() {
+                return Err(Error::InvalidInput);
+            }
+            Ok(())
         }
-        let valid = match action {
-            Action::Complete => f.status == Status::Todo,
-            Action::Dispute => matches!(f.status, Status::Todo | Status::Done),
-            Action::WithdrawDispute => f.status == Status::Disputed,
-        };
-        if !valid {
-            return Err(Error::Conflict);
-        }
-        if action == Action::Dispute && reason.trim().is_empty() {
-            return Err(Error::InvalidInput);
-        }
-        Ok(())
     }
     pub(crate) fn apply_fulfillment(
         &mut self,
         transaction: u64,
-        action: Action,
+        _action: Action,
         reason: &Memo,
         event: &Event,
     ) {
@@ -104,29 +113,56 @@ impl State {
             .iter_mut()
             .find(|f| f.transaction == transaction)
             .unwrap();
-        f.status = match action {
-            Action::Dispute => Status::Disputed,
-            _ => Status::Done,
-        };
+        #[cfg(feature = "cobol-core")]
+        {
+            f.status = self
+                .prepared
+                .fulfillment
+                .expect("prepared fulfillment transition");
+        }
+        #[cfg(not(feature = "cobol-core"))]
+        {
+            f.status = match _action {
+                Action::Dispute => Status::Disputed,
+                _ => Status::Done,
+            };
+        }
         f.update(event.sequence, event.timestamp, event.actor, reason.clone());
     }
     pub(crate) fn track_fulfillment(&mut self, tx: &Transaction) {
-        if let Some(original) = tx.reverses {
-            if self.ledger.reversed_by(original).is_none() {
-                return;
-            }
-            if let Some(f) = self
-                .fulfillments
-                .iter_mut()
-                .find(|f| f.transaction == original)
-            {
-                f.status = Status::Reversed;
-
+        #[cfg(feature = "cobol-core")]
+        let (kind, status) = {
+            if let Some((index, status)) = self.prepared.reversed_fulfillment.take() {
+                let f = &mut self.fulfillments[index];
+                f.status = status;
                 f.update(tx.id, tx.created_at, tx.actor, Memo::new());
             }
-            return;
-        }
-        if tx.usd
+            let Some((kind, status, recycle)) = self.prepared.new_fulfillment.take() else {
+                return;
+            };
+            if let Some(index) = recycle {
+                self.fulfillments.remove(index);
+            }
+            (kind, status)
+        };
+        #[cfg(not(feature = "cobol-core"))]
+        let kind = {
+            if let Some(original) = tx.reverses {
+                if self.ledger.reversed_by(original).is_none() {
+                    return;
+                }
+                if let Some(f) = self
+                    .fulfillments
+                    .iter_mut()
+                    .find(|f| f.transaction == original)
+                {
+                    f.status = Status::Reversed;
+
+                    f.update(tx.id, tx.created_at, tx.actor, Memo::new());
+                }
+                return;
+            }
+            if tx.usd
             || tx.amount == 0
             || tx.loan.is_some()
             || tx.lotto.is_some()
@@ -134,34 +170,42 @@ impl State {
             || tx.meta.art.is_some()
             // New money (a good-deed reward) is granted after the deed, not owed.
             || tx.from == MemberId(0)
-        {
-            return;
-        }
-        if tx.listing.is_none()
-            && !matches!(tx.economic.kind, EconomicKind::Labor | EconomicKind::Good)
-        {
-            return;
-        }
-        let cash = tx
-            .listing
-            .and_then(|id| self.listings.iter().find(|l| l.id == id))
-            .is_some_and(|l| l.details.kind == "currency");
-        let work = tx.economic.kind == EconomicKind::Labor
-            || tx
+            {
+                return;
+            }
+            if tx.listing.is_none()
+                && !matches!(tx.economic.kind, EconomicKind::Labor | EconomicKind::Good)
+            {
+                return;
+            }
+            let cash = tx
                 .listing
                 .and_then(|id| self.listings.iter().find(|l| l.id == id))
-                .is_some_and(|l| l.details.kind == "service");
-        if self.fulfillments.len() == CAPACITY {
-            let index = self
-                .fulfillments
-                .iter()
-                .position(|f| {
-                    matches!(f.status, Status::Done | Status::Reversed)
-                        && !self.history.iter().any(|t| t.id == f.transaction)
-                })
-                .unwrap();
-            self.fulfillments.remove(index);
-        }
+                .is_some_and(|l| l.details.kind == "currency");
+            let work = tx.economic.kind == EconomicKind::Labor
+                || tx
+                    .listing
+                    .and_then(|id| self.listings.iter().find(|l| l.id == id))
+                    .is_some_and(|l| l.details.kind == "service");
+            if self.fulfillments.len() == CAPACITY {
+                let index = self
+                    .fulfillments
+                    .iter()
+                    .position(|f| {
+                        matches!(f.status, Status::Done | Status::Reversed)
+                            && !self.history.iter().any(|t| t.id == f.transaction)
+                    })
+                    .unwrap();
+                self.fulfillments.remove(index);
+            }
+            if cash {
+                Kind::Cash
+            } else if work {
+                Kind::Work
+            } else {
+                Kind::Goods
+            }
+        };
         let mut f = Fulfillment {
             transaction: tx.id,
             payment: tx.clone(),
@@ -172,50 +216,58 @@ impl State {
                 .and_then(|id| self.listings.iter().find(|l| l.id == id))
                 .map(|l| TransactionMemo::try_from(l.title.as_str()).unwrap())
                 .unwrap_or_else(|| tx.memo.clone()),
-            kind: if cash {
-                Kind::Cash
-            } else if work {
-                Kind::Work
-            } else {
-                Kind::Goods
+            kind,
+            status: {
+                #[cfg(feature = "cobol-core")]
+                {
+                    status
+                }
+                #[cfg(not(feature = "cobol-core"))]
+                {
+                    Status::Todo
+                }
             },
-            status: Status::Todo,
             updates: heapless::Vec::new(),
         };
         f.update(tx.id, tx.created_at, tx.actor, Memo::new());
         self.fulfillments.push(f);
     }
     pub(crate) fn check_fulfillments(&self) -> Result<(), Error> {
-        if self.fulfillments.len() > CAPACITY {
-            return Err(Error::CorruptJournal);
-        }
-        for (i, f) in self.fulfillments.iter().enumerate() {
-            if f.payment.id != f.transaction
-                || f.payment.to != f.provider
-                || f.payment.from != f.recipient
-                || f.payment.amount <= 0
-                || f.payment.amount > MAX_AMOUNT
-                || f.payment.usd
-                || f.payment.reverses.is_some()
-                || self.ledger.reversed_by(f.transaction).is_some()
-                    != (f.status == Status::Reversed)
-                || f.transaction == 0
-                || f.transaction > self.sequence
-                || f.provider == f.recipient
-                || self.member(f.provider).is_err()
-                || self.member(f.recipient).is_err()
-                || self.fulfillments[..i]
-                    .iter()
-                    .any(|other| other.transaction == f.transaction)
-                || f.updates.last().map(|u| u.status) != Some(f.status)
-                || f.updates
-                    .iter()
-                    .any(|u| u.sequence > self.sequence || self.member(u.actor).is_err())
-            {
+        #[cfg(feature = "cobol-core")]
+        return self.bank_fulfillment_invariants();
+        #[cfg(not(feature = "cobol-core"))]
+        {
+            if self.fulfillments.len() > CAPACITY {
                 return Err(Error::CorruptJournal);
             }
+            for (i, f) in self.fulfillments.iter().enumerate() {
+                if f.payment.id != f.transaction
+                    || f.payment.to != f.provider
+                    || f.payment.from != f.recipient
+                    || f.payment.amount <= 0
+                    || f.payment.amount > MAX_AMOUNT
+                    || f.payment.usd
+                    || f.payment.reverses.is_some()
+                    || self.ledger.reversed_by(f.transaction).is_some()
+                        != (f.status == Status::Reversed)
+                    || f.transaction == 0
+                    || f.transaction > self.sequence
+                    || f.provider == f.recipient
+                    || self.member(f.provider).is_err()
+                    || self.member(f.recipient).is_err()
+                    || self.fulfillments[..i]
+                        .iter()
+                        .any(|other| other.transaction == f.transaction)
+                    || f.updates.last().map(|u| u.status) != Some(f.status)
+                    || f.updates
+                        .iter()
+                        .any(|u| u.sequence > self.sequence || self.member(u.actor).is_err())
+                {
+                    return Err(Error::CorruptJournal);
+                }
+            }
+            Ok(())
         }
-        Ok(())
     }
 }
 impl Fulfillment {

@@ -71,7 +71,24 @@ pub(super) fn route<J: Journal>(
                         s.state
                             .fulfillments
                             .iter()
-                            .filter(|f| nana || f.provider == actor || f.recipient == actor)
+                            .filter(|f| {
+                                #[cfg(feature = "cobol-core")]
+                                {
+                                    crate::cobol::market_view(&[
+                                        8,
+                                        nana.into(),
+                                        actor.0.into(),
+                                        f.provider.0.into(),
+                                        f.recipient.0.into(),
+                                    ])
+                                    .expect("valid fulfillment view ABI")[16]
+                                        != 0
+                                }
+                                #[cfg(not(feature = "cobol-core"))]
+                                {
+                                    nana || f.provider == actor || f.recipient == actor
+                                }
+                            })
                             .map(|f| view(&s.state, f)),
                     ),
                 },

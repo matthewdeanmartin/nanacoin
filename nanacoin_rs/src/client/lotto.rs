@@ -29,15 +29,7 @@ fn view<'a>(s: &'a State, l: &'a Lotto, actor: MemberId, now: u64) -> View<'a> {
             .and_then(|id| s.member(id).ok())
             .map(|m| m.name.as_str()),
         due_at: l.due_at(),
-        status: if l.step == 19 {
-            "SETTLED"
-        } else if l.step > 0 {
-            "PAYING"
-        } else if now >= l.terms.closes_at {
-            "WAITING"
-        } else {
-            "OPEN"
-        },
+        status: l.status(now),
     }
 }
 #[allow(clippy::too_many_arguments)]
@@ -68,15 +60,18 @@ pub(super) fn route<J: Journal>(
                 decimals: u8,
                 money_epoch: u64,
             }
+            #[cfg(feature = "cobol-core")]
+            let ordered =
+                crate::cobol::newest_first::<_, { crate::lotto::LOTTOS }>(&s.state.lottos, |l| {
+                    l.id
+                })?;
+            #[cfg(feature = "cobol-core")]
+            let rows = ordered.into_iter();
+            #[cfg(not(feature = "cobol-core"))]
+            let rows = s.state.lottos.iter().rev();
             return serialize(
                 &Book {
-                    lottos: Rows(
-                        s.state
-                            .lottos
-                            .iter()
-                            .rev()
-                            .map(|l| view(&s.state, l, whose, s.now())),
-                    ),
+                    lottos: Rows(rows.map(|l| view(&s.state, l, whose, s.now()))),
                     decimals: s.state.decimals,
                     money_epoch: s.state.money_epoch,
                 },

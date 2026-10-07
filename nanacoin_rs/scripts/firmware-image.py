@@ -1,6 +1,6 @@
 """Offline conversion and board/size gate. Run with a Python that has esptool 4.x.
 
-Usage: firmware-image.py s3|s2 <elf>
+Usage: firmware-image.py s3|s2|p4 <elf>
 """
 import pathlib
 import subprocess
@@ -19,7 +19,7 @@ def check_image(b, image: pathlib.Path):
 
 def main():
     if len(sys.argv) != 3:
-        raise SystemExit('Usage: firmware-image.py s3|s2 <elf>')
+        raise SystemExit('Usage: firmware-image.py s3|s2|p4 <elf>')
     b = board(sys.argv[1])
     elf = pathlib.Path(sys.argv[2]).resolve()
     image = elf.with_suffix('.bin')

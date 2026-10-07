@@ -93,14 +93,14 @@ fn buy<J: Journal>(s: &mut Service<J>, id: u64, who: u8, count: u32) {
     exec(s, who, Command::BuyTickets { lotto: id, count }).unwrap();
 }
 fn finish<J: Journal>(s: &mut Service<J>, id: u64) {
-    for _ in 0..30 {
-        if s.state().lotto(id).unwrap().step == 19 {
+    for _ in 0..(DONE + 1) {
+        if s.state().lotto(id).unwrap().step == DONE {
             break;
         }
         s.tick().unwrap();
         s.state().check_invariants().unwrap();
     }
-    assert_eq!(s.state().lotto(id).unwrap().step, 19);
+    assert_eq!(s.state().lotto(id).unwrap().step, DONE);
     assert_eq!(s.tick().unwrap(), 0);
 }
 #[test]
@@ -123,7 +123,7 @@ fn three_kinds_hold_principal_and_settle_at_exact_deadline() {
         assert_eq!(s.tick().unwrap(), 1);
         let winner = s.state().lotto(id).unwrap().winner.unwrap().0;
         // Restart at every step: the selected winner and paid legs must survive.
-        for _ in 0..18 {
+        for _ in 0..ISSUED_INTEREST {
             drop(s);
             s = Service::open_with_clock(m.clone(), now).unwrap();
             assert_eq!(s.state().lotto(id).unwrap().winner.unwrap().0, winner);
@@ -299,7 +299,7 @@ fn purchases_are_keyed_and_deadlines_permissions_and_random_ranges_are_enforced(
 }
 #[test]
 fn ambiguous_draw_and_payment_never_redraw_or_double_pay() {
-    for step in [0, 2, 17, 18] {
+    for step in [0, 2, HOUSE_INTEREST, ISSUED_INTEREST] {
         for failure in [1, 2] {
             let (mut s, m) = house();
             let id = create(&mut s, LottoKind::Savings, 1000);
@@ -330,7 +330,7 @@ fn empty_draws_finish_and_late_ticks_do_not_increase_interest() {
     buy(&mut s, id, 2, 1);
     time(START + 100 + MONTH * 12);
     finish(&mut s, id);
-    assert_eq!(s.state().lotto(empty).unwrap().step, 19);
+    assert_eq!(s.state().lotto(empty).unwrap().step, DONE);
     assert_eq!(balance(&s, 2), 10001);
 }
 #[test]

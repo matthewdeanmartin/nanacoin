@@ -24,6 +24,18 @@ struct OfferView<'a> {
 }
 
 fn view<'a>(state: &'a State, offer: &'a Offer, now: u64) -> OfferView<'a> {
+    #[cfg(feature = "cobol-core")]
+    let status = crate::cobol::offer_view_status(state, offer, now);
+    #[cfg(not(feature = "cobol-core"))]
+    let status = if offer.phase == OfferPhase::Open
+        && !state
+            .listing(offer.listing)
+            .is_ok_and(|l| l.status == ListingStatus::Active)
+    {
+        "NOT_SELECTED"
+    } else {
+        offer.status(now)
+    };
     OfferView {
         id: id("offer-", offer.id.0),
         listing: id("listing-", offer.listing),
@@ -42,15 +54,7 @@ fn view<'a>(state: &'a State, offer: &'a Offer, now: u64) -> OfferView<'a> {
             .unwrap_or(""),
         amount: offer.amount,
         message: &offer.message,
-        status: if offer.phase == OfferPhase::Open
-            && !state
-                .listing(offer.listing)
-                .is_ok_and(|listing| listing.status == ListingStatus::Active)
-        {
-            "NOT_SELECTED"
-        } else {
-            offer.status(now)
-        },
+        status,
         created_at: offer.created_at,
         updated_at: offer.updated_at,
         settled_tx: offer.settlement().map(|s| id("tx-", s.transaction)),
@@ -85,29 +89,55 @@ pub(super) fn route<J: Journal>(
                 offers: T,
             }
             let member = s.state.member(actor)?;
+            #[cfg(feature = "cobol-core")]
+            let ordered =
+                crate::cobol::newest_first::<_, { crate::offers::OFFERS }>(&s.state.offers, |o| {
+                    o.id.0
+                })?;
+            #[cfg(feature = "cobol-core")]
+            let rows = ordered.into_iter();
+            #[cfg(not(feature = "cobol-core"))]
+            let rows = s.state.offers.iter().rev();
             // A profile shows anyone's outstanding offers. The amount and listing
             // are household business; the note is only for the two parties.
             if let Some(subject) = query.split('&').find_map(|p| p.strip_prefix("member=")) {
                 let subject = s.state.member(member_id(subject, "user-")?)?.id;
+                #[cfg(feature = "cobol-core")]
+                crate::cobol::policy(62, &[3, member.disabled.into()])?;
+                #[cfg(not(feature = "cobol-core"))]
                 if member.disabled {
                     return Err(Error::Forbidden);
                 }
                 return serialize(
                     &Page {
                         offers: Rows(
-                            s.state
-                                .offers
-                                .iter()
-                                .rev()
-                                .filter(|o| o.offerer == subject)
-                                .map(|o| {
-                                    let mut v = view(&s.state, o, now);
-                                    if !o.visible_to(member) {
-                                        v.message = "";
-                                    }
-                                    v
-                                })
-                                .filter(|v| v.status == "OPEN"),
+                            rows.filter(|o| {
+                                #[cfg(feature = "cobol-core")]
+                                {
+                                    crate::cobol::offer_profile_selected(&s.state, o, subject, now)
+                                }
+                                #[cfg(not(feature = "cobol-core"))]
+                                {
+                                    o.offerer == subject
+                                }
+                            })
+                            .map(|o| {
+                                let mut v = view(&s.state, o, now);
+                                if !o.visible_to(member) {
+                                    v.message = "";
+                                }
+                                v
+                            })
+                            .filter(|_v| {
+                                #[cfg(feature = "cobol-core")]
+                                {
+                                    true
+                                }
+                                #[cfg(not(feature = "cobol-core"))]
+                                {
+                                    _v.status == "OPEN"
+                                }
+                            }),
                         ),
                     },
                     output,
@@ -116,11 +146,7 @@ pub(super) fn route<J: Journal>(
             return serialize(
                 &Page {
                     offers: Rows(
-                        s.state
-                            .offers
-                            .iter()
-                            .rev()
-                            .filter(|o| o.visible_to(member))
+                        rows.filter(|o| o.visible_to(member))
                             .map(|o| view(&s.state, o, now)),
                     ),
                 },

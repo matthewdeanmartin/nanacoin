@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Usage: bash scripts/provision.sh s3|s2 PORT [--dry-run]
+# Usage: bash scripts/provision.sh s3|s2|p4 PORT [--dry-run]
 # FIRST INSTALLATION ONLY: erases the whole chip. Refuses a chip that already
 # holds any NanaCoin bank. Routine upgrades use scripts/deploy.sh.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-usage='Usage: bash scripts/provision.sh s3|s2 PORT [--dry-run]'
-[[ ${1:-} == s3 || ${1:-} == s2 ]] || { echo "$usage" >&2; exit 2; }
+usage='Usage: bash scripts/provision.sh s3|s2|p4 PORT [--dry-run]'
+[[ ${1:-} == s3 || ${1:-} == s2 || ${1:-} == p4 ]] || { echo "$usage" >&2; exit 2; }
 board=$1
 [[ -n "${2:-}" ]] || { echo "$usage" >&2; exit 2; }
 port=$2

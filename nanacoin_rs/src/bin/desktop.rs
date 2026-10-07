@@ -13,9 +13,35 @@ use std::{
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    if std::env::args().any(|arg| arg == "--bank-engine") {
+        println!(
+            "{}",
+            if cfg!(feature = "cobol-core") {
+                "cobol"
+            } else {
+                "rust"
+            }
+        );
+        return Ok(());
+    }
+    #[cfg(feature = "cobol-core")]
+    nanacoin::cobol::initialize().map_err(|e| format!("COBOL banking kernel: {e}"))?;
     let path = std::env::var("NANACOIN_JOURNAL").unwrap_or_else(|_| "nanacoin.journal".into());
-    let mut service =
-        Service::open(FileJournal::open(path)?).map_err(|e| format!("journal: {e:?}"))?;
+    let journal = FileJournal::open(path)?;
+    #[cfg(feature = "conformance-clock")]
+    let clock = fixture_clock::configure()?;
+    #[cfg(not(feature = "conformance-clock"))]
+    let clock = {
+        if std::env::args().any(|arg| arg == "--conformance-clock-file") {
+            return Err("This build does not enable conformance-clock".into());
+        }
+        None
+    };
+    let mut service = match clock {
+        Some(clock) => Service::open_with_clock(journal, clock),
+        None => Service::open(journal),
+    }
+    .map_err(|e| format!("journal: {e:?}"))?;
     if std::env::args().any(|arg| arg == "--migrate-login") {
         migrate_login(&mut service)?;
         return Ok(());
@@ -54,6 +80,47 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
     })?;
     Ok(())
+}
+
+#[cfg(feature = "conformance-clock")]
+mod fixture_clock {
+    type Clock = fn() -> u64;
+    type Failure = Box<dyn std::error::Error + Send + Sync>;
+    use std::sync::{
+        atomic::{AtomicU64, Ordering},
+        OnceLock,
+    };
+    static PATH: OnceLock<std::path::PathBuf> = OnceLock::new();
+    static LAST: AtomicU64 = AtomicU64::new(0);
+
+    pub fn configure() -> Result<Option<Clock>, Failure> {
+        let mut args = std::env::args();
+        if !args.any(|arg| arg == "--conformance-clock-file") {
+            return Ok(None);
+        }
+        let path = args
+            .next()
+            .ok_or("--conformance-clock-file requires a path")?;
+        let initial = std::fs::read_to_string(&path)?.trim().parse::<u64>()?;
+        if !(nanacoin::offers::MIN_CLOCK..=nanacoin::domain::MAX_SEQUENCE).contains(&initial) {
+            return Err("Conformance clock is outside the valid bank clock range".into());
+        }
+        PATH.set(path.into())
+            .map_err(|_| "Clock already configured")?;
+        LAST.store(initial, Ordering::Relaxed);
+        Ok(Some(now))
+    }
+
+    fn now() -> u64 {
+        // Atomic rename by the launcher avoids partial inputs. An invalid read
+        // or backwards input holds the last valid instant; no public clock route.
+        let candidate = std::fs::read_to_string(PATH.get().expect("configured clock"))
+            .ok()
+            .and_then(|s| s.trim().parse::<u64>().ok())
+            .filter(|v| *v <= nanacoin::domain::MAX_SEQUENCE)
+            .unwrap_or(0);
+        LAST.fetch_max(candidate, Ordering::Relaxed).max(candidate)
+    }
 }
 
 fn migrate_login(

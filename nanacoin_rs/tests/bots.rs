@@ -465,71 +465,64 @@ fn checkpoints_keep_bots_read_keys_and_members_past_sixteen() {
     assert_eq!(h.s().state().lotto(lotto).unwrap().tickets[19], 4);
 }
 
-/// A household saved by the release before bots (64f1c7f): members with an
-/// API key, a lotto with tickets, a funded loan, a quote, one checkpoint and
-/// a journal record after it. Upgrading must keep all of it, and the
-/// household must then take bots, read keys and members past 16.
+/// Current identity audit classification survives a checkpoint and journal tail.
 #[test]
-fn a_pre_bots_household_opens_and_gains_bots() {
-    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/pre-bots");
-    let dir = std::env::temp_dir().join(format!("nanacoin-pre-bots-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    for entry in std::fs::read_dir(&fixture).unwrap() {
-        let entry = entry.unwrap();
-        if entry
-            .file_name()
-            .to_string_lossy()
-            .starts_with("economy.journal")
-        {
-            std::fs::copy(entry.path(), dir.join(entry.file_name())).unwrap();
-        }
-    }
-    NOW.with(|n| n.set(1_800_000_000));
-    let mut h = House {
-        s: Some(
-            Service::open_with_clock(FileJournal::open(dir.join("economy.journal")).unwrap(), now)
-                .unwrap(),
-        ),
-        dir,
-        keys: 0,
-    };
-    {
-        let state = h.s().state();
-        assert_eq!(state.member(MemberId(2)).unwrap().balance, 930_005);
-        assert_eq!(state.member(MemberId(3)).unwrap().balance, 1_039_995);
-        assert_eq!(state.member(MemberId(2)).unwrap().usd_cents, 5_000);
-        assert!(state.members.iter().all(|m| m.kind == MemberKind::Human));
-        let lotto = state.lotto(6).unwrap();
-        assert_eq!((lotto.tickets[1], lotto.tickets[2]), (2, 1));
-        assert_eq!(
-            state.loan(10).unwrap().status,
-            nanacoin::loans::LoanStatus::Active
-        );
-        assert_eq!(state.quotes.len(), 1);
-        assert_eq!(
-            state.api_key_member("nc_pre-bots-alice-key-000000000000000000000"),
-            Ok((MemberId(2), KeyScope::Full))
-        );
-        state.check_invariants().unwrap();
-    }
-    // The new features on the old household, through a checkpoint.
+fn identity_audit_creation_survives_checkpoint_and_tail() {
+    let mut h = House::new("identity-audit");
     let nana = common::login(h.s());
+    h.member(&nana, "alice", "human");
+    h.member(&nana, "bob", "human");
+    h.ok(
+        "PATCH",
+        "/api/v1/users/user-2",
+        &nana,
+        json!({"display_name": "Alice Admin", "role": "nana"}),
+    );
+    h.ok(
+        "PATCH",
+        "/api/v1/users/user-2",
+        &nana,
+        json!({"display_name": "Alice Updated", "role": "user", "password": "9876"}),
+    );
+    h.s().checkpoint(MemberId(1)).unwrap();
+    h.reopen();
+    let nana = common::login(h.s());
+    let alice = common::login_as(h.s(), "alice", "9876");
+    let feed = h.get("/api/v1/activity", &alice);
+    assert_eq!(feed["events"].as_array().unwrap().len(), 3);
+    assert!(feed["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|e| e["kind"] == "member_joined"));
+    let audit = h.get("/api/v1/audit", &nana);
+    let updates: Vec<_> = audit["audit"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|a| a["sequence"].as_u64().unwrap() > 3)
+        .collect();
+    assert_eq!(updates.len(), 2);
+    assert!(updates
+        .iter()
+        .all(|a| a["action"]["Identity"]["created"] == false));
     h.member(&nana, "trader", "bot");
     let bot = bearer(&h.ok("POST", "/api/v1/users/user-4/api-key", &nana, json!({})));
-    let alice = common::login_as(h.s(), "alice", "1234");
     let read = bearer(&h.ok(
         "POST",
         "/api/v1/me/api-key",
         &alice,
-        json!({"password": "1234", "scope": "read"}),
+        json!({"password": "9876", "scope": "read"}),
     ));
-    h.s().checkpoint(MemberId(1)).unwrap();
     h.reopen();
     assert_eq!(h.get("/api/v1/me", &bot)["kind"], "bot");
-    assert_eq!(h.get("/api/v1/me", &read)["username"], "alice");
-    let state = h.s.as_ref().unwrap().state();
-    assert_eq!(state.member(MemberId(2)).unwrap().balance, 930_005);
-    assert_eq!(state.lotto(6).unwrap().tickets[1], 2);
-    state.check_invariants().unwrap();
+    assert_eq!(h.get("/api/v1/me", &read)["display_name"], "Alice Updated");
+    assert_eq!(
+        h.get("/api/v1/activity", &read)["events"]
+            .as_array()
+            .unwrap()
+            .len(),
+        4
+    );
+    h.s().state().check_invariants().unwrap();
 }

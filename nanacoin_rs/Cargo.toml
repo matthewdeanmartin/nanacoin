@@ -22,10 +22,17 @@ required-features = ["esp32"]
 [features]
 default = ["desktop"]
 desktop = ["dep:fs2"]
+# Optional banking kernel: Windows DLL or explicitly built ESP-IDF static module.
+cobol-core = ["dep:libloading"]
+# Launcher-only clock input for deterministic HTTP conformance fixtures.
+conformance-clock = ["desktop"]
+# Explicit offline emulator time initialization; normal board builds omit it.
+emulator-clock = ["esp32"]
 esp32 = ["miniframework/esp32", "dep:esp-idf-svc", "dep:embuild", "dep:log", "bundled-web"]
 bundled-web = []
 # Smaller-board bank; see src/board.rs. Never enabled for the S3 firmware.
 board-s2 = []
+board-p4 = []
 # Also serve HTTP/2 (ALPN over HTTPS); HTTP and HTTPS are always built.
 http2 = ["miniframework/http2"]
 
@@ -51,6 +58,9 @@ log = { version = "0.4", optional = true }
 [target.'cfg(target_os = "espidf")'.dependencies]
 esp-idf-svc = { version = "=0.52.1", optional = true, features = ["experimental"] }
 
+[target.'cfg(target_os = "windows")'.dependencies]
+libloading = { version = "0.8.9", optional = true }
+
 [build-dependencies]
 embuild = { version = "0.33", optional = true, features = ["espidf"] }
 
@@ -70,3 +80,7 @@ esp_idf_sdkconfig_defaults = ["sdkconfig.defaults"]
 [[package.metadata.esp-idf-sys.extra_components]]
 remote_component = { name = "espressif/mdns", version = "1.8.2" }
 bindings_header = "src/mdns_bindings.h"
+
+[[package.metadata.esp-idf-sys.extra_components]]
+component_dirs = ["components/p4-network"]
+bindings_header = "src/p4_bindings.h"

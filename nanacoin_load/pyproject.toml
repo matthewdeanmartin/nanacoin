@@ -3,13 +3,14 @@ name = "nanacoin-load"
 version = "0.1.0"
 description = "Locust journeys, workload isolation, and board-health reports for NanaCoin"
 requires-python = ">=3.14,<3.15"
-dependencies = ["locust>=2.46.6,<3", "requests>=2.32", "pyserial>=3.5"]
+dependencies = ["locust>=2.46.6,<3", "requests>=2.32", "pyserial>=3.5", "h2>=4.1"]
 
 [dependency-groups]
 dev = ["pytest>=9", "ruff>=0.15"]
 
 [project.scripts]
 ncload = "nanacoin_load.cli:main"
+ncbench = "nanacoin_load.transport:main"
 
 [build-system]
 requires = ["hatchling"]

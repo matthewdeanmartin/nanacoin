@@ -59,6 +59,39 @@ fn aliases(key: &str) -> &'static [&'static str] {
 }
 
 fn main() {
+    println!("cargo:rerun-if-env-changed=NANACOIN_COBOL_STATIC_DIR");
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("espidf")
+        && std::env::var_os("CARGO_FEATURE_COBOL_CORE").is_some()
+    {
+        let directory =
+            PathBuf::from(std::env::var_os("NANACOIN_COBOL_STATIC_DIR").expect(
+                "Set NANACOIN_COBOL_STATIC_DIR to the matching build_target_bank.py output",
+            ));
+        assert!(
+            directory.is_absolute(),
+            "NANACOIN_COBOL_STATIC_DIR must be absolute"
+        );
+        let contract = directory.join("bank-target.txt");
+        let expected_target = std::env::var("TARGET").unwrap();
+        let actual =
+            std::fs::read_to_string(&contract).expect("Missing static COBOL target contract");
+        assert!(
+            actual.lines().eq([expected_target.as_str(), "7", "64"]),
+            "Static COBOL module target/ABI mismatch"
+        );
+        println!("cargo:rerun-if-changed={}", contract.display());
+        println!("cargo:rustc-link-search=native={}", directory.display());
+        for library in ["ncbank", "cob", "gmp", "ltdl"] {
+            let archive = directory.join(format!("lib{library}.a"));
+            assert!(
+                archive.is_file(),
+                "Missing COBOL target archive: {}",
+                archive.display()
+            );
+            println!("cargo:rerun-if-changed={}", archive.display());
+            println!("cargo:rustc-link-lib=static={library}");
+        }
+    }
     println!("cargo:rerun-if-env-changed=NANACOIN_RECOVER_HTTP");
     let recovery = std::env::var("NANACOIN_RECOVER_HTTP").unwrap_or_else(|_| "0".into());
     assert!(matches!(recovery.as_str(), "0" | "1"));
@@ -68,6 +101,8 @@ fn main() {
         // scripts/bundle-web.mjs writes one directory per board.
         let dir = if std::env::var_os("CARGO_FEATURE_BOARD_S2").is_some() {
             ".embuild/web-s2"
+        } else if std::env::var_os("CARGO_FEATURE_BOARD_P4").is_some() {
+            ".embuild/web-p4"
         } else {
             ".embuild/web"
         };
@@ -134,4 +169,6 @@ fn main() {
     println!("cargo:rerun-if-changed=certs/nanacoin-ca-signed.key");
     println!("cargo:rerun-if-changed=certs/nanacoin-s2-ca-signed.crt");
     println!("cargo:rerun-if-changed=certs/nanacoin-s2-ca-signed.key");
+    println!("cargo:rerun-if-changed=certs/nanacoin-p4-ca-signed.crt");
+    println!("cargo:rerun-if-changed=certs/nanacoin-p4-ca-signed.key");
 }

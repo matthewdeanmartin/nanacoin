@@ -220,11 +220,25 @@ pub fn handle_keyed<J: Journal>(
                 );
             }
             ("POST", "/api/v1/provision") => {
+                #[cfg(feature = "cobol-core")]
+                crate::cobol::policy(49, &[5, service.state.members.len() as i64])?;
+                #[cfg(not(feature = "cobol-core"))]
                 if !service.state.members.is_empty() {
                     return Err(Error::Forbidden);
                 }
                 let req: Provision = parse(body)?;
-                let display_name = if req.display_name.trim().is_empty() {
+                #[cfg(feature = "cobol-core")]
+                let fallback = crate::cobol::member_wire(
+                    req.display_name.trim().is_empty(),
+                    false,
+                    true,
+                    false,
+                    0,
+                )?
+                .0;
+                #[cfg(not(feature = "cobol-core"))]
+                let fallback = req.display_name.trim().is_empty();
+                let display_name = if fallback {
                     req.username.clone()
                 } else {
                     req.display_name
@@ -355,6 +369,22 @@ pub fn handle_keyed<J: Journal>(
         }
         // After a reform an old screen cannot submit amounts in the old unit.
         // Keyed commands also check this after durable retry receipt lookup.
+        #[cfg(feature = "cobol-core")]
+        {
+            let epoch = idempotency_key
+                .split(':')
+                .nth(1)
+                .and_then(|s| s.strip_prefix('m'))
+                .and_then(|s| s.parse::<u64>().ok());
+            crate::cobol::identity_query(&[
+                4,
+                (method != "GET").into(),
+                (service.state.money_epoch > 0).into(),
+                (path == "/api/v1/admin/reform").into(),
+                (epoch == Some(service.state.money_epoch)).into(),
+            ])?;
+        }
+        #[cfg(not(feature = "cobol-core"))]
         if method != "GET" && service.state.money_epoch > 0 && path != "/api/v1/admin/reform" {
             let epoch = idempotency_key
                 .split(':')
@@ -413,17 +443,31 @@ pub fn handle_keyed<J: Journal>(
                 )
             }
             ("POST", "/api/v1/users") => {
+                #[cfg(feature = "cobol-core")]
+                service.state.admin(actor)?;
+                #[cfg(not(feature = "cobol-core"))]
                 if service.state.member(actor)?.role != Role::Nana {
                     return Err(Error::Forbidden);
                 }
                 let req: CreateMember = parse(body)?;
-                let display_name = if req.display_name.trim().is_empty() {
+                #[cfg(feature = "cobol-core")]
+                let (fallback, grant) = crate::cobol::member_wire(
+                    req.display_name.trim().is_empty(),
+                    req.kind == MemberKind::Bot,
+                    req.role == Role::Nana,
+                    req.grant,
+                    service.state.initial_grant,
+                )?;
+                #[cfg(not(feature = "cobol-core"))]
+                let fallback = req.display_name.trim().is_empty();
+                let display_name = if fallback {
                     req.username.clone()
                 } else {
                     req.display_name
                 };
                 let nonce = service.state.member(actor)?.last_request + 1;
                 let password = PasswordVerifier::hash(&req.password)?;
+                #[cfg(not(feature = "cobol-core"))]
                 let grant = if req.grant {
                     service.state.initial_grant
                 } else {
@@ -439,6 +483,7 @@ pub fn handle_keyed<J: Journal>(
                         mastodon_id: req.mastodon_id,
                     },
                     // A bot is never Nana.
+                    #[cfg(not(feature = "cobol-core"))]
                     MemberKind::Bot if req.role == Role::Nana => return Err(Error::InvalidInput),
                     MemberKind::Bot => Command::CreateBot {
                         username: req.username,
@@ -456,6 +501,18 @@ pub fn handle_keyed<J: Journal>(
             }
             ("POST", "/api/v1/users/update") => {
                 let req: UpdateMember = parse(body)?;
+                #[cfg(feature = "cobol-core")]
+                crate::cobol::policy(
+                    49,
+                    &[
+                        3,
+                        (service.state.member(actor)?.role == Role::Nana).into(),
+                        (actor == req.member).into(),
+                        req.role.is_some().into(),
+                        req.disabled.is_some().into(),
+                    ],
+                )?;
+                #[cfg(not(feature = "cobol-core"))]
                 if service.state.member(actor)?.role != Role::Nana
                     && (actor != req.member || req.role.is_some() || req.disabled.is_some())
                 {
@@ -580,7 +637,21 @@ fn api_key<J: Journal>(
         created_at: Option<u64>,
         scope: KeyScope,
     }
+    #[cfg(feature = "cobol-core")]
+    let for_bot = {
+        let target = service.state.members.iter().find(|m| m.id == member);
+        crate::cobol::identity_query(&[
+            0,
+            (actor == member).into(),
+            (service.state.member(actor)?.role == Role::Nana).into(),
+            target.is_some().into(),
+            target.is_some_and(|m| m.kind == MemberKind::Bot).into(),
+        ])?[16]
+            != 0
+    };
+    #[cfg(not(feature = "cobol-core"))]
     let for_bot = actor != member;
+    #[cfg(not(feature = "cobol-core"))]
     if for_bot {
         service.state.admin(actor)?;
         if service.state.member(member)?.kind != MemberKind::Bot {
@@ -613,6 +684,14 @@ fn api_key<J: Journal>(
         "DELETE" => None,
         _ => return Err(Error::NotFound),
     };
+    #[cfg(feature = "cobol-core")]
+    crate::cobol::identity_query(&[
+        1,
+        for_bot.into(),
+        (scope == KeyScope::Read).into(),
+        (method != "GET").into(),
+    ])?;
+    #[cfg(not(feature = "cobol-core"))]
     if for_bot && scope == KeyScope::Read && method != "GET" {
         return Err(Error::Forbidden);
     }

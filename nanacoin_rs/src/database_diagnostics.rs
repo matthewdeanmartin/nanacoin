@@ -136,7 +136,12 @@ pub fn inventory<J: Journal>(service: &Service<J>) -> Inventory {
         crate::lotto::LOTTOS,
         "Tickets and settlement progress embedded; completed pools may be recycled",
     );
-    lottos.active = Some(s.lottos.iter().filter(|l| l.step < 19).count());
+    lottos.active = Some(
+        s.lottos
+            .iter()
+            .filter(|l| l.step < crate::lotto::DONE)
+            .count(),
+    );
     let mut fulfillments = row::<crate::fulfillment::Fulfillment>("Physical fulfillment and recent updates", s.fulfillments.len(), crate::fulfillment::CAPACITY, s.fulfillments.capacity(), "Four updates per obligation; completed/reversed obligations may be recycled after payment leaves recent history");
     fulfillments.active = Some(
         s.fulfillments

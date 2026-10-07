@@ -37,7 +37,11 @@ impl Outbox {
         if u32::from_le_bytes(crc.try_into().unwrap()) != crc32fast::hash(data) {
             return Err(Error::Storage);
         }
-        postcard::from_bytes(data).map_err(|_| Error::Storage)
+        let (outbox, remaining) = postcard::take_from_bytes(data).map_err(|_| Error::Storage)?;
+        if !remaining.is_empty() {
+            return Err(Error::Storage);
+        }
+        Ok(outbox)
     }
     pub fn encode<'a>(&self, bytes: &'a mut [u8; STORAGE_BYTES]) -> Result<&'a [u8], Error> {
         let data = postcard::to_slice(self, &mut bytes[4..]).map_err(|_| Error::Capacity)?;
@@ -98,6 +102,24 @@ impl<J: Journal> Service<J> {
             .iter()
             .find(|tx| tx.id == sequence)
             .ok_or(Error::NotFound)?;
+        #[cfg(feature = "cobol-core")]
+        crate::cobol::policy(
+            62,
+            &[
+                11,
+                tx.amount,
+                tx.usd.into(),
+                tx.memo.trim().is_empty().into(),
+                tx.reverses.is_some().into(),
+                tx.loan.is_some().into(),
+                tx.lotto.is_some().into(),
+                read.into(),
+                actor.0.into(),
+                tx.from.0.into(),
+                tx.to.0.into(),
+            ],
+        )?;
+        #[cfg(not(feature = "cobol-core"))]
         if tx.amount != 0
             || tx.usd
             || tx.memo.trim().is_empty()
@@ -107,6 +129,7 @@ impl<J: Journal> Service<J> {
         {
             return Err(Error::InvalidInput);
         }
+        #[cfg(not(feature = "cobol-core"))]
         if actor != if read { tx.to } else { tx.from } {
             return Err(Error::Forbidden);
         }
@@ -146,7 +169,7 @@ impl<J: Journal> Service<J> {
                 let Ok(lotto) = self.state.lotto(*lotto) else {
                     return;
                 };
-                if lotto.step != 19 {
+                if lotto.step != crate::lotto::DONE {
                     return;
                 }
                 let _ = write!(text, "Lotto completed: {}", lotto.terms.title);
@@ -324,6 +347,11 @@ pub struct Worker {
 }
 impl Worker {
     pub fn spawn() -> std::io::Result<Self> {
+        Self::spawn_with_resolver(resolve)
+    }
+    pub fn spawn_with_resolver(
+        resolver: impl Fn(&str, u16) -> std::io::Result<SocketAddr> + Send + 'static,
+    ) -> std::io::Result<Self> {
         let url = std::env::var("NANACOIN_MINICLOUD_URL").unwrap_or_else(|_| {
             option_env!("NANACOIN_MINICLOUD_URL")
                 .unwrap_or("http://minicloud.local")
@@ -336,7 +364,7 @@ impl Worker {
             .stack_size(16 * 1024)
             .spawn(move || {
                 while let Ok(notification) = receive.recv() {
-                    let ok = deliver(&url, &notification).is_ok();
+                    let ok = deliver_with_resolver(&url, &notification, &resolver).is_ok();
                     if !ok {
                         eprintln!("Kitchen screen unavailable; retrying later");
                     }
@@ -355,20 +383,23 @@ impl Worker {
     }
     /// Called by the journal owner. Only the network worker blocks on sockets.
     pub fn pump<J: Journal>(&mut self, service: &mut Service<J>) {
+        self.pump_at(service, Instant::now());
+    }
+    fn pump_at<J: Journal>(&mut self, service: &mut Service<J>, at: Instant) {
         if let Ok((notification, ok)) = self.results.try_recv() {
             self.busy = false;
-            self.next_attempt = Instant::now() + Duration::from_secs(if ok { 0 } else { 30 });
+            self.next_attempt = at + Duration::from_secs(if ok { 0 } else { 30 });
             if ok {
                 let mut next = (*service.screen_outbox).clone();
                 next.pending.retain(|n| n != &notification);
                 if service.journal.set_screen_outbox(&next).is_ok() {
                     *service.screen_outbox = next;
                 } else {
-                    self.next_attempt = Instant::now() + Duration::from_secs(30);
+                    self.next_attempt = at + Duration::from_secs(30);
                 }
             }
         }
-        if Instant::now() >= self.next_stats
+        if at >= self.next_stats
             && service.now() >= 1_700_000_000
             && service.screen_outbox.pending.len() <= CAPACITY - 2
         {
@@ -389,9 +420,9 @@ impl Worker {
                     read: false,
                 });
             }
-            self.next_stats = Instant::now() + Duration::from_secs(300);
+            self.next_stats = at + Duration::from_secs(300);
         }
-        if self.busy || Instant::now() < self.next_attempt || service.now() < 1_700_000_000 {
+        if self.busy || at < self.next_attempt || service.now() < 1_700_000_000 {
             return;
         }
         let now = service.now();
@@ -416,7 +447,15 @@ impl Worker {
     }
 }
 
+#[cfg(test)]
 fn deliver(url: &str, n: &Notification) -> Result<(), Box<dyn std::error::Error>> {
+    deliver_with_resolver(url, n, resolve)
+}
+fn deliver_with_resolver(
+    url: &str,
+    n: &Notification,
+    resolver: impl Fn(&str, u16) -> std::io::Result<SocketAddr>,
+) -> Result<(), Box<dyn std::error::Error>> {
     let authority = url
         .strip_prefix("http://")
         .ok_or("screen URL must use http")?
@@ -435,7 +474,7 @@ fn deliver(url: &str, n: &Notification) -> Result<(), Box<dyn std::error::Error>
     if port == 0 {
         return Err("invalid screen port".into());
     }
-    let address = resolve(host, port)?;
+    let address = resolver(host, port)?;
     let timeout = Duration::from_secs(2);
     let mut stream = TcpStream::connect_timeout(&address, timeout)?;
     stream.set_read_timeout(Some(timeout))?;
@@ -471,6 +510,10 @@ fn deliver(url: &str, n: &Notification) -> Result<(), Box<dyn std::error::Error>
         serde_json_core::to_slice(&payload, &mut body).map_err(|_| "screen payload too large")?;
     write!(stream, "POST /api/screen/{} HTTP/1.1\r\nHost: {authority}\r\nContent-Type: application/json\r\nContent-Length: {len}\r\nConnection: close\r\n\r\n", if n.read {"read"} else {"notify"})?;
     stream.write_all(&body[..len])?;
+    read_status(&mut stream)
+}
+
+fn read_status(stream: &mut impl Read) -> Result<(), Box<dyn std::error::Error>> {
     let mut response = [0; 256];
     let mut used = 0;
     while used < response.len() {
@@ -483,175 +526,185 @@ fn deliver(url: &str, n: &Notification) -> Result<(), Box<dyn std::error::Error>
             break;
         }
     }
-    let line = std::str::from_utf8(&response[..used])?
-        .split("\r\n")
-        .next()
-        .ok_or("missing status")?;
-    if !matches!(line.split_whitespace().nth(1), Some("200" | "202")) {
+    let end = response[..used]
+        .windows(2)
+        .position(|b| b == b"\r\n")
+        .ok_or("incomplete screen status")?;
+    let line = &response[..end];
+    if line.len() < 13
+        || !matches!(&line[..9], b"HTTP/1.0 " | b"HTTP/1.1 ")
+        || !matches!(&line[9..12], b"200" | b"202")
+        || line[12] != b' '
+        || line[13..]
+            .iter()
+            .any(|b| *b < b' ' && *b != b'\t' || *b == 127)
+    {
         return Err("screen rejected message".into());
     }
     Ok(())
 }
-fn resolve(host: &str, port: u16) -> Result<SocketAddr, Box<dyn std::error::Error>> {
-    #[cfg(target_os = "espidf")]
-    if let Some(hostname) = host.strip_suffix(".local") {
-        let name = std::ffi::CString::new(hostname)?;
-        let mut addr = esp_idf_svc::sys::esp_ip4_addr_t { addr: 0 };
-        // SAFETY: valid NUL-terminated hostname and writable IPv4 result.
-        esp_idf_svc::sys::esp!(unsafe {
-            esp_idf_svc::sys::mdns_query_a(name.as_ptr(), 2000, &mut addr)
-        })?;
-        return Ok((std::net::Ipv4Addr::from(addr.addr.to_le_bytes()), port).into());
-    }
+fn resolve(host: &str, port: u16) -> std::io::Result<SocketAddr> {
     (host, port)
         .to_socket_addrs()?
         .next()
-        .ok_or_else(|| "screen host not found".into())
+        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "screen host not found"))
 }
 
 /// Retained-window household measures. Missing observations remain missing.
 pub fn stats(s: &crate::domain::State, now: u64) -> [String<256>; 2] {
-    use crate::domain::{EconomicKind, Role};
-    let start = now.saturating_sub(365 * 86_400);
-    let usable = |t: &&crate::domain::Transaction| {
-        !t.usd
-            && t.created_at >= start
-            && t.reverses.is_none()
-            && s.ledger.reversed_by(t.id).is_none()
-    };
-    let eligible: std::vec::Vec<_> = s
-        .members
-        .iter()
-        .filter(|m| !m.disabled && m.role != Role::Nana)
-        .collect();
-    let employed = eligible
-        .iter()
-        .filter(|m| {
-            s.history
+    #[cfg(feature = "cobol-core")]
+    {
+        crate::cobol::household_stats(s, now)
+    }
+    #[cfg(not(feature = "cobol-core"))]
+    {
+        use crate::domain::{EconomicKind, Role};
+        let start = now.saturating_sub(365 * 86_400);
+        let usable = |t: &&crate::domain::Transaction| {
+            !t.usd
+                && t.created_at >= start
+                && t.reverses.is_none()
+                && s.ledger.reversed_by(t.id).is_none()
+        };
+        let eligible: std::vec::Vec<_> = s
+            .members
+            .iter()
+            .filter(|m| !m.disabled && m.role != Role::Nana)
+            .collect();
+        let employed = eligible
+            .iter()
+            .filter(|m| {
+                s.history
+                    .iter()
+                    .filter(usable)
+                    .any(|t| t.to == m.id && t.amount > 0 && t.economic.kind == EconomicKind::Labor)
+            })
+            .count();
+        let mut inflation = 0.0;
+        let mut count = 0;
+        for thing in &s.things {
+            let mut sales = s
+                .history
                 .iter()
                 .filter(usable)
-                .any(|t| t.to == m.id && t.amount > 0 && t.economic.kind == EconomicKind::Labor)
-        })
-        .count();
-    let mut inflation = 0.0;
-    let mut count = 0;
-    for thing in &s.things {
-        let mut sales = s
-            .history
-            .iter()
-            .filter(usable)
-            .filter(|t| {
-                t.economic.kind == EconomicKind::Good
-                    && t.economic.thing == thing.id
-                    && t.economic.quantity_milli > 0
-                    && t.amount > 0
-            })
-            .rev();
-        if let (Some(latest), Some(previous)) = (sales.next(), sales.next()) {
-            if let (Ok(latest_amount), Ok(previous_amount)) = (
-                s.current_amount(latest, latest.amount),
-                s.current_amount(previous, previous.amount),
-            ) {
-                if previous_amount > 0 {
-                    let a = latest_amount as f64 / latest.economic.quantity_milli as f64;
-                    let b = previous_amount as f64 / previous.economic.quantity_milli as f64;
-                    inflation += (a / b - 1.0) * 100.0;
-                    count += 1;
+                .filter(|t| {
+                    t.economic.kind == EconomicKind::Good
+                        && t.economic.thing == thing.id
+                        && t.economic.quantity_milli > 0
+                        && t.amount > 0
+                })
+                .rev();
+            if let (Some(latest), Some(previous)) = (sales.next(), sales.next()) {
+                if let (Ok(latest_amount), Ok(previous_amount)) = (
+                    s.current_amount(latest, latest.amount),
+                    s.current_amount(previous, previous.amount),
+                ) {
+                    if previous_amount > 0 {
+                        let a = latest_amount as f64 / latest.economic.quantity_milli as f64;
+                        let b = previous_amount as f64 / previous.economic.quantity_milli as f64;
+                        inflation += (a / b - 1.0) * 100.0;
+                        count += 1;
+                    }
                 }
             }
         }
-    }
-    let mut first = String::new();
-    let _ = write!(
-        first,
-        "Retained year
-Inflation: "
-    );
-    if count > 0 {
-        let _ = write!(first, "{:.1}%", inflation / count as f64);
-    } else {
-        let _ = first.push_str("No data");
-    }
-    if eligible.is_empty() {
-        let _ = first.push_str(
-            "
-Employment: No data",
-        );
-    } else {
+        let mut first = String::new();
         let _ = write!(
             first,
-            "
-Employment: {:.0}% ({employed}/{})",
-            employed as f64 * 100.0 / eligible.len() as f64,
-            eligible.len()
+            "Retained year
+Inflation: "
         );
-    }
-    let mut principal = 0i128;
-    let mut weighted = 0.0;
-    for l in &s.loans {
-        if l.status == crate::loans::LoanStatus::Active {
-            principal += l.principal as i128;
-            weighted += l.principal as f64 * l.terms.rate_bps as f64 / 100.0 * 365.0
-                / l.terms.rate_days as f64;
+        if count > 0 {
+            let _ = write!(first, "{:.1}%", inflation / count as f64);
+        } else {
+            let _ = first.push_str("No data");
         }
-    }
-    let mut second = String::new();
-    let _ = second.push_str("Interest: ");
-    if principal > 0 {
-        let _ = write!(second, "{:.2}%/yr", weighted / principal as f64);
-    } else {
-        let _ = second.push_str("No active loans");
-    }
-    let _ = second.push_str(
-        "
+        if eligible.is_empty() {
+            let _ = first.push_str(
+                "
+Employment: No data",
+            );
+        } else {
+            let _ = write!(
+                first,
+                "
+Employment: {:.0}% ({employed}/{})",
+                employed as f64 * 100.0 / eligible.len() as f64,
+                eligible.len()
+            );
+        }
+        let mut principal = 0i128;
+        let mut weighted = 0.0;
+        for l in &s.loans {
+            if l.status == crate::loans::LoanStatus::Active {
+                principal += l.principal as i128;
+                weighted += l.principal as f64 * l.terms.rate_bps as f64 / 100.0 * 365.0
+                    / l.terms.rate_days as f64;
+            }
+        }
+        let mut second = String::new();
+        let _ = second.push_str("Interest: ");
+        if principal > 0 {
+            let _ = write!(second, "{:.2}%/yr", weighted / principal as f64);
+        } else {
+            let _ = second.push_str("No active loans");
+        }
+        let _ = second.push_str(
+            "
 Exchange: ",
-    );
-    let mut exchange = s
-        .quotes
-        .iter()
-        .filter(|q| {
-            q.status == crate::forex::QuoteStatus::Filled
-                && ![q.coin_tx, q.cash_tx]
-                    .into_iter()
-                    .flatten()
-                    .any(|id| s.ledger.reversed_by(id).is_some())
-        })
-        .max_by_key(|q| q.updated_at)
-        .map(|q| (q.updated_at, q.cents_per_coin as f64));
-    // Completed quote rows are recyclable; paired retained ledger legs also
-    // provide a rate, using the current currency epoch's NC unit.
-    for coin in s.history.iter().rev().filter(|t| {
-        !t.usd
-            && t.quote.is_some()
-            && t.reverses.is_none()
-            && t.amount > 0
-            && s.ledger.reversed_by(t.id).is_none()
-    }) {
-        if exchange.is_some_and(|(at, _)| at > coin.created_at) {
-            break;
-        }
-        if let Some(cash) = s.history.iter().find(|t| {
-            t.usd
-                && t.quote == coin.quote
+        );
+        let mut exchange = s
+            .quotes
+            .iter()
+            .filter(|q| {
+                q.status == crate::forex::QuoteStatus::Filled
+                    && ![q.coin_tx, q.cash_tx]
+                        .into_iter()
+                        .flatten()
+                        .any(|id| s.ledger.reversed_by(id).is_some())
+            })
+            .max_by_key(|q| q.updated_at)
+            .map(|q| (q.updated_at, q.cents_per_coin as f64));
+        // Completed quote rows are recyclable; paired retained ledger legs also
+        // provide a rate, using the current currency epoch's NC unit.
+        for coin in s.history.iter().rev().filter(|t| {
+            !t.usd
+                && t.quote.is_some()
                 && t.reverses.is_none()
                 && t.amount > 0
                 && s.ledger.reversed_by(t.id).is_none()
         }) {
-            if let Ok(amount) = s.current_amount(coin, coin.amount) {
-                if amount > 0 {
-                    exchange = Some((
-                        coin.created_at,
-                        cash.amount as f64 * 10u64.pow(s.decimals as u32) as f64 / amount as f64,
-                    ));
-                    break;
+            if exchange.is_some_and(|(at, _)| at > coin.created_at) {
+                break;
+            }
+            if let Some(cash) = s.history.iter().find(|t| {
+                t.usd
+                    && t.quote == coin.quote
+                    && t.reverses.is_none()
+                    && t.amount > 0
+                    && s.ledger.reversed_by(t.id).is_none()
+            }) {
+                if let Ok(amount) = s.current_amount(coin, coin.amount) {
+                    if amount > 0 {
+                        exchange = Some((
+                            coin.created_at,
+                            cash.amount as f64 * 10u64.pow(s.decimals as u32) as f64
+                                / amount as f64,
+                        ));
+                        break;
+                    }
                 }
             }
         }
+        if let Some((_, cents)) = exchange {
+            let _ = write!(second, "${:.2}/NC", cents / 100.0);
+        } else {
+            let _ = second.push_str("No trades");
+        }
+        [first, second]
     }
-    if let Some((_, cents)) = exchange {
-        let _ = write!(second, "${:.2}/NC", cents / 100.0);
-    } else {
-        let _ = second.push_str("No trades");
-    }
-    [first, second]
 }
+
+#[cfg(test)]
+#[path = "tests/screen.rs"]
+mod hostile_tests;

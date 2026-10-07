@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Usage: bash scripts/deploy.sh s3|s2 PORT [--dry-run]
+# Usage: bash scripts/deploy.sh s3|s2|p4 PORT [--dry-run]
 # Application-only upgrade of an existing bank. The board is required and is
 # checked against the chip, its MAC and its partition table before writing.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-usage='Usage: bash scripts/deploy.sh s3|s2 PORT [--dry-run]'
-[[ ${1:-} == s3 || ${1:-} == s2 ]] || { echo "$usage" >&2; echo 'The board (s3 = nanacoin.local, s2 = nanacoin-s2.local) is required.' >&2; exit 2; }
+usage='Usage: bash scripts/deploy.sh s3|s2|p4 PORT [--dry-run]'
+[[ ${1:-} == s3 || ${1:-} == s2 || ${1:-} == p4 ]] || { echo "$usage" >&2; echo 'The board (s3 = nanacoin.local, s2 = nanacoin-s2.local) is required.' >&2; exit 2; }
 board=$1
 [[ -n "${2:-}" ]] || { echo "$usage" >&2; exit 2; }
 port=$2

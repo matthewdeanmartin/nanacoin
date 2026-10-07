@@ -108,8 +108,7 @@ pub fn start(pins: Pins) {
 fn run_mono(pin: AnyOutputPin<'static>) -> Result<(), EspError> {
     let mut led = PinDriver::output(pin)?;
     let began = super::incidents::now();
-    // SAFETY: read-only reset query, no arguments.
-    let reason = super::reset_reason(unsafe { esp_idf_svc::sys::esp_reset_reason() });
+    let reason = super::reset_reason(esp_idf_svc::hal::reset::ResetReason::get());
     let flashes = board_status::reset_flashes(reason);
     log::info!("Status LED: single colour, GPIO 15; reset {reason} ({flashes} flashes)");
     let mut config = board_status::LightConfig::default();
@@ -198,8 +197,7 @@ fn run(pin: AnyOutputPin<'static>) -> Result<(), EspError> {
         ..Default::default()
     };
     let began = super::incidents::now();
-    // SAFETY: read-only reset query, no arguments.
-    let reason = super::reset_reason(unsafe { esp_idf_svc::sys::esp_reset_reason() });
+    let reason = super::reset_reason(esp_idf_svc::hal::reset::ResetReason::get());
     let flashes = board_status::reset_flashes(reason);
     log::info!(
         "Status LED: WS2812 GRB, GPIO {}, dim output; reset {reason} ({flashes} white flashes)",

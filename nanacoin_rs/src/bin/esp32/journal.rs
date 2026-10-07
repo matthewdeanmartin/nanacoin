@@ -1,8 +1,4 @@
-use esp_idf_svc::{
-    handle::RawHandle,
-    nvs::{EspNvs, EspNvsPartition, NvsCustom},
-    sys,
-};
+use esp_idf_svc::nvs::{EspNvs, EspNvsPartition, NvsCustom};
 use nanacoin::{
     domain::Error,
     journal::{
@@ -236,24 +232,9 @@ impl Journal for NvsJournal {
         }
         let bank = &self.banks[1 - self.bank()];
         let key = key('c', index)?;
-        let mut ckey = heapless::Vec::<u8, 9>::new();
-        ckey.extend_from_slice(key.as_bytes())
-            .map_err(|_| Error::Capacity)?;
-        ckey.push(0).map_err(|_| Error::Capacity)?;
-        // SAFETY: owned handle, bounded NUL-terminated key and live bytes.
-        // Commit the entire checkpoint before publication. NVS can program
-        // flash before commit; this is not a RAM-only transaction.
-        let result = unsafe {
-            sys::nvs_set_blob(
-                bank.handle(),
-                ckey.as_ptr().cast(),
-                bytes.as_ptr().cast(),
-                bytes.len(),
-            )
-        };
-        if result != 0 {
-            return Err(Error::Storage);
-        }
+        // Each row is durable before publication. An interrupted staging bank
+        // is unreachable until the head commits; it is cleared on the next attempt.
+        bank.set_blob(&key, bytes).map_err(|_| Error::Storage)?;
         let mut verify = [0; ROW_BYTES];
         if bank
             .get_blob(&key, &mut verify)
@@ -266,11 +247,7 @@ impl Journal for NvsJournal {
     }
     fn commit_checkpoint(&mut self, rows: usize) -> Result<(), Error> {
         let old = self.bank();
-        let next = 1 - old;
-        // SAFETY: live NVS handle, exclusively mutated under service mutex.
-        if unsafe { sys::nvs_commit(self.banks[next].handle()) } != 0 {
-            return Err(Error::Storage);
-        }
+        // Safe set_blob committed every staged row before publishing the head.
         let generation = self.generation + 1;
         self.metadata
             .set_blob("head", &checkpoint::head(generation, rows))

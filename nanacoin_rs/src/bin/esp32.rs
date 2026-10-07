@@ -11,13 +11,10 @@
 
 #[cfg(not(target_os = "espidf"))]
 compile_error!(
-    "build firmware with scripts/build-esp32.sh s3|s2 (xtensa target, --features esp32)"
+    "build firmware with scripts/build-esp32.sh s3|s2|p4 (ESP-IDF target, --features esp32)"
 );
 
-use esp_idf_svc::{
-    hal::{cpu::Core, peripherals::Peripherals},
-    sys,
-};
+use esp_idf_svc::hal::{cpu::Core, peripherals::Peripherals};
 use miniframework::{
     esp::{self, BoardConfig},
     status::SIGNALS,
@@ -46,7 +43,16 @@ mod nvs_journal;
 use nvs_journal::NvsJournal;
 
 #[path = "esp32/status_led.rs"]
+#[cfg(not(feature = "board-p4"))]
 mod status_led;
+
+#[cfg(feature = "board-p4")]
+mod status_led {
+    pub fn start(_pins: esp_idf_svc::hal::gpio::Pins) {
+        log::info!("This P4 board has no configured status LED");
+    }
+    pub fn configure(_config: &nanacoin::board_status::LightConfig) {}
+}
 
 /// Where NanaCoin's own tasks (light, samplers) run. The S3 keeps them with
 /// Wi-Fi and TLS handshakes on core 0, leaving core 1 to serving; the
@@ -60,26 +66,46 @@ pub(crate) const NETWORK_CORE: Option<Core> = None;
 #[used]
 static BOARD_MARKER: &str = nanacoin::board::MARKER;
 
-#[allow(non_upper_case_globals)] // ESP-IDF generated constant names.
-fn reset_reason(reason: sys::esp_reset_reason_t) -> &'static str {
-    use sys::*;
+#[cfg(not(feature = "board-p4"))]
+fn reset_reason(reason: esp_idf_svc::hal::reset::ResetReason) -> &'static str {
+    use esp_idf_svc::hal::reset::ResetReason::*;
     match reason {
-        esp_reset_reason_t_ESP_RST_POWERON => "power on",
-        esp_reset_reason_t_ESP_RST_EXT => "reset pin",
-        esp_reset_reason_t_ESP_RST_SW => "software restart",
-        esp_reset_reason_t_ESP_RST_PANIC => "crash",
-        esp_reset_reason_t_ESP_RST_INT_WDT
-        | esp_reset_reason_t_ESP_RST_TASK_WDT
-        | esp_reset_reason_t_ESP_RST_WDT => "watchdog",
-        esp_reset_reason_t_ESP_RST_DEEPSLEEP => "deep sleep",
-        esp_reset_reason_t_ESP_RST_BROWNOUT => "brownout (power dipped)",
-        esp_reset_reason_t_ESP_RST_USB => "USB",
+        PowerOn => "power on",
+        ExternalPin => "reset pin",
+        Software => "software restart",
+        Panic => "crash",
+        InterruptWatchdog | TaskWatchdog | Watchdog => "watchdog",
+        DeepSleep => "deep sleep",
+        Brownout => "brownout (power dipped)",
+        USBPeripheral => "USB",
         _ => "other",
     }
 }
 
+fn reset_code(reason: esp_idf_svc::hal::reset::ResetReason) -> i32 {
+    use esp_idf_svc::{hal::reset::ResetReason::*, sys::*};
+    (match reason {
+        Unknown => esp_reset_reason_t_ESP_RST_UNKNOWN,
+        PowerOn => esp_reset_reason_t_ESP_RST_POWERON,
+        ExternalPin => esp_reset_reason_t_ESP_RST_EXT,
+        Software => esp_reset_reason_t_ESP_RST_SW,
+        Panic => esp_reset_reason_t_ESP_RST_PANIC,
+        InterruptWatchdog => esp_reset_reason_t_ESP_RST_INT_WDT,
+        TaskWatchdog => esp_reset_reason_t_ESP_RST_TASK_WDT,
+        Watchdog => esp_reset_reason_t_ESP_RST_WDT,
+        DeepSleep => esp_reset_reason_t_ESP_RST_DEEPSLEEP,
+        Brownout => esp_reset_reason_t_ESP_RST_BROWNOUT,
+        Sdio => esp_reset_reason_t_ESP_RST_SDIO,
+        USBPeripheral => esp_reset_reason_t_ESP_RST_USB,
+        JTAG => esp_reset_reason_t_ESP_RST_JTAG,
+        EfuseError => esp_reset_reason_t_ESP_RST_EFUSE,
+        PowerGlitch => esp_reset_reason_t_ESP_RST_PWR_GLITCH,
+        CPULockup => esp_reset_reason_t_ESP_RST_CPU_LOCKUP,
+    }) as i32
+}
+
 /// Each bank has a leaf for its own hostname, signed by the household CA.
-#[cfg(not(feature = "board-s2"))]
+#[cfg(not(any(feature = "board-s2", feature = "board-p4")))]
 fn board_config() -> BoardConfig {
     let mut config = BoardConfig::s3(
         env!("NANACOIN_WIFI_SSID"),
@@ -90,6 +116,23 @@ fn board_config() -> BoardConfig {
     config.cert_pem = concat!(include_str!("../../certs/nanacoin-ca-signed.crt"), "\0").as_bytes();
     config.key_pem = concat!(include_str!("../../certs/nanacoin-ca-signed.key"), "\0").as_bytes();
     // At most this plus one maximum reply is held for slow readers.
+    config.limits.response_budget = 2 * 1024 * 1024;
+    config.ntp_server = option_env!("NANACOIN_NTP_SERVER");
+    config
+}
+
+#[cfg(feature = "board-p4")]
+fn board_config() -> BoardConfig {
+    let mut config = BoardConfig::p4(
+        env!("NANACOIN_WIFI_SSID"),
+        env!("NANACOIN_WIFI_PASSWORD"),
+        nanacoin::board::HOSTNAME,
+    );
+    config.instance = "NanaCoin P4 household bank";
+    config.cert_pem =
+        concat!(include_str!("../../certs/nanacoin-p4-ca-signed.crt"), "\0").as_bytes();
+    config.key_pem =
+        concat!(include_str!("../../certs/nanacoin-p4-ca-signed.key"), "\0").as_bytes();
     config.limits.response_budget = 2 * 1024 * 1024;
     config.ntp_server = option_env!("NANACOIN_NTP_SERVER");
     config
@@ -137,11 +180,54 @@ fn main() {
 
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     esp::init();
+    // An explicit emulator build can supply time without reaching an external
+    // NTP server. Normal firmware has no clock override or extra HTTP route.
+    #[cfg(feature = "emulator-clock")]
+    {
+        let seconds: i64 = env!("NANACOIN_EMULATOR_UNIX_SECONDS").parse()?;
+        let initial = esp_idf_svc::sys::timeval {
+            tv_sec: seconds.try_into()?,
+            tv_usec: 0,
+        };
+        // SAFETY: initialized timeval, no timezone pointer; IDF synchronizes
+        // the system clock. This runs before service or scheduler creation.
+        if unsafe { esp_idf_svc::sys::settimeofday(&initial, std::ptr::null()) } != 0 {
+            return Err(std::io::Error::last_os_error().into());
+        }
+        log::info!("Emulator conformance clock initialized at {seconds}");
+    }
+    #[cfg(feature = "cobol-core")]
+    nanacoin::cobol::initialize().map_err(|error| format!("COBOL bank startup: {error}"))?;
+    log::info!(
+        "Banking engine: {}",
+        if cfg!(feature = "cobol-core") {
+            "cobol"
+        } else {
+            "rust"
+        }
+    );
     miniframework::events::observe(|event| nanacoin::incidents::LOG.apply(incidents::now(), event));
-    incidents::start()?;
+    incidents::boot()?;
     let peripherals = Peripherals::take()?;
     status_led::start(peripherals.pins);
-    let board = esp::start(board_config(), peripherals.modem)?;
+    let mut config = board_config();
+    // The COBOL call frames and publication plans add to the JSON/framework
+    // frames. Keep the default Rust profile; the optional engine needs a
+    // larger internal serving stack on boards with a separate serving task.
+    if cfg!(feature = "cobol-core") {
+        config.serve_stack = 64 * 1024;
+        if !cfg!(feature = "board-p4") && !cfg!(feature = "board-s2") {
+            // The S3 main task already owns a 64 KiB internal stack. Serving
+            // there avoids requesting another contiguous block after Wi-Fi
+            // and libcob have fragmented the smaller internal heap.
+            config.app_core = None;
+        }
+    }
+    let board = esp::start(config, peripherals.modem)?;
+    let platform = board.platform(peripherals.temp_sensor);
+    let temperature = platform.temperature_reader();
+    let station = platform.station_reader();
+    incidents::start(platform.station_reader())?;
 
     SIGNALS.step(8, "ledger partition");
     let partition = board.partition("ledger")?;
@@ -171,9 +257,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         cfg!(feature = "board-s2"),
         NETWORK_CORE,
         0,
-        move || sampler.run(),
+        move || sampler.run(temperature, station),
     )?;
-    let mut screen = nanacoin::screen::Worker::spawn()?;
+    let mut screen = nanacoin::screen::Worker::spawn_with_resolver(board.resolver())?;
 
     let origins = option_env!("NANACOIN_ORIGINS").unwrap_or(nanacoin::api::DEFAULT_ORIGINS);
     let latest = Arc::clone(&samples);
@@ -198,10 +284,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let site = Site::new(
         server::config(nanacoin::board::FQDN, origins),
         bank,
-        board.platform(),
+        platform,
     );
-    // SAFETY: monotonic timer query has no pointer arguments.
-    let ready_ms = unsafe { sys::esp_timer_get_time() / 1000 } as u32;
+    let ready_ms = incidents::now() as u32;
     samples.boot_ready_ms.store(ready_ms, Ordering::Relaxed);
     incidents::record(Kind::Ready, 0);
     log::info!(

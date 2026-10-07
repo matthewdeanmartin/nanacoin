@@ -95,7 +95,6 @@ struct State {
     event_len: usize,
     sample_len: usize,
     overwritten: u32,
-    wifi: Option<bool>,
     stalled: [bool; 2],
 }
 
@@ -172,7 +171,6 @@ impl Recorder {
                 event_len: 0,
                 sample_len: 0,
                 overwritten: 0,
-                wifi: None,
                 stalled: [false; 2],
             }),
             counts: [const { AtomicU32::new(0) }; KINDS],
@@ -343,8 +341,8 @@ impl Recorder {
         {
             return;
         }
-        let wifi_changed = state.wifi != Some(rssi.is_some());
-        state.wifi = Some(rssi.is_some());
+        // RSSI can be unavailable while the station lock is busy. Connectivity
+        // changes come from framework Wi-Fi events, never missing telemetry.
         let stalled = gaps.map(|gap| gap >= STALL_MS);
         let new_stalls: [bool; 2] = std::array::from_fn(|i| stalled[i] && !state.stalled[i]);
         state.stalled = stalled;
@@ -363,18 +361,6 @@ impl Recorder {
         state.sample_next = (at + 1) % SAMPLES;
         state.sample_len = (state.sample_len + 1).min(SAMPLES);
         drop(state);
-        if wifi_changed {
-            self.record(
-                now,
-                if rssi.is_some() {
-                    Kind::WifiUp
-                } else {
-                    Kind::WifiDown
-                },
-                0,
-                0,
-            );
-        }
         for i in 0..2 {
             if new_stalls[i] {
                 self.record(now, Kind::WorkerStalled, i as i32, gaps[i]);
@@ -516,6 +502,37 @@ mod tests {
         assert_eq!(snapshot.events.len(), 48);
         assert_eq!(snapshot.samples.len(), 32);
         assert!(serde_json::to_vec(&snapshot).unwrap().len() < 32768);
+    }
+
+    #[test]
+    fn missing_rssi_does_not_invent_or_mask_wifi_transitions() {
+        use miniframework::events::Event as E;
+        let log = Recorder::new();
+        for (i, rssi) in [None, Some(-60), None, Some(-70), None]
+            .into_iter()
+            .enumerate()
+        {
+            log.sample(i as u64 * 5_000, 100, 50, rssi);
+        }
+        assert_eq!(log.count(Kind::WifiDown), 0);
+        assert_eq!(log.count(Kind::WifiUp), 0);
+        assert_eq!(log.snapshot().samples.len(), 5);
+
+        log.apply(
+            25_000,
+            &E::WifiDown {
+                reason: 201,
+                rssi: -90,
+            },
+        );
+        log.sample(25_000, 100, 50, Some(-60));
+        log.apply(30_000, &E::WifiUp);
+        log.sample(30_000, 100, 50, None);
+        assert_eq!(log.count(Kind::WifiDown), 1);
+        assert_eq!(log.count(Kind::WifiUp), 1);
+        let events = log.snapshot().events;
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].code, 201);
     }
 
     #[test]

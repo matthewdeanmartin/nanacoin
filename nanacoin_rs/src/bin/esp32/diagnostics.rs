@@ -20,7 +20,13 @@ impl Default for Diagnostics {
             snapshot: Mutex::new(Snapshot {
                 schema: 1,
                 sampler_core: 0,
-                http_core: if cfg!(feature = "board-s2") { 0 } else { 1 },
+                http_core: if cfg!(feature = "board-s2")
+                    || (cfg!(feature = "cobol-core") && !cfg!(feature = "board-p4"))
+                {
+                    0
+                } else {
+                    1
+                },
                 ..Snapshot::default()
             }),
             requests: AtomicU32::new(0),
@@ -41,39 +47,42 @@ impl Diagnostics {
         result
     }
 
-    pub fn run(&self) {
-        let sensor = Temperature::new();
+    pub fn run(
+        &self,
+        temperature: impl Fn() -> Option<f32>,
+        station: impl Fn() -> Option<miniframework::sys::StationSample>,
+    ) {
         let mut snapshot = Snapshot {
             schema: 1,
             sampler_core: 0,
-            http_core: if cfg!(feature = "board-s2") { 0 } else { 1 },
+            http_core: if cfg!(feature = "board-s2")
+                || (cfg!(feature = "cobol-core") && !cfg!(feature = "board-p4"))
+            {
+                0
+            } else {
+                1
+            },
             ..Snapshot::default()
         };
         loop {
+            snapshot.sampled_at_ms = super::incidents::now();
+            snapshot.uptime_seconds = snapshot.sampled_at_ms / 1000;
+            snapshot.internal = heap(sys::MALLOC_CAP_INTERNAL | sys::MALLOC_CAP_8BIT);
+            snapshot.psram = heap(sys::MALLOC_CAP_SPIRAM);
+            snapshot.free_heap = snapshot.internal.free;
+            snapshot.largest_free_block = snapshot.internal.largest;
+            snapshot.minimum_free_heap = snapshot.internal.minimum;
+            snapshot.psram_free = snapshot.psram.free;
+            snapshot.temperature_c = temperature();
+            let network = station();
+            snapshot.rssi_dbm = network.map(|n| n.rssi);
+            snapshot.wifi_channel = network.map(|n| n.channel);
+            snapshot.ip = network.and_then(|n| n.ip);
+            snapshot.gateway = network.and_then(|n| n.gateway);
+            snapshot.netmask = network.and_then(|n| n.netmask);
             // SAFETY: IDF's thread-safe query APIs, with valid local output
             // structures. No handle crosses threads; no peripheral is reconfigured.
             unsafe {
-                snapshot.sampled_at_ms = (sys::esp_timer_get_time() / 1000) as u64;
-                snapshot.uptime_seconds = snapshot.sampled_at_ms / 1000;
-                snapshot.internal = heap(sys::MALLOC_CAP_INTERNAL | sys::MALLOC_CAP_8BIT);
-                snapshot.psram = heap(sys::MALLOC_CAP_SPIRAM);
-                snapshot.free_heap = snapshot.internal.free;
-                snapshot.largest_free_block = snapshot.internal.largest;
-                snapshot.minimum_free_heap = snapshot.internal.minimum;
-                snapshot.psram_free = snapshot.psram.free;
-                snapshot.temperature_c = sensor.read();
-                let mut ap = sys::wifi_ap_record_t::default();
-                let connected = sys::esp_wifi_sta_get_ap_info(&mut ap) == 0;
-                snapshot.rssi_dbm = connected.then_some(ap.rssi);
-                snapshot.wifi_channel = connected.then_some(ap.primary);
-                let netif = sys::esp_netif_get_handle_from_ifkey(c"WIFI_STA_DEF".as_ptr());
-                let mut ip = sys::esp_netif_ip_info_t::default();
-                let has_ip = connected
-                    && !netif.is_null()
-                    && sys::esp_netif_get_ip_info(netif, &mut ip) == 0;
-                snapshot.ip = has_ip.then_some(ip.ip.addr.to_ne_bytes());
-                snapshot.gateway = has_ip.then_some(ip.gw.addr.to_ne_bytes());
-                snapshot.netmask = has_ip.then_some(ip.netmask.addr.to_ne_bytes());
                 snapshot.tasks = sys::uxTaskGetNumberOfTasks();
                 snapshot.sampler_stack_free_min_bytes =
                     sys::uxTaskGetStackHighWaterMark(std::ptr::null_mut());
@@ -118,48 +127,6 @@ fn heap(caps: u32) -> Heap {
     }
 }
 
-struct Temperature(sys::temperature_sensor_handle_t);
-impl Temperature {
-    fn new() -> Self {
-        let mut handle = std::ptr::null_mut();
-        let config = sys::temperature_sensor_config_t {
-            range_min: 10,
-            range_max: 80,
-            ..Default::default()
-        };
-        // SAFETY: handle stays on the sampler thread for its lifetime.
-        unsafe {
-            if sys::temperature_sensor_install(&config, &mut handle) != 0 {
-                return Self(std::ptr::null_mut());
-            }
-            if sys::temperature_sensor_enable(handle) != 0 {
-                sys::temperature_sensor_uninstall(handle);
-                return Self(std::ptr::null_mut());
-            }
-        }
-        Self(handle)
-    }
-    fn read(&self) -> Option<f32> {
-        let mut value = 0.0;
-        // SAFETY: only the owning task accesses this enabled handle.
-        (!self.0.is_null()
-            && unsafe { sys::temperature_sensor_get_celsius(self.0, &mut value) } == 0
-            && value.is_finite())
-        .then_some(value)
-    }
-}
-impl Drop for Temperature {
-    fn drop(&mut self) {
-        if !self.0.is_null() {
-            // SAFETY: the sole owner is releasing its handle.
-            unsafe {
-                sys::temperature_sensor_disable(self.0);
-                sys::temperature_sensor_uninstall(self.0);
-            }
-        }
-    }
-}
-
 fn fixed_string<const N: usize>(bytes: &[u8]) -> heapless::String<N> {
     let mut result = heapless::String::new();
     for &byte in bytes.iter().take_while(|b| **b != 0) {
@@ -194,7 +161,7 @@ pub fn system_info() -> SystemInfo {
         result.chip_revision = chip.revision;
         result.cores = chip.cores;
         result.cpu_mhz = (sys::esp_clk_cpu_freq() / 1_000_000) as u32;
-        result.reset_reason = sys::esp_reset_reason();
+        result.reset_reason = super::reset_code(esp_idf_svc::hal::reset::ResetReason::get()) as _;
         let mut size = 0;
         result.flash_bytes =
             (sys::esp_flash_get_size(std::ptr::null_mut(), &mut size) == 0).then_some(size);

@@ -416,22 +416,26 @@ pub(super) fn restore<J: Journal>(
     }
     let mut index = 0;
     let h: Header = read(j, &mut index, 0)?;
-    let counted = 1
-        + h.corrections
-        + h.epochs
-        + h.audits
-        + h.requests
-        + h.artworks
-        + h.fulfillments
-        + h.members
-        + h.listings
-        + h.history
-        + h.offers
-        + h.quotes
-        + h.things
-        + h.loans
-        + h.lottos
-        + h.keys;
+    let counted = [
+        h.corrections,
+        h.epochs,
+        h.audits,
+        h.requests,
+        h.artworks,
+        h.fulfillments,
+        h.members,
+        h.listings,
+        h.history,
+        h.offers,
+        h.quotes,
+        h.things,
+        h.loans,
+        h.lottos,
+        h.keys,
+    ]
+    .into_iter()
+    .try_fold(1usize, |total, count| total.checked_add(count))
+    .ok_or(Error::CorruptJournal)?;
     // After the counted sections: an extension (newer firmware), then API key rows.
     let api_keys = j.checkpoint_rows().checked_sub(counted);
     if h.corrections > crate::ledger::CORRECTIONS
@@ -651,3 +655,7 @@ pub fn parse_head(data: &[u8]) -> Result<(u64, usize), Error> {
     }
     Ok((generation, rows))
 }
+
+#[cfg(test)]
+#[path = "../tests/checkpoint.rs"]
+mod hostile_tests;

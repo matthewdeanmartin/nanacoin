@@ -40,3 +40,6 @@ CONFIG_LWIP_TCP_SND_BUF_DEFAULT=5760
 CONFIG_HTTPD_ERR_RESP_NO_DELAY=y
 # Native USB is the only port: boot/panic logs and esptool resets use USB CDC.
 CONFIG_ESP_CONSOLE_USB_CDC=y
+# miniframework waits in 1 ms steps; at the default 100 Hz each is 10 ms
+# and sending is ~15x slower (the framework refuses to build below 1000).
+CONFIG_FREERTOS_HZ=1000

@@ -14,7 +14,7 @@ from boardsafe.probe import context_for, get, probe
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--board", required=True, choices=sorted(BOARDS), help="s3 (nanacoin.local) or s2 (nanacoin-s2.local)")
+    parser.add_argument("--board", required=True, choices=sorted(BOARDS), help="s3, s2 or p4 (each has its own hostname)")
     parser.add_argument("--address", required=True, help="Board IP address or resolvable name")
     parser.add_argument("--attempts", type=int, default=15, help="Boot-time connection attempts")
     args = parser.parse_args()

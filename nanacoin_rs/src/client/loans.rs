@@ -27,25 +27,35 @@ struct LoanView<'a> {
     waiting_reason: &'static str,
 }
 fn view<'a>(s: &'a State, l: &'a Loan, now: u64) -> LoanView<'a> {
-    let mut accrued = l.clone();
-    let waiting_reason = if s.member(l.lender).is_ok_and(|m| m.disabled)
-        || s.member(l.terms.borrower).unwrap().disabled
-    {
-        "An account is disabled"
-    } else if l.status == LoanStatus::Active && accrued.accrue(now).is_err() {
-        "Clock or arithmetic limit; payment is paused"
-    } else if l.status == LoanStatus::Armed {
-        if s.member(l.terms.borrower).unwrap().balance != 0 {
-            "Waiting for a zero balance"
-        } else if s.credit_blocked & (1u32 << (l.terms.borrower.0 - 1)) != 0 {
-            "Credit does not fund loan payments"
-        } else if s.member(l.lender).unwrap().balance < l.terms.amount {
-            "Waiting for lender funds"
+    #[cfg(feature = "cobol-core")]
+    let (interest, overdue, waiting_reason) = crate::cobol::loan_view_values(s, l, now);
+    #[cfg(not(feature = "cobol-core"))]
+    let (interest, overdue, waiting_reason) = {
+        let mut accrued = l.clone();
+        let waiting_reason = if s.member(l.lender).is_ok_and(|m| m.disabled)
+            || s.member(l.terms.borrower).unwrap().disabled
+        {
+            "An account is disabled"
+        } else if l.status == LoanStatus::Active && accrued.accrue(now).is_err() {
+            "Clock or arithmetic limit; payment is paused"
+        } else if l.status == LoanStatus::Armed {
+            if s.member(l.terms.borrower).unwrap().balance != 0 {
+                "Waiting for a zero balance"
+            } else if s.credit_blocked & (1u32 << (l.terms.borrower.0 - 1)) != 0 {
+                "Credit does not fund loan payments"
+            } else if s.member(l.lender).unwrap().balance < l.terms.amount {
+                "Waiting for lender funds"
+            } else {
+                "Ready for automatic funding"
+            }
         } else {
-            "Ready for automatic funding"
-        }
-    } else {
-        ""
+            ""
+        };
+        (
+            accrued.interest,
+            l.principal_due + l.interest_due,
+            waiting_reason,
+        )
     };
     LoanView {
         id: l.id,
@@ -65,8 +75,8 @@ fn view<'a>(s: &'a State, l: &'a Loan, now: u64) -> LoanView<'a> {
         memo: l.terms.memo.as_str(),
         status: l.status,
         principal: l.principal,
-        interest: accrued.interest,
-        overdue: l.principal_due + l.interest_due,
+        interest,
+        overdue,
         next_due_at: l.next_due_at,
         created_at: l.created_at,
         updated_at: l.updated_at,
@@ -80,6 +90,7 @@ struct Summary {
     weighted_annual_percent: Option<f64>,
     active: usize,
 }
+#[cfg(not(feature = "cobol-core"))]
 fn summary(s: &State) -> Summary {
     use core::fmt::Write;
     let mut principal: i128 = 0;
@@ -109,6 +120,22 @@ fn summary(s: &State) -> Summary {
             None
         },
         active,
+    }
+}
+
+#[cfg(feature = "cobol-core")]
+fn summary(s: &State) -> Summary {
+    use core::fmt::Write;
+    let values = crate::cobol::loan_summary(s);
+    let mut outstanding = heapless::String::new();
+    let mut overdue = heapless::String::new();
+    write!(outstanding, "{}", values.outstanding).unwrap();
+    write!(overdue, "{}", values.overdue).unwrap();
+    Summary {
+        outstanding,
+        overdue,
+        active: values.active,
+        weighted_annual_percent: values.annual_percent,
     }
 }
 
@@ -146,12 +173,12 @@ pub(super) fn route<J: Journal>(
                 return Err(Error::NotFound);
             }
             if r.preview {
-                if r.expected_epoch != s.state.money_epoch
-                    || r.expected_sequence != s.state.sequence
-                {
-                    return Err(Error::Conflict);
-                }
-                s.state.validate_reform(r.decimals, r.power)?;
+                s.state.validate_reform_request(
+                    r.decimals,
+                    r.power,
+                    r.expected_epoch,
+                    r.expected_sequence,
+                )?;
             } else {
                 s.execute_keyed(
                     actor,
@@ -173,13 +200,21 @@ pub(super) fn route<J: Journal>(
                 preview: bool,
             }
             let circulation = if r.preview {
-                crate::money::rescale(
-                    -s.state.issuance_balance,
-                    r.decimals as i16 - s.state.decimals as i16 - r.power as i16,
-                    MAX_SEQUENCE as i64,
-                )?
+                #[cfg(feature = "cobol-core")]
+                {
+                    s.state
+                        .reform_field(super::circulation(&s.state), r.decimals, r.power, 6)?
+                }
+                #[cfg(not(feature = "cobol-core"))]
+                {
+                    crate::money::rescale(
+                        -s.state.issuance_balance,
+                        r.decimals as i16 - s.state.decimals as i16 - r.power as i16,
+                        MAX_SEQUENCE as i64,
+                    )?
+                }
             } else {
-                -s.state.issuance_balance
+                super::circulation(&s.state)
             };
             return serialize(
                 &ReformView {
@@ -210,27 +245,42 @@ pub(super) fn route<J: Journal>(
                 None => None,
             };
             let now = s.now();
+            #[cfg(feature = "cobol-core")]
+            let ordered =
+                crate::cobol::newest_first::<_, { crate::loans::LOANS }>(&s.state.loans, |l| l.id)?;
+            #[cfg(feature = "cobol-core")]
+            let rows = ordered.into_iter();
+            #[cfg(not(feature = "cobol-core"))]
+            let rows = s.state.loans.iter().rev();
             return serialize(
                 &Response {
                     loans: Rows(
-                        s.state
-                            .loans
-                            .iter()
-                            .rev()
-                            .filter(|l| match subject {
-                                Some(m) => {
-                                    (l.lender == m || l.terms.borrower == m)
-                                        && matches!(l.status, LoanStatus::Active | LoanStatus::Paid)
+                        rows.filter(|l| {
+                            #[cfg(feature = "cobol-core")]
+                            {
+                                crate::cobol::loan_included(&s.state, l, member, subject)
+                            }
+                            #[cfg(not(feature = "cobol-core"))]
+                            {
+                                match subject {
+                                    Some(m) => {
+                                        (l.lender == m || l.terms.borrower == m)
+                                            && matches!(
+                                                l.status,
+                                                LoanStatus::Active | LoanStatus::Paid
+                                            )
+                                    }
+                                    None => l.visible_to(member),
                                 }
-                                None => l.visible_to(member),
-                            })
-                            .map(|l| {
-                                let mut v = view(&s.state, l, now);
-                                if !l.visible_to(member) {
-                                    v.memo = "";
-                                }
-                                v
-                            }),
+                            }
+                        })
+                        .map(|l| {
+                            let mut v = view(&s.state, l, now);
+                            if !l.visible_to(member) {
+                                v.memo = "";
+                            }
+                            v
+                        }),
                     ),
                     summary: summary(&s.state),
                     decimals: s.state.decimals,

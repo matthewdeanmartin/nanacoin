@@ -1,4 +1,4 @@
-"""The two NanaCoin banks. Every build, deploy, provision and probe step reads
+"""The NanaCoin banks. Every build, deploy, provision and probe step reads
 its board from here, so one board's image, certificate, bundle or hostname can
 never be used for the other.
 
@@ -17,6 +17,13 @@ if str(FRAMEWORK_TOOLS) not in sys.path:
 from boardsafe.boards import Board, pick  # noqa: E402
 
 BOARDS = {
+    'p4': Board(
+        id='p4', name='Meshnology ESP32-P4-WIFI6 (new household)', app='nanacoin', chip='esp32p4',
+        target='riscv32imafc-esp-espidf', flash_size='32MB', bootloader_offset=0x2000,
+        hostname='nanacoin-p4.local', mac='e8:f6:0a:e3:6f:a2', target_dir='C:/ncr-p4',
+        binary='nanacoin-esp32', sdkconfig='boards/p4/sdkconfig.defaults', partitions='boards/p4/partitions.csv',
+        web_dir='.embuild/web-p4', cert='nanacoin-p4-ca-signed', ca='certs/home-ca.crt',
+        root=ROOT, before='default_reset'),
     's3': Board(
         id='s3', name='ESP32-S3-N16R8 (first bank)', app='nanacoin', chip='esp32s3',
         target='xtensa-esp32s3-espidf', flash_size='16MB', bootloader_offset=0x0,
@@ -44,6 +51,6 @@ def board(name):
 if __name__ == '__main__':
     # Shell helper: python scripts/boards.py s2 target
     if len(sys.argv) != 3:
-        raise SystemExit('Usage: python scripts/boards.py <s3|s2> <field>')
+        raise SystemExit('Usage: python scripts/boards.py <s3|s2|p4> <field>')
     value = getattr(board(sys.argv[1]), sys.argv[2])
     print(value() if callable(value) else value)

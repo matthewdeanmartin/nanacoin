@@ -23,7 +23,9 @@ Secure HTTP serves only `/`, `/trust`, `/ca`, rejecting other paths and non-GET
 methods. Economy reset does not clear this policy. See
 [connection security](CONNECTION_SECURITY.md) for onboarding and USB recovery.
 
-`GET /api/v1/status` is public. On an empty journal, `POST /api/v1/provision` takes:
+`GET /api/v1/status` is public. Its `member_capacity` is the total member-slot
+limit, including Nana; enrollment clients compare it with the current member
+list before creating accounts. On an empty journal, `POST /api/v1/provision` takes:
 
 ```json
 {"household_name":"Home","username":"nana","display_name":"Nana","password":"1234"}

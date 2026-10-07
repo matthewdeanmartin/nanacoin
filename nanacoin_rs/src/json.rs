@@ -64,3 +64,7 @@ fn hex(bytes: &[u8]) -> Result<u32, ()> {
         Ok(n * 16 + digit as u32)
     })
 }
+
+#[cfg(test)]
+#[path = "tests/json.rs"]
+mod hostile_tests;
