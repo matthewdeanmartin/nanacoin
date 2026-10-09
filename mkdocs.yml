@@ -39,6 +39,12 @@ nav:
       - "Diagnostics": "rust/diagnostics.md"
       - "Performance, 2026-09-25": "rust/performance-2026-09-25.md"
       - "Mastodon Integration": "rust/mastodon.md"
+  - "GnuCOBOL and NanaCoin":
+      - "Overview": "cobol/index.md"
+      - "Rust, C and COBOL Interop": "cobol/interop.md"
+      - "Bank Decisions and Durable Writes": "cobol/bank.md"
+      - "Language and Coding Patterns": "cobol/language.md"
+      - "Builds, Runtime and Verification": "cobol/workflow.md"
   - "TinyGo and NanaCoin":
       - "Overview": "tinygo/index.md"
       - "How It Works": "tinygo/how_it_works.md"

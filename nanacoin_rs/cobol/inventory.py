@@ -72,9 +72,15 @@ def main():
                                          "p4_pre_listener_failure_reproduced_without_cobol": True,
                                          "p4_single_register_fallback_resolved_startup": False,
                                          "p4_packet_rx_resolved_startup": False,
+                                         "p4_revision_1_3_hardware_cobol_startup_verified": True,
+                                         "p4_hardware_strict_tls_api_and_assets_verified": True,
+                                         "p4_hardware_existing_bank_counts_preserved": True,
+                                         "p4_hardware_asset_load_internal_heap_minimum_free_bytes": 259671,
+                                         "p4_hardware_asset_load_psram_minimum_free_bytes": 30050920,
+                                         "p4_hardware_observed_serving_stack_free_bytes": 22500,
+                                         "p4_hardware_observed_tls_stack_free_bytes": 22104,
                                          "s2_image_excess_bytes": 227264},
-              "firmware_remaining": ["P4 complete-server workload verification; smaller boards excluded by owner",
-                                     "P4 runtime heap/stack measurements on its intended silicon revision"]}
+              "firmware_remaining": ["P4 maximum-capacity financial workloads and settlement timing on hardware; startup, strict TLS/API/assets and resource samples on revision 1.3 are verified; smaller boards excluded by owner"]}
     for group, (phase, names) in GROUPS.items():
         for name in names.split():
             report["commands"].append({"command": name, "phase": phase, "family": group,

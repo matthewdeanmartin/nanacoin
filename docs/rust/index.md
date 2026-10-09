@@ -32,6 +32,10 @@ Read in order:
 4. [NVS keys, recovery and retirement](storage.md)
 5. [Diagnostics and verification](diagnostics.md)
 
+For the optional bank backend, see [GnuCOBOL and NanaCoin](../cobol/index.md).
+It keeps this Rust server and JSON interface while selecting COBOL banking
+logic at build time.
+
 For the corresponding Go explanations, see [TinyGo and NanaCoin](../tinygo/index.md).
 The Go implementation is frozen except for the diagnostic compatibility change;
 the Rust implementation is the active development path.

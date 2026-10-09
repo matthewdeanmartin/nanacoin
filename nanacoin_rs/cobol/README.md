@@ -1,5 +1,14 @@
 # Optional GnuCOBOL bank
 
+**P4 hardware verified October 7, 2026:** the optional COBOL image was deployed
+to the owner's revision-1.3 board with an application-only, hash-verified write.
+UART confirms `Banking engine: cobol`; the strict TLS/API/all-75-assets probe
+passes and existing bank counts are unchanged. Under that workload internal
+heap minimum is 259,671 bytes, PSRAM minimum 30,050,920 bytes and observed free
+serving/TLS stacks are 22,500/22,104 bytes. The emulator startup blocker is not
+reproduced on hardware. Maximum-capacity financial workloads on P4 remain
+unverified; no financial writes were made. See [deployment evidence](../DEPLOY.md).
+
 The default build remains all Rust. `cobol-core` selects the GnuCOBOL banking
 kernel in `bank.cob`: a native DLL on Windows, or experimental static linkage
 on ESP-IDF. Both builds keep
@@ -37,6 +46,36 @@ engine fallback. Windows dependencies load from the selected module directory.
 The DLL must be locally built and trusted.
 
 ## Implemented slices and remaining work
+
+### Reading the COBOL and understanding its data scope
+
+The banking code uses named request/result fields such as
+`post-source-balance`, `rescale-exponent`, `quote-cents-per-coin` and
+`settle-next-interest`. Its `LINKAGE SECTION` declares operation-specific
+`REDEFINES` views over the same 512-byte caller-owned ABI frame. They are
+aliases, not copies or extra buffers. Bounded books use named `OCCURS` rows,
+with logical one-based indices instead of raw slot/byte arithmetic. Text and
+binary64 display payloads also have named views. Rust's 64-word ABI, operation
+numbers and result codes are unchanged. `78` declarations name the operation,
+selector, result and numeric-limit constants. When one operation invokes a
+shared numeric helper, its assignments explicitly use that helper's view.
+
+COBOL paragraphs share their program's data namespace; grouping fields helps
+organization but does not make them private to a paragraph. `WORKING-STORAGE`
+has program lifetime and retains values between calls. Mutable scratch data
+now lives in `LOCAL-STORAGE`, grouped as arithmetic, loans, flows, selection,
+quotes and display calculations. It is initialized afresh for each invocation
+and released on return. `LINKAGE` fields belong to the caller. None of these
+fields is declared `GLOBAL` or `EXTERNAL`. Separate subprograms would provide
+independent data namespaces; this kernel still uses one program and its
+existing internal `PERFORM` helpers. The Rust mutex continues to serialize
+access to the GnuCOBOL runtime.
+
+GnuCOBOL 3.2 generates a 624-byte per-call allocation for this scratch data.
+The P4 target ABI probe verifies 2,643 calls with unchanged free heap after
+warm-up, repetition and both boundary-vector passes. This is kernel/runtime
+evidence, not a new board deployment. The attached P4 keeps the October 7
+image recorded in `DEPLOY.md` until another application update is requested.
 
 COBOL computes NC/USD posting plans, exact rescaling, exchange cents, annual
 rates, exact interest/remainders, loan settlement/catch-up/payoff/credit-draw
@@ -643,7 +682,9 @@ for capacity traffic; the separate retained representative report verifies
 HTTPS and concurrent TLS retries. This run processed 3,594 requests and took
 655.59 wall seconds in emulation. Expected capacity/stale-key rejections account
 for its 13 reported request errors. The resource probe completes successfully
-and stops its exact emulator PID. The P4 network/revision gate remains open.
+and stops its exact emulator PID. The later October 7 P4 hardware deployment
+verifies revision-1.3 startup and TLS; full-capacity P4 financial workloads
+remain unverified.
 
 Size experiments can use `build_target_runtime.py --lto --output-root <dir>`
 and `build_target_bank.py --lto --runtime-root <dir> --output-dir <dir>` to keep
@@ -822,7 +863,8 @@ alone does not certify ownership. The current matrix passes 110 HTTP contracts
 per engine, all 18 differential traces and incompatible-module startup checks.
 Both engines also pass their 225 Rust tests and strict all-target Clippy checks.
 The direct ABI suite has 1,128 boundary vectors, normally run twice (2,256 calls).
-`bank.cob` currently has 2,480 source lines including whitespace.
+`bank.cob` currently has 4,677 source lines including whitespace. The increase
+is primarily explicit named ABI views and constants; the frame remains 512 bytes.
 
 Port business queries and aggregates: account/ledger views, activity privacy,
 wealth/flows, loan/exchange summaries, cursor/retention semantics and any remaining
@@ -893,6 +935,8 @@ experiment (both current and aliased SDK choices were verified). The image
 linked and fit, but the 60-second startup probe also failed with the same
 interrupt loop and no Wi-Fi RPC requests. The probe stopped both owned emulator
 processes. Neither register-read nor packet-read experiments resolve the P4
-pre-listener blocker. P4 heap/stack and full-server workload certification remain
-open pending a working Hosted emulator configuration/model or a separately
-authorized hardware session; no hardware was accessed during these experiments.
+emulator pre-listener blocker. No hardware was accessed during these experiments.
+The subsequently authorized October 7 hardware deployment succeeds with the
+normal SDK configuration, as recorded at the top of this document. Asset-load
+heap/stack samples are now available from the intended revision-1.3 board;
+maximum-capacity financial workload certification on P4 remains open.

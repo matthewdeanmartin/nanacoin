@@ -35,6 +35,10 @@ ledger, the JSON API, and the firmware that runs them. It covers the build,
 how ownership keeps allocation bounded, the domain and concurrency model, how
 records survive a power cut in NVS, and what the diagnostics endpoint reports.
 
+[GnuCOBOL and NanaCoin](cobol/index.md) explains the optional COBOL bank inside
+the Rust server: the C ABI, generated C and runtime, banking decisions,
+COBOL records and storage scopes, and how to build either engine.
+
 [TinyGo and NanaCoin](tinygo/index.md) is where the project started. The
 firmware is frozen pending upstream PSRAM support, but the write-up is the more
 detailed one on memory budgets and on load-testing a board until it falls over —

@@ -1,5 +1,50 @@
 # Deploy Rust NanaCoin and the Angular app to a bank
 
+## October 7, 2026: optional COBOL bank deployed to P4
+
+The owner attached the P4 and explicitly requested a COBOL deployment. COM19
+independently identified ESP32-P4 revision 1.3, MAC `e8:f6:0a:e3:6f:a2`.
+The current working tree was built with the normal board profile, existing
+Wi-Fi configuration and static GnuCOBOL module. No emulator networking, clock,
+revision, debug or SDIO experiments were enabled. The default Rust build
+remains available separately.
+
+```powershell
+python nanacoin_rs/cobol/build_firmware.py --board p4 --engine cobol --target-dir C:/nc-cob-p4 --static-module .local/cobol-target-esp32p4
+& C:/Espressif/python_env/idf5.5_py3.11_env/Scripts/python.exe nanacoin_rs/scripts/deploy.py --board p4 --port COM19 --image C:/nc-cob-p4/riscv32imafc-esp-espidf/release/nanacoin-esp32.bin
+& C:/Espressif/python_env/idf5.5_py3.11_env/Scripts/python.exe nanacoin_rs/scripts/probe-board.py --board p4 --address 192.168.1.164
+```
+
+Image: 4,009,632 / 8,388,608 bytes, SHA-256
+`85b302b213bd6cc16d2de1919828aba925f53c3a8f15bb67eb7b03cc4d799bfe`.
+Ten deployment safety tests and the image dry run passed. The writer verified
+the chip, recorded MAC and exact partition table, then hash-verified an
+application-only write at `0x10000`. Erasure ended at `0x003e2fff`; ledger,
+NVS, bootloader, partition table, certificates and C6 firmware were retained.
+
+Fresh UART boot confirms `Banking engine: cobol` and ready at
+`https://nanacoin-p4.local` after 10,246 ms. The strict live probe passed
+hostname/CA TLS, all 75 exact bundled assets in identity/gzip forms, ETags,
+concurrent keep-alive and slow-reader checks, public APIs, balanced ledger,
+health and matching CA. Status remained sequence 1, one member, zero
+transactions, epoch 0 and journal generation 0; circulation also matched.
+No financial transaction, provisioning or economy reset was performed.
+
+At 95 seconds uptime diagnostics reported 317 requests, zero request errors
+and 259,671 bytes minimum free internal heap. PSRAM minimum was 30,050,920
+bytes; UART stack samples showed 22,500 bytes free for main/serving and 22,104
+for TLS. An 85-second fresh-boot UART capture found no panic or actual RPC
+timeout. It retained the existing companion-version mismatch warning and two
+startup `system_api` MAC-type diagnostic errors; these did not prevent network
+association or the strict probe. No C6 upgrade was attempted.
+
+This verifies real P4 startup and HTTPS/asset-load operation with COBOL; it
+does not claim hardware financial writes, maximum-capacity bank workloads,
+power-cut recovery or browser visual testing. The previous emulator
+pre-listener failure is not reproduced on this board. Ignored evidence:
+`.local/p4-cobol-{deploy,boot,probe}.log`, pre/post status snapshots and
+`.local/firmware-cobol-p4/report.json` at the repository root.
+
 ## October 5, 2026: P4-WIFI6 first installation
 
 The owner supplied Meshnology ESP32-P4-WIFI6 / ESP32-C6-MINI-1 markings.

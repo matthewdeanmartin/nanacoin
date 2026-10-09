@@ -154,6 +154,16 @@ did.
 No soldering, no GPIO wiring, no sensors. If it needs a breadboard, it is not
 this project.
 
+## Troubleshooting
+
+**Firefox: "CORS request did not succeed" from a web client hosted elsewhere**
+(for example Mawkingbird). Firefox's Local Network Access checks each request
+a public site makes to your home network; while a check is pending it can drop
+a shared HTTP/2 connection and every request on it. Exempt only the board:
+`about:config` → `network.lna.skip-domains` = `nanacoin-rs.local` (comma-separate
+several), then restart Firefox. Pages served by the board itself are not
+affected.
+
 ## Documentation
 
 Full write-up in [`docs/`](docs/) — build it with `cd docs && make serve`.

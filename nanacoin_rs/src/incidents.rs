@@ -304,6 +304,10 @@ impl Recorder {
             E::WifiUp => self.record(now, Kind::WifiUp, 0, 0),
             E::Reconnect => self.record(now, Kind::Reconnect, 0, 0),
             E::ReconnectFailed { code } => self.record(now, Kind::ReconnectFailed, code, 0),
+            // Newer framework events; miniframework's own history at
+            // /.well-known/incidents keeps them with their own kinds.
+            E::TlsConnectionFailed { code } => self.record(now, Kind::SocketError, code, 0),
+            E::PeerReset => {}
         }
     }
 
