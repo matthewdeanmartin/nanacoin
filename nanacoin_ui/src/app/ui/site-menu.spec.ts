@@ -3,6 +3,7 @@ import { provideRouter } from '@angular/router';
 import { signal } from '@angular/core';
 import { Session } from '../api/session';
 import { SiteMenu } from './site-menu';
+import { IS_DEMO } from '../demo/demo';
 
 describe('responsive site navigation', () => {
  afterEach(() => TestBed.resetTestingModule());
@@ -25,7 +26,7 @@ describe('responsive site navigation', () => {
    expect([...accounts!.querySelectorAll('a')].map((a: Element)=>a.textContent)).toEqual(['My Account','My wealth','Demographics']);
    expect(buySell?.textContent).not.toContain('Offers');
    const mail = [...fixture.nativeElement.querySelectorAll('details')].find((g: Element) => g.querySelector('summary')?.textContent === 'Mail');
-   expect([...mail!.querySelectorAll('a')].map((a: Element)=>a.textContent)).toEqual(['Send Money','Gift Requests','Messages','Offers','Invitations']);
+   expect([...mail!.querySelectorAll('a')].map((a: Element)=>a.textContent)).toEqual([...(IS_DEMO ? [] : ['Email']),'Send Money','Gift Requests','Messages','Offers','Invitations']);
    const loans = [...fixture.nativeElement.querySelectorAll('details')].find((g: Element) => g.querySelector('summary')?.textContent === 'Loans');
    expect([...loans!.querySelectorAll('a')].map((a: Element)=>a.textContent)).toEqual(['Loans','Lotto']);
    expect(fixture.nativeElement.textContent).toContain('Board Health');

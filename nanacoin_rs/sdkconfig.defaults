@@ -42,3 +42,6 @@ CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG=y
 # miniframework waits in 1 ms steps; at the default 100 Hz each is 10 ms
 # and sending is ~15x slower (the framework refuses to build below 1000).
 CONFIG_FREERTOS_HZ=1000
+# Household email (Brevo) uses Board::fetch_public: ESP-IDF's common public CA bundle.
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_CMN=y

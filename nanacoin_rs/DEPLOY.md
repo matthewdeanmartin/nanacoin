@@ -1,5 +1,99 @@
 # Deploy Rust NanaCoin and the Angular app to a bank
 
+## Current S2 status (October 19, 2026)
+
+The S2 test bank (`80:65:99:f0:1c:9c`, formerly `nanacoin-s2.local`) is
+retired. It now runs housemetrics at `192.168.1.157` / `housemetrics.local`.
+S2 bank deployment instructions below are historical; do not use them to
+flash that physical board. The S3 remains the active NanaCoin bank.
+
+## October 19, 2026: S3 updated with the ops health endpoint
+
+The owner attached the S3 for the SRE bot's sprint 0 (miniframework `ops`,
+`/.well-known/ops/health`). COM9's composite device and esptool both reported
+registered S3 MAC `ac:a7:04:2c:2c:04`; a CH343 on COM14 and mastomini on COM11
+were also present and were not opened.
+
+- Source: `b072463` plus uncommitted work (dirty tree, including the email
+  work and the new `ledger.storage` / `ledger.journal` checks). `cargo test`
+  passed before the build.
+- No pre-upgrade backup, at the owner's request (slow, flaky USB).
+- Image 2,740,144 / 4,194,304 bytes, written at `0x10000` only and
+  hash-verified after the chip, MAC and s3 layout checks.
+- Strict probe passed at `192.168.1.158` (76 exact assets, balanced ledger,
+  matching CA). `/api/v1/status` identical before and after (sequence 88,
+  23 transactions).
+- Health: all `ok`. 65 KiB internal free (lowest 43 KiB), largest block
+  28 KiB, journal 2% (88 of 4096), RSSI −73 dBm (2 dB above the −75 warn
+  threshold). `build` reads `dev`: NanaCoin's `Config` sets no fingerprint.
+- Not performed: browser checks. Logs: repository-root `.local/ops-deploy-*`
+  and `.local/ops-postdeploy-probe.log`.
+
+## October 19, 2026: S3 updated with household email
+
+The owner attached the S3 and requested deployment of the email feature
+([EMAIL.md](EMAIL.md)). COM9 was the only ESP32 present; its USB identity and
+esptool both reported registered S3 MAC `ac:a7:04:2c:2c:04`.
+
+- Source: `b072463` plus the uncommitted email work (dirty tree). The first
+  firmware build failed: the board's public-CA HTTPS client needed
+  miniframework's `public-ca` feature, now enabled with ESP-IDF's common CA
+  bundle in all three board sdkconfigs.
+- First write (verified hash, app partition only) passed boot but **failed the
+  strict probe**: `/media/dancing-script-*.ttf` truncated at 31,744 bytes.
+  A resident 24 KiB internal-RAM mail stack cut idle internal heap from about
+  79 KB to 52 KB (minimum 8 KB under the probe). The bank kept serving.
+- Fix: the mail worker keeps an 8 KiB internal stack (it writes NVS); each
+  HTTPS send runs on a 48 KiB PSRAM-stack helper. Second image
+  4,001,872 / 4,194,304 bytes, SHA-256
+  `4a7445cdc2ab3e104cbb3b14106ebff006e016e5efd0a32e90307c8fe73fd435`, written
+  at `0x10000` and hash-verified. Ledger, NVS, bootloader, partition table and
+  certificates were retained.
+- Strict probe passed at `192.168.1.158` (76 exact assets, balanced ledger,
+  matching CA). Idle internal heap 67 KB, minimum 25 KB during the probe.
+  `/api/v1/status` was identical before and after (sequence 88,
+  23 transactions). `/api/v1/email` answers 401 unsigned, so email is enabled.
+- The firmware embeds the Brevo key from the shared household `.env`; no
+  `NANACOIN_MAIL_FROM` is set, so Brevo's first active sender is used.
+- Not performed: browser checks, and any real email send. The S2 build now
+  exceeds its partition (2,641,568 / 2,490,368 bytes) and must not be deployed
+  until email or the CA bundle is trimmed for that board.
+- Logs: repository-root `.local/email-deploy-*`.
+
+## October 17, 2026: S3 updated for Mastomini bot enrollment
+
+The owner selected `nanacoin.local` and attached the S3 after bulk bot setup
+reported `Update NanaCoin to expose member_capacity before setup`. The live
+status lacked the field; current source already implemented it. No banking
+code change was needed.
+
+COM9's Windows parent identity and esptool both matched registered S3 MAC
+`ac:a7:04:2c:2c:04`. Reading that MAC with watchdog reset restarted the live
+bank's uptime from 65 seconds to 6 seconds. The other attached board on COM20
+was not opened or flashed. The writer independently verified the chip, MAC
+and exact S3 partition table and performed an application-only upgrade.
+
+- Clean NanaCoin source at `b072463`; existing dirty sibling miniframework at
+  `4b10110` was used for desktop gates and firmware. HTTP/2 stayed enabled.
+- `make check` passed default/S2 formatting, strict lint, tests and HTTP/restart
+  smoke. Existing S3 certificate/key checks and ten deployment safety tests
+  passed. The S3 Angular bundle and release firmware built successfully.
+- Image: `C:/tmp/ncr/xtensa-esp32s3-espidf/release/nanacoin-esp32.bin`,
+  3,853,200 / 4,194,304 bytes. SHA-256:
+  `50c1f3f2373c066fd0b758de10258c145a5a9d7c8ecabbe2e5fd4b940f648111`.
+  Write at `0x10000` was hash-verified; ledger, configuration, bootloader,
+  partition table and certificates were retained.
+- Strict live probe passed at `192.168.1.158`: hostname/CA TLS, API identity,
+  all 75 exact assets with identity/gzip/ETags, concurrent keep-alive and
+  slow-reader checks, public notebook, health and matching CA.
+- Verified status now reports `member_capacity: 32`. Pre/post values match:
+  5 members, 17 transactions, sequence 75, circulation and money epoch.
+  Ledger remains balanced. No provisioning, financial writes or bulk bot
+  enrollment was performed to test deployment; the owner can retry setup.
+- Evidence is under repository-root `.local/mastobots-compat-*.log` and
+  `.local/mastobots-{before,after}-status.json`.
+
+
 ## October 7, 2026: optional COBOL bank deployed to P4
 
 The owner attached the P4 and explicitly requested a COBOL deployment. COM19
@@ -10,8 +104,8 @@ revision, debug or SDIO experiments were enabled. The default Rust build
 remains available separately.
 
 ```powershell
-python nanacoin_rs/cobol/build_firmware.py --board p4 --engine cobol --target-dir C:/nc-cob-p4 --static-module .local/cobol-target-esp32p4
-& C:/Espressif/python_env/idf5.5_py3.11_env/Scripts/python.exe nanacoin_rs/scripts/deploy.py --board p4 --port COM19 --image C:/nc-cob-p4/riscv32imafc-esp-espidf/release/nanacoin-esp32.bin
+python nanacoin_rs/cobol/build_firmware.py --board p4 --engine cobol --target-dir C:/tmp/ncbp4 --static-module .local/cobol-target-esp32p4
+& C:/Espressif/python_env/idf5.5_py3.11_env/Scripts/python.exe nanacoin_rs/scripts/deploy.py --board p4 --port COM19 --image C:/tmp/ncbp4/riscv32imafc-esp-espidf/release/nanacoin-esp32.bin
 & C:/Espressif/python_env/idf5.5_py3.11_env/Scripts/python.exe nanacoin_rs/scripts/probe-board.py --board p4 --address 192.168.1.164
 ```
 
@@ -84,7 +178,7 @@ connectivity now uses actual framework events, and a regression test alternates
 missing/present telemetry while checking real disconnect/reconnect events.
 It passed in default, S2 and P4 profiles; P4 strict lint passed.
 
-Final image: `C:/ncr-p4/riscv32imafc-esp-espidf/release/nanacoin-esp32.bin`,
+Final image: `C:/tmp/ncr-p4/riscv32imafc-esp-espidf/release/nanacoin-esp32.bin`,
 3,684,608 / 8,388,608 bytes, SHA-256
 `ceb5c8f13dfc2464fc465d0952256eb8c2f8964ce4f1052c3e3cf61e87c539dc`.
 The bootloader, table and initial provisioning command are in ignored
@@ -257,8 +351,8 @@ the other.
 | Known IP | 192.168.1.158 | 192.168.1.157 (September 28, 2026) |
 | Flash / app partition | 16 MiB / 4 MiB at `0x10000` | 4 MiB / 2.375 MiB at `0x10000` |
 | Build profile | `sdkconfig.defaults`, `partitions.csv` | `boards/s2/sdkconfig.defaults`, `boards/s2/partitions.csv`, `--features board-s2` |
-| Cargo target dir | `C:/ncr` | `C:/ncr-s2` |
-| Web bundle | `.embuild/web` (identity + gzip) | `.embuild/web-s2` (gzip only) |
+| Cargo target dir | `C:/tmp/ncr` | `C:/tmp/ncr-s2` |
+| Web bundle | `.embuild/web` (gzip only) | `.embuild/web-s2` (gzip only) |
 | Server certificate | `certs/nanacoin-ca-signed.*` | `certs/nanacoin-s2-ca-signed.*` |
 
 Both leaves are signed by the one household CA (`certs/home-ca.crt`), so a
@@ -485,8 +579,8 @@ source, config, certificate or web input has changed.
 ```bash
 bash scripts/build-esp32.sh "$BOARD"       # once; omit for a current prepared build
 ESP_PY=C:/Espressif/python_env/idf5.5_py3.11_env/Scripts/python.exe
-IMAGE=C:/ncr/xtensa-esp32s3-espidf/release/nanacoin-esp32.bin  # S3 only
-# S2 instead: C:/ncr-s2/xtensa-esp32s2-espidf/release/nanacoin-esp32.bin
+IMAGE=C:/tmp/ncr/xtensa-esp32s3-espidf/release/nanacoin-esp32.bin  # S3 only
+# S2 instead: C:/tmp/ncr-s2/xtensa-esp32s2-espidf/release/nanacoin-esp32.bin
 uv run --no-project --python "$ESP_PY" python scripts/deploy.py \
   --board "$BOARD" --port "$PORT" --image "$IMAGE" --dry-run
 uv run --no-project --python "$ESP_PY" python scripts/deploy.py \
@@ -559,8 +653,8 @@ for that bank's hostname, and checks:
   configured for the same-origin API;
 - every bundled asset matches the build byte-for-byte, with correct lengths,
   ETags and conditional responses, across concurrent keep-alive connections;
-  the largest asset also passes a slow-reader check. On the S3 both identity
-  and gzip are checked; the gzip-only S2 must return the exact gzip bytes and
+  the largest asset also passes a slow-reader check. Every bank is gzip-only
+  (since October 19, 2026): it must return the exact gzip bytes and
   answer an identity-only request with 406;
 - the anonymous public notebook returns a correctly shaped ledger response;
 - anonymous Board Health returns current machine data;

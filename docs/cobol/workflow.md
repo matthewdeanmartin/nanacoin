@@ -87,7 +87,7 @@ For example, with the P4 runtime archives already built in the default
 
 ```powershell
 python nanacoin_rs/cobol/build_target_bank.py --target esp32p4 --compiler C:/Espressif/tools/riscv32-esp-elf/esp-14.2.0_20251107/riscv32-esp-elf/bin/riscv32-esp-elf-gcc.exe --gnucobol-source C:/Users/matth/Downloads/gnucobol-3.2_win --output-dir .local/cobol-target-p4
-python nanacoin_rs/cobol/build_firmware.py --board p4 --engine cobol --target-dir C:/nc-cob-p4 --static-module .local/cobol-target-p4
+python nanacoin_rs/cobol/build_firmware.py --board p4 --engine cobol --target-dir C:/tmp/ncbp4 --static-module .local/cobol-target-p4
 ```
 
 Adjust compiler and source paths for the installed toolchain. The

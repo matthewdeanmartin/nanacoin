@@ -54,7 +54,7 @@ fewer features (`src/board.rs`):
 | Archive pages (4 KiB) | 1,024 | 128 |
 | Largest API response | 512 KiB | 192 KiB |
 | Concurrent TLS / HTTP clients | 8 / 4 | 3 / 2 |
-| Web assets | identity + gzip | gzip only |
+| Web assets | gzip only (identity copy dropped October 19, 2026) | gzip only |
 | HTTP/API worker | its own task on core 1 | the main task, with the payment tick between turns |
 | TLS/diagnostics/LED task stacks | internal RAM | PSRAM (they never write flash) |
 | Status light | WS2812 RGB (GPIO48) | blue LED (GPIO15), same Morse rotation |

@@ -10,8 +10,10 @@ const input = resolve(root, '../nanacoin_ui/dist/nanacoin-web/browser');
 // Each board embeds its own bundle; never let one board's assets reach the other.
 const board = process.env.NANACOIN_BOARD || 's3';
 if (!['s3', 's2', 'p4'].includes(board)) throw new Error(`Unknown NANACOIN_BOARD ${board}`);
-// The S2's 4 MiB flash holds only the gzip copy; the S3 keeps identity + gzip.
-const gzipOnly = board === 's2';
+// Every board embeds only the gzip copy (an empty identity file marks it): Wi-Fi
+// transfer time dominates, every browser accepts gzip, and an identity copy cost
+// the S3 about 1.4 MB of application flash. Identity-only clients get 406.
+const gzipOnly = true;
 const output = resolve(root, board === 's3' ? '.embuild/web' : `.embuild/web-${board}`);
 mkdirSync(output, { recursive: true });
 const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',

@@ -4,7 +4,7 @@
 import { Component, computed, inject, resource, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 
 import { KeyScope, KeyState, NewApiKey } from '../api/models';
 import { ApiBase } from '../api/api-base';
@@ -23,9 +23,10 @@ const MASTODON = { id: 'settings-mastodon', label: 'Mastodon' };
 
 @Component({
   selector: 'app-settings',
-  imports: [FormsModule, SectionTabs],
+  imports: [FormsModule, SectionTabs, RouterLink],
   template: `
     <h1>My Settings</h1>
+    @if (!emailDemo) { <p><a routerLink="/email">Email address and recovery settings</a></p> }
     <p class="lede">How NanaCoin looks on this device, and how other programs can act for you.</p>
 
     <app-section-tabs [tabs]="tabs()" [selected]="tab()" (selectedChange)="select($event)" label="Settings sections" prefix="settings" />
@@ -128,6 +129,7 @@ const MASTODON = { id: 'settings-mastodon', label: 'Mastodon' };
   `,
 })
 export class SettingsPage {
+  protected readonly emailDemo = IS_DEMO;
   protected readonly session = inject(Session);
   protected readonly theme = inject(Theme);
   protected readonly mastodon = inject(Mastodon);

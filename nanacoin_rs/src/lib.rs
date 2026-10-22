@@ -6,6 +6,7 @@ mod client;
 pub mod database_diagnostics;
 pub mod diagnostics;
 pub mod domain;
+pub mod email;
 #[cfg(all(
     feature = "cobol-core",
     not(any(target_os = "windows", target_os = "espidf"))

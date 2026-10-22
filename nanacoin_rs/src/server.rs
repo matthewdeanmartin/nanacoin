@@ -11,6 +11,7 @@ use crate::{
     journal::{Journal, Service},
     web,
 };
+use miniframework::ops::{Check, Status as CheckStatus};
 use miniframework::{web::Spa, Config, Reply, Request};
 use std::{
     sync::{Arc, Mutex},
@@ -29,6 +30,7 @@ pub const DIAGNOSTICS: &[&str] = &["/api/v1/diag", "/api/v1/diag/static", "/api/
 pub struct Bank<J> {
     pub ledger: Ledger<J>,
     diagnostics: Option<Diagnostics>,
+    email: Option<Arc<crate::email::Mailer>>,
     /// Called once when a request leaves storage failed (read-only).
     storage_failed: fn(),
 }
@@ -38,8 +40,14 @@ impl<J> Bank<J> {
         Self {
             ledger,
             diagnostics: None,
+            email: None,
             storage_failed: || {},
         }
+    }
+
+    pub fn with_email(mut self, email: Arc<crate::email::Mailer>) -> Self {
+        self.email = Some(email);
+        self
     }
 
     pub fn with_diagnostics(mut self, diagnostics: Diagnostics) -> Self {
@@ -68,6 +76,24 @@ impl<J: Journal + Send + 'static> miniframework::Service for Bank<J> {
         let lock_ms = waiting.elapsed().as_secs_f64() * 1000.0;
         let started = Instant::now();
         let failed_before = ledger.storage_failed();
+        if req.path == "/api/v1/email" || req.path.starts_with("/api/v1/email/") {
+            reply.fill("application/json", |out| match &self.email {
+                Some(mail) => mail.handle(
+                    &mut ledger,
+                    req.method,
+                    req.path,
+                    req.header("Authorization"),
+                    req.body,
+                    out,
+                ),
+                None => api::error_response(crate::domain::Error::NotFound, out),
+            });
+            // A password reset commits to the journal like any other account change.
+            if !failed_before && ledger.storage_failed() {
+                (self.storage_failed)();
+            }
+            return;
+        }
         reply.fill("application/json", |out| {
             api::handle_keyed_on(
                 &mut ledger,
@@ -102,6 +128,34 @@ impl<J: Journal + Send + 'static> miniframework::Service for Bank<J> {
             .lock()
             .map_or(true, |ledger| ledger.https_only())
     }
+
+    fn checks(&self) -> Vec<Check> {
+        let ledger = self.ledger.lock().unwrap_or_else(|e| e.into_inner());
+        let storage = if ledger.storage_failed() {
+            Check::new(
+                "ledger.storage",
+                CheckStatus::Fail,
+                "A journal write failed: the ledger refuses changes",
+            )
+        } else {
+            Check::new(
+                "ledger.storage",
+                CheckStatus::Ok,
+                "Journal writes succeeding",
+            )
+        };
+        // The journal rotates at CHECKPOINT_AFTER (half); well past it, rotation is not happening.
+        let rotate = board::CHECKPOINT_AFTER * 100 / board::MAX_RECORDS;
+        let journal = Check::usage(
+            "ledger.journal",
+            "Journal records",
+            ledger.journal_records() as f64,
+            board::MAX_RECORDS as f64,
+            (rotate + 10) as f64,
+            90.0,
+        );
+        vec![storage.runbook("storage"), journal.runbook("checkpoint")]
+    }
 }
 
 /// The site configuration for this bank. `host` is `nanacoin.local` on a
@@ -111,6 +165,7 @@ impl<J: Journal + Send + 'static> miniframework::Service for Bank<J> {
 pub fn config(host: &str, origins: &str) -> Config {
     let mut config = Config::new("nanacoin", host);
     config.version = env!("CARGO_PKG_VERSION");
+    config.build = env!("NANACOIN_BUILD_FINGERPRINT");
     config.body_limit = api::BODY_LIMIT;
     config.response_limit = api::RESPONSE_LIMIT;
     config.assets = web::assets();

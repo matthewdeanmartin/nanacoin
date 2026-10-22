@@ -21,7 +21,7 @@ Five new parity tests cover listing metadata and timestamp replay, read permissi
 The compile-only release build and link passed for xtensa-esp32s3-espidf, ESP-IDF v5.5.3 and mDNS 1.8.2. Output:
 
 ```text
-C:/ncr/xtensa-esp32s3-espidf/release/nanacoin-esp32
+C:/tmp/ncr/xtensa-esp32s3-espidf/release/nanacoin-esp32
 ```
 
 The fresh build uses the saved ignored `../archive/nanacoin_go/wifi.local.json` Wi-Fi settings and existing ignored local development TLS files. Credential values are not recorded in this report. No administrator credential is embedded. SDK configuration enables HTTPS, octal PSRAM/malloc, PSRAM-backed NVS cache, a 64 KiB main stack and multicore FreeRTOS. Wi-Fi/lwIP uses core 0; HTTPS selects core 1.

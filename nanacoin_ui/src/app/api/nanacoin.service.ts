@@ -68,6 +68,8 @@ export class BusyError extends Error {
   }
 }
 
+export interface EmailSettings { provider: string; address: string; notifications: boolean; queued: number; last_error: string; }
+
 export interface StorageStatus {
   generation: number; sequence: number; journal_records: number;
   checkpoint_after: number; checkpoint_supported: boolean;
@@ -806,6 +808,17 @@ export class NanacoinService {
 
   setLightSettings(phrases: [string, string, string]): Promise<{ phrases: [string, string, string] }> {
     return this.post('/admin/light', { phrases });
+  }
+
+  emailSettings(): Promise<EmailSettings> {
+    if (IS_DEMO) return Promise.reject(new Error('Email is disabled in the demo'));
+    return firstValueFrom(this.http.get<EmailSettings>(this.base + '/email', { headers: this.headers() }).pipe(this.mapError()));
+  }
+
+  emailAction(action: string, body: unknown): Promise<boolean> {
+    if (IS_DEMO) return Promise.reject(new Error('Email is disabled in the demo'));
+    // Email bodies, addresses and recovery codes are never written to the browser log.
+    return firstValueFrom(this.http.post<boolean>(this.base + '/email/' + action, body, { headers: this.headers() }).pipe(this.mapError()));
   }
 
   private get<T>(path: string): Promise<T> {

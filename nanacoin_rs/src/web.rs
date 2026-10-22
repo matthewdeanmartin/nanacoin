@@ -21,6 +21,7 @@ pub const SPA_ROUTES: &[&str] = &[
     "/forex",
     "/lotto",
     "/messages",
+    "/email",
     "/loans",
     "/history",
     "/economy",

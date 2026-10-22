@@ -51,7 +51,7 @@ def main():
     native_out = str(target_dir / profile.target / "release/build/esp-idf-sys-" / "out")
     predicted_out_length = len(native_out) + 16 + 4
     if os.name == "nt" and predicted_out_length > 88:
-        parser.error("ESP-IDF needs a shorter --target-dir, for example C:/np4dbg")
+        parser.error("ESP-IDF needs a shorter --target-dir, for example C:/tmp/np4dbg")
     out = ROOT / ".local" / ("firmware-" + ("emulated-" if args.emulator_network else "") + args.engine + "-" + args.board)
     if args.emulator_debug:
         out = out.with_name(out.name + "-debug")

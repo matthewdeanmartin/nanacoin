@@ -1,5 +1,6 @@
 import { Component, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 
 import { IS_DEMO } from '../demo/demo';
 import { toggleCaps } from './message-caps';
@@ -8,9 +9,10 @@ import { bankHost } from '../api/bank-host';
 
 @Component({
   selector: 'app-invite',
-  imports: [FormsModule],
+  imports: [FormsModule, RouterLink],
   template: `
     <h1>Invitations</h1>
+    @if (!emailDemo) { <p><a routerLink="/email">Send a household invitation by email</a></p> }
     <p class="lede">Tell friends and family about NanaCoin.</p>
     <section class="panel panel--compact">
       <label>
@@ -45,6 +47,7 @@ import { bankHost } from '../api/bank-host';
   `,
 })
 export class InvitePage {
+  protected readonly emailDemo = IS_DEMO;
   private readonly mastodon = inject(Mastodon);
   protected text = IS_DEMO
     ? 'Hey, here is a cool project: NanaCoin, a tiny household economy.\n' +

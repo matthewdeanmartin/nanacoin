@@ -171,6 +171,38 @@ fn scheduled_payments(shared: &Mutex<Service<NvsJournal>>, screen: &mut nanacoin
     }
 }
 
+/// Runs each email send on a short-lived PSRAM-stack helper. TLS needs a deep
+/// stack, and a resident internal-RAM one starved the serving connections
+/// (truncated asset downloads). The mail worker itself writes NVS, so its own
+/// stack must stay in internal RAM.
+struct PsramSend(Box<dyn nanacoin::email::Provider>);
+impl nanacoin::email::Provider for PsramSend {
+    fn name(&self) -> &'static str {
+        self.0.name()
+    }
+    fn send(&mut self, message: &nanacoin::email::Message) -> Result<(), String> {
+        use esp_idf_svc::hal::task::thread::{MallocCap, ThreadSpawnConfiguration};
+        let inner = &mut self.0;
+        std::thread::scope(|scope| {
+            ThreadSpawnConfiguration {
+                name: Some(c"nc-mail-tls"),
+                stack_alloc_caps: MallocCap::Spiram | MallocCap::Cap8bit,
+                ..Default::default()
+            }
+            .set()
+            .map_err(|e| format!("Email helper: {e}"))?;
+            let helper = std::thread::Builder::new()
+                .stack_size(48 * 1024)
+                .spawn_scoped(scope, || inner.send(message));
+            let _ = ThreadSpawnConfiguration::default().set();
+            helper
+                .map_err(|e| format!("Email helper: {e}"))?
+                .join()
+                .map_err(|_| "Email helper stopped".to_string())?
+        })
+    }
+}
+
 fn main() {
     if let Err(error) = run() {
         // Blinks the step, logs every 5 s, explains itself on port 8080.
@@ -263,7 +295,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     let origins = option_env!("NANACOIN_ORIGINS").unwrap_or(nanacoin::api::DEFAULT_ORIGINS);
     let latest = Arc::clone(&samples);
-    let bank = Bank::new(Arc::clone(&shared))
+    let mut bank = Bank::new(Arc::clone(&shared))
         .with_diagnostics(Box::new(move |path, out| {
             if path.ends_with("/events") {
                 let limit = out.len().min(nanacoin::incidents::RESPONSE_BYTES);
@@ -281,6 +313,25 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             }
         }))
         .on_storage_failed(|| incidents::record(Kind::StorageFailed, 0));
+    // Email is optional: if its storage or worker cannot start, the bank still serves.
+    if let Some(provider) = nanacoin::email::Brevo::configured(Arc::new(board.fetch_public())) {
+        let provider = Box::new(PsramSend(provider));
+        let mail = board
+            .kv("nc-email")
+            .map_err(|e| format!("{e:?}"))
+            .and_then(|kv| {
+                nanacoin::email::Mailer::start(
+                    Arc::new(kv),
+                    provider,
+                    format!("{}/email", nanacoin::board::HTTPS_ORIGIN),
+                )
+                .map_err(|e| e.to_string())
+            });
+        match mail {
+            Ok(mail) => bank = bank.with_email(mail),
+            Err(error) => log::warn!("Email disabled: {error}"),
+        }
+    }
     let site = Site::new(
         server::config(nanacoin::board::FQDN, origins),
         bank,

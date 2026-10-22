@@ -1,6 +1,7 @@
 import { Tour } from '../ui/tour';
 import { Component, inject, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 
 import { Session } from '../api/session';
 import { DEMO_USERS, IS_DEMO } from '../demo/demo';
@@ -8,7 +9,7 @@ import { Toasts } from '../ui/toasts';
 
 @Component({
   selector: 'app-login-form',
-  imports: [FormsModule],
+  imports: [FormsModule, RouterLink],
   template: `
     <div class="panel">
       @if (isDemo && !adding()) {
@@ -83,6 +84,7 @@ import { Toasts } from '../ui/toasts';
       </form>
       }
 
+      @if (!isDemo) { <p><a routerLink="/email">Forgot your PIN or password?</a></p> }
       @if (isDemo && adding()) {
         <button class="btn btn--quiet" title="Return to the account already signed in" type="button" (click)="cancel.emit()">Cancel</button>
       }

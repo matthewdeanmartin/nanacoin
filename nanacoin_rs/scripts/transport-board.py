@@ -152,7 +152,10 @@ def main():
         finally:
             bad.close()
 
-        _, index = hot.get("/")
+        # Gzip-only bundle: a request without Accept-Encoding still gets gzip.
+        headers, index = hot.get("/", "Accept-Encoding: gzip\r\n")
+        if headers.get("content-encoding") == "gzip":
+            index = gzip.decompress(index)
         asset = re.search(rb'src="([A-Za-z0-9_-]+\.js)"', index).group(1).decode()
         headers, body = hot.get("/" + asset, "Accept-Encoding: gzip\r\n")
         assert headers["content-encoding"] == "gzip"

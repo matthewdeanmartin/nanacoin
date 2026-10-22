@@ -51,7 +51,7 @@ These targets generate local development certificate files if absent and
 compile firmware; they do not flash or reset a board. The board build needs
 the Espressif Rust toolchain and SDK. The Windows setup in
 [build-esp32.sh](https://github.com/matthewdeanmartin/nanacoin/blob/main/nanacoin_rs/scripts/build-esp32.sh)
-uses the installed SDK under `C:/Espressif` and a short output path `C:/ncr`.
+uses the installed SDK under `C:/Espressif` and a short output path `C:/tmp/ncr`.
 Its actual compiler invocation is:
 
 ```bash

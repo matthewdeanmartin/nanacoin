@@ -27,7 +27,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     #[cfg(feature = "cobol-core")]
     nanacoin::cobol::initialize().map_err(|e| format!("COBOL banking kernel: {e}"))?;
     let path = std::env::var("NANACOIN_JOURNAL").unwrap_or_else(|_| "nanacoin.journal".into());
-    let journal = FileJournal::open(path)?;
+    let journal = FileJournal::open(&path)?;
     #[cfg(feature = "conformance-clock")]
     let clock = fixture_clock::configure()?;
     #[cfg(not(feature = "conformance-clock"))]
@@ -60,11 +60,21 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     miniframework::desktop::init_logging();
     println!("NanaCoin: http://{address} (loopback development server)");
     let ledger = Arc::new(Mutex::new(service));
-    let site = Site::new(
-        server::config(&address, &origins),
-        Bank::new(Arc::clone(&ledger)),
-        DesktopPlatform,
-    );
+    let mut bank = Bank::new(Arc::clone(&ledger));
+    if let Some(provider) =
+        nanacoin::email::Brevo::configured(Arc::new(miniframework::fetch::PlainFetch {
+            timeout: std::time::Duration::from_secs(15),
+            ..Default::default()
+        }))
+    {
+        let kv = Arc::new(miniframework::kv::FileKv::open(format!("{path}.email"))?);
+        bank = bank.with_email(nanacoin::email::Mailer::start(
+            kv,
+            provider,
+            format!("http://{address}/email"),
+        )?);
+    }
+    let site = Site::new(server::config(&address, &origins), bank, DesktopPlatform);
     let mut screen = nanacoin::screen::Worker::spawn()?;
     let mut last = Instant::now() - Duration::from_secs(1);
     serve(&site, &address, || {

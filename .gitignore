@@ -54,3 +54,6 @@ site/
 coverage/
 coverage-s2/
 *.profraw
+
+# Private email preferences and queued messages beside the desktop journal.
+*.journal.email/

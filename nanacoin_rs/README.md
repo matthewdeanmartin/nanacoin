@@ -66,7 +66,7 @@ make certs-check # offline RSA/key/hostname/usage validation
 make firmware BOARD=s3   # compile only; requires Wi-Fi settings
 ```
 
-Firmware targets ESP-IDF v5.5.3, esp-idf-svc 0.52.1 and managed mDNS 1.8.2. The application is Rust over ESP-IDF's C platform libraries. The script uses the installed Espressif Rust toolchain and, on this Windows machine, the SDK under `C:/Espressif`. Firmware output defaults to short path `C:/ncr` to avoid SDK path-length failures; override `CARGO_TARGET_DIR` if needed. Host output normally uses `target`.
+Firmware targets ESP-IDF v5.5.3, esp-idf-svc 0.52.1 and managed mDNS 1.8.2. The application is Rust over ESP-IDF's C platform libraries. The script uses the installed Espressif Rust toolchain and, on this Windows machine, the SDK under `C:/Espressif`. Firmware output defaults to short path `C:/tmp/ncr` to avoid SDK path-length failures; override `CARGO_TARGET_DIR` if needed. Host output normally uses `target`.
 
 ```bash
 export NANACOIN_WIFI_SSID='Your 2.4GHz Wi-Fi'
@@ -136,7 +136,8 @@ reset of disposable development ledger data; flashing alone does not migrate it.
 opening a serial port. Scripts use esptool 4.x through
 `NANACOIN_ESPTOOL_PYTHON`, or the installed Windows ESP-IDF Python environment.
 
-Assets live under ignored `.embuild/web`, with identity and gzip versions.
+Assets live under ignored `.embuild/web`, gzip-compressed only: Wi-Fi time
+dominates, and clients that refuse gzip receive 406.
 The packaged index selects same-origin `/api/v1`; standalone Angular source
 defaults remain unchanged. An explicitly remembered API choice still wins:
 use the connection screen or `?api=` to select this site again. Serving uses
@@ -526,3 +527,5 @@ measurement. Firmware build checks do not replace those measurements.
 The audited S2 image is 2,424,368/2,490,368 bytes (66,000 bytes remain);
 S3 is 3,775,488/4,194,304 bytes. These sizes include the current UI and board
 configuration and should be rechecked when either changes.
+
+Email setup and behavior: see [EMAIL.md](EMAIL.md).

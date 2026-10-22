@@ -581,8 +581,8 @@ actual server. These commands build and measure artifacts only:
 
 ```powershell
 python nanacoin_rs/cobol/build_target_bank.py --target esp32s3 --compiler C:/Espressif/tools/xtensa-esp-elf/esp-14.2.0_20251107/xtensa-esp-elf/bin/xtensa-esp32s3-elf-gcc.exe --gnucobol-source C:/Users/matth/Downloads/gnucobol-3.2_win
-python nanacoin_rs/cobol/build_firmware.py --board s3 --engine cobol --target-dir C:/nc-cob-s3 --static-module .local/cobol-target-esp32s3
-python nanacoin_rs/cobol/build_firmware.py --board s3 --engine rust --target-dir C:/nc-rust-s3
+python nanacoin_rs/cobol/build_firmware.py --board s3 --engine cobol --target-dir C:/tmp/ncbs3 --static-module .local/cobol-target-esp32s3
+python nanacoin_rs/cobol/build_firmware.py --board s3 --engine rust --target-dir C:/tmp/nrs3
 ```
 
 The offline build tool uses the existing board registry, sdkconfig, partitions,
@@ -707,7 +707,7 @@ ESP-EMU models P4 v3 silicon; its [Hosted guide](https://github.com/espressif/es
 describes the matching ROM/stack layout. `build_firmware.py
 --emulator-network --p4-emulator-rev3` selects an isolated v3.1 SDK configuration;
 the real board's v1 profile remains unchanged. Use a separate target directory
-such as `C:/nc-emu-p4`. The current v3.1 emulator-clock artifact is 4,011,184 bytes. Its actual allocated HP SRAM sections
+such as `C:/tmp/nep4`. The current v3.1 emulator-clock artifact is 4,011,184 bytes. Its actual allocated HP SRAM sections
 total 111,108 bytes and all end within the physical SRAM address range from
 ESP-IDF's `soc.h`; this validates static placement, not dynamic heap budgets.
 The probe requires its matching C6 report via
@@ -909,7 +909,7 @@ deployment gate pass.
 ### P4 network isolation evidence
 
 An independent all-Rust P4 v3.1 emulator-clock image was built with SDK debug
-logging: `build_firmware.py --board p4 --engine rust --target-dir C:/np4dbg
+logging: `build_firmware.py --board p4 --engine rust --target-dir C:/tmp/np4dbg
 --emulator-network --p4-emulator-rev3 --emulator-clock 1799996400
 --emulator-debug`. It fits the 8 MiB application partition at 3,730,512 bytes.
 The flag uses an isolated debug report directory and rejects incompatible

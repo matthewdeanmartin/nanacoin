@@ -1,4 +1,5 @@
 """Real local HTTP checks for the bundled application; disposable ledger only."""
+import gzip
 import hashlib
 import json
 import os
@@ -23,13 +24,23 @@ def main():
     base = f'http://127.0.0.1:{port}'
 
     def get(path, headers=None, method='GET', data=None):
-        req = urllib.request.Request(base + path, headers=headers or {}, method=method, data=data)
+        # urllib sends "Accept-Encoding: identity", which a gzip-only bundle
+        # refuses. Act like a browser unless the caller chose an encoding;
+        # then return the exact bytes on the wire.
+        headers = dict(headers or {})
+        decode = 'Accept-Encoding' not in headers
+        if decode:
+            headers['Accept-Encoding'] = 'gzip'
+        req = urllib.request.Request(base + path, headers=headers, method=method, data=data)
         try:
             response = urllib.request.urlopen(req, timeout=5)
         except urllib.error.HTTPError as error:
             response = error
         with response:
-            return response.status, response.headers, response.read()
+            body = response.read()
+            if decode and body and response.headers.get('Content-Encoding') == 'gzip':
+                body = gzip.decompress(body)
+            return response.status, response.headers, body
 
     with tempfile.TemporaryDirectory(prefix='nanacoin-web-smoke-') as temp:
         env = {**os.environ, 'NANACOIN_PORT': str(port), 'NANACOIN_JOURNAL': str(Path(temp) / 'test.journal')}

@@ -63,3 +63,6 @@ CONFIG_ESP_HOSTED_PRIV_SDIO_PIN_D3_4BIT_BUS_SLOT_1=17
 CONFIG_ESP_HOSTED_SDIO_GPIO_RESET_SLAVE=54
 # Hosted calls the enabled/high EN state "active high": reset pulses it low.
 CONFIG_ESP_HOSTED_SDIO_RESET_ACTIVE_HIGH=y
+# Household email (Brevo) uses Board::fetch_public: ESP-IDF's common public CA bundle.
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_CMN=y

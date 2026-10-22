@@ -29,6 +29,7 @@ import { IS_DEMO } from '../demo/demo';
        </details>
        <details name="site-menu-group" class="menu-group" routerLinkActive="current">
          <summary>Mail</summary><div class="menu-group__items">
+           @if (!demo) { <a routerLink="/email" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Email</a> }
            <a routerLink="/send" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Send Money</a>
            <a routerLink="/gifts" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Gift Requests</a>
            <a routerLink="/messages" routerLinkActive="current" ariaCurrentWhenActive="page" (click)="close()">Messages</a>

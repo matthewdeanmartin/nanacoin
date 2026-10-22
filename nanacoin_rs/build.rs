@@ -59,6 +59,16 @@ fn aliases(key: &str) -> &'static [&'static str] {
 }
 
 fn main() {
+    // A build-instance identity, including dirty/uncommitted rebuilds. No
+    // credential material enters this public health fingerprint.
+    println!("cargo:rerun-if-changed=src");
+    println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=Cargo.toml");
+    let built = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("build clock is before Unix epoch")
+        .as_secs();
+    println!("cargo:rustc-env=NANACOIN_BUILD_FINGERPRINT=build-{built}");
     println!("cargo:rerun-if-env-changed=NANACOIN_COBOL_STATIC_DIR");
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("espidf")
         && std::env::var_os("CARGO_FEATURE_COBOL_CORE").is_some()
@@ -124,6 +134,62 @@ fn main() {
     }
 
     let root = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".into()));
+    // Shared private household credentials, including GameMatcher's key. Never copied into the UI.
+    // Only firmware embeds them: a desktop build must not send real email (or carry the key)
+    // unless NANACOIN_BREVO_API_KEY is set when the server starts.
+    let firmware = std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("espidf");
+    let mut mail_files = vec![
+        root.join(".env"),
+        root.join("../.env"),
+        root.join("../../microcontroller/gamematcher/api/.env"),
+        root.join("../../microcontroller/gamematcher/.env"),
+    ];
+    println!("cargo:rerun-if-env-changed=MINIFRAMEWORK_ENV");
+    if let Some(path) = std::env::var_os("MINIFRAMEWORK_ENV") {
+        mail_files.push(path.into());
+    }
+    mail_files.push(root.join("../../.env"));
+    for (key, names) in [
+        (
+            "NANACOIN_BREVO_API_KEY",
+            &[
+                "NANACOIN_BREVO_API_KEY",
+                "GAMEMATCHER_BREVO_API_KEY",
+                "BREVO_API_KEY",
+                "BREVO_OTHER_KEY",
+            ][..],
+        ),
+        (
+            "NANACOIN_MAIL_FROM",
+            &[
+                "NANACOIN_MAIL_FROM",
+                "GAMEMATCHER_MAIL_FROM",
+                "BREVO_SENDER",
+            ][..],
+        ),
+    ]
+    .into_iter()
+    .filter(|_| firmware)
+    {
+        for name in names {
+            println!("cargo:rerun-if-env-changed={name}");
+        }
+        let value = names
+            .iter()
+            .find_map(|name| std::env::var(name).ok())
+            .or_else(|| {
+                mail_files.iter().find_map(|path| {
+                    if path.exists() {
+                        println!("cargo:rerun-if-changed={}", path.display());
+                    }
+                    let text = std::fs::read_to_string(path).ok()?;
+                    names.iter().find_map(|name| parse(&text, name))
+                })
+            });
+        if let Some(value) = value {
+            println!("cargo:rustc-env={key}={value}");
+        }
+    }
     let sources: Vec<(PathBuf, String)> = CREDENTIAL_FILES
         .iter()
         .map(|relative| root.join(relative))

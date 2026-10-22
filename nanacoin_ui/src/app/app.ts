@@ -117,7 +117,7 @@ export class App {
         void this.session.checkForChanges();
         const path = event.urlAfterRedirects.split('?')[0];
         this.aboutPage.set(path === '/about' || path.startsWith('/about/'));
-        this.publicPage.set(['/clientlog', '/specification', '/about', '/about/nickles', '/about/smbc', '/docs', '/recipes', '/ledger', '/diagnostics', '/error-log', '/database', '/configuration', '/settings'].includes(path));
+        this.publicPage.set(['/clientlog', '/specification', '/about', '/about/nickles', '/about/smbc', '/docs', '/recipes', '/ledger', '/diagnostics', '/error-log', '/database', '/configuration', '/settings', ...(!IS_DEMO ? ['/email'] : [])].includes(path));
         requestAnimationFrame(() => document.getElementById('main-content')?.focus());
       }
     });
